@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">AmoledGallery</string>
+    <string name="app_name">Gallery</string>
     <string name="header_media">Medien</string>
     <string name="permission_title">Zugriff auf Fotos und Videos</string>
     <string name="permission_description">Erlaube den Zugriff auf deine Medienbibliothek, um deine Fotos und Videos anzuzeigen.</string>
