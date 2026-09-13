@@ -2,6 +2,7 @@ package com.example.amoledgallery.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -41,13 +42,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.amoledgallery.AmoledGalleryApp
 import com.example.amoledgallery.ui.theme.AmoledBlack
 import com.example.amoledgallery.ui.theme.LocalAppTheme
 import com.example.amoledgallery.ui.theme.OneUiBlue
 import com.example.amoledgallery.ui.theme.PureWhite
 import com.example.amoledgallery.ui.theme.TextMuted
+import com.example.amoledgallery.ui.theme.designTween
 import com.example.amoledgallery.ui.themedBackgroundBlur
 import com.example.amoledgallery.ui.viewmodel.GalleryTab
 
@@ -118,17 +122,18 @@ private fun OneUiNavItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val pillCornerRadius = LocalAppTheme.current.shapes.pillCornerRadius
+    val theme = LocalAppTheme.current
+    val pillCornerRadius = theme.shapes.pillCornerRadius
 
     val pillBgColor by animateColorAsState(
         targetValue = if (isSelected) Color(0xFF1E1E1E) else Color.Transparent,
-        animationSpec = tween(durationMillis = 240),
+        animationSpec = designTween(theme.language, AmoledGalleryApp.performanceProfile, 240),
         label = "pill_bg"
     )
 
     val contentColor by animateColorAsState(
         targetValue = if (isSelected) PureWhite else TextMuted,
-        animationSpec = tween(durationMillis = 200),
+        animationSpec = designTween(theme.language, AmoledGalleryApp.performanceProfile, 200),
         label = "pill_content"
     )
 
@@ -155,12 +160,19 @@ private fun OneUiNavItem(
                 modifier = Modifier.size(22.dp)
             )
 
+            val useSpring = theme.shapes.motionStyle != com.example.amoledgallery.ui.theme.MotionStyle.FAST_CUT
+            val sizeAnimSpec: FiniteAnimationSpec<IntSize> = if (useSpring) {
+                spring(stiffness = Spring.StiffnessMediumLow)
+            } else {
+                tween(durationMillis = 120)
+            }
+
             AnimatedVisibility(
                 visible = isSelected,
                 enter = fadeIn(animationSpec = tween(220, delayMillis = 40)) +
-                        expandHorizontally(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)),
+                        expandHorizontally(animationSpec = sizeAnimSpec),
                 exit = fadeOut(animationSpec = tween(150)) +
-                        shrinkHorizontally(animationSpec = spring(stiffness = Spring.StiffnessMediumLow))
+                        shrinkHorizontally(animationSpec = sizeAnimSpec)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(modifier = Modifier.width(8.dp))
