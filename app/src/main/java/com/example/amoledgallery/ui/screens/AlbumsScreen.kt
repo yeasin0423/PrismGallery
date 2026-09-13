@@ -86,6 +86,7 @@ import com.example.amoledgallery.model.MediaItem
 import com.example.amoledgallery.ui.components.MediaGridItem
 import com.example.amoledgallery.ui.qualityTween
 import com.example.amoledgallery.ui.theme.AmoledBlack
+import com.example.amoledgallery.ui.theme.DesignLanguage
 import com.example.amoledgallery.ui.theme.LocalAppTheme
 import com.example.amoledgallery.ui.theme.OneUiCardBorder
 import com.example.amoledgallery.ui.theme.PureWhite
@@ -168,11 +169,23 @@ fun AlbumsScreen(
         ) {
             // Top Header with Breadcrumbs & Action buttons
             item(span = { GridItemSpan(maxLineSpan) }) {
+                val theme = LocalAppTheme.current
+                val headerBackground = if (theme.language == DesignLanguage.GOOGLE_EXPRESSIVE) {
+                    Modifier.background(
+                        androidx.compose.ui.graphics.Brush.linearGradient(
+                            colors = listOf(theme.palette.accent.copy(alpha = 0.24f), Color.Transparent)
+                        )
+                    )
+                } else {
+                    Modifier
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(headerBackground)
                         .statusBarsPadding()
-                        .padding(top = 12.dp, bottom = 8.dp),
+                        .padding(top = 12.dp, bottom = 8.dp)
+                        .padding(horizontal = if (theme.language == DesignLanguage.GOOGLE_EXPRESSIVE) 8.dp else 0.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
