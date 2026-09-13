@@ -190,6 +190,10 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     // MicroSD Card detection
     val isSdCardAvailable: Boolean get() = repository.isSdCardAvailable()
 
+    // Storage free/total space, queried fresh each time the settings dialog reads them
+    fun getInternalStorageSpace() = repository.getInternalStorageSpace()
+    fun getSdCardStorageSpace() = repository.getSdCardStorageSpace()
+
     fun dismissMoveProgress() {
         _isMoveProgressVisible.value = false
     }
@@ -272,7 +276,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     private fun applyFilter() {
         val raw = _rawMedia.value
-        if (raw.isEmpty() && _uiState.value is GalleryUiState.Loading) return
 
         val filtered = filterMediaList(raw, _selectedFilter.value)
         _uiState.value = if (filtered.isEmpty()) {
@@ -628,6 +631,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 _rawMedia.value = visibleMedia
                 _albumsState.value = visibleAlbums
                 _hiddenAlbums.value = hiddenAlbums
+                ThumbnailManager.getInstance(getApplication()).startPreindexing(visibleMedia)
             }
             applyFilter()
             _selectedAlbum.value?.let { active ->

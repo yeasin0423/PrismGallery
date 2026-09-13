@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.StatFs
 import android.os.storage.StorageManager
 import android.provider.MediaStore
 import androidx.core.content.ContextCompat
@@ -719,15 +720,21 @@ class MediaRepository(private val context: Context) {
     }
 
     private fun getSdCardPicturesDirectory(): File? {
+        val root = getSdCardRootDirectory() ?: return null
+        val pictures = File(root, "Pictures")
+        if (!pictures.exists()) pictures.mkdirs()
+        return pictures
+    }
+
+    /**
+     * Resolves the SD card's root directory (not a specific subfolder), used both by
+     * [getSdCardPicturesDirectory] and for free-space queries where any path on the volume works.
+     */
+    private fun getSdCardRootDirectory(): File? {
         val storageManager = context.getSystemService(Context.STORAGE_SERVICE) as? StorageManager
         if (storageManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val sdVolume = storageManager.storageVolumes.firstOrNull { it.isRemovable && it.state == Environment.MEDIA_MOUNTED }
-            val dir = sdVolume?.directory
-            if (dir != null) {
-                val pictures = File(dir, "Pictures")
-                if (!pictures.exists()) pictures.mkdirs()
-                return pictures
-            }
+            sdVolume?.directory?.let { return it }
         }
 
         // Fallback check through external files dirs
@@ -742,6 +749,32 @@ class MediaRepository(private val context: Context) {
 
     private fun isPathOnSdCard(path: String): Boolean {
         return path.contains("/storage/") && !path.contains("/emulated/")
+    }
+
+    /**
+     * Free/total space for a storage volume, in bytes.
+     */
+    data class StorageSpaceInfo(val freeBytes: Long, val totalBytes: Long)
+
+    /**
+     * Free/total space on internal storage.
+     */
+    fun getInternalStorageSpace(): StorageSpaceInfo {
+        val stat = StatFs(Environment.getDataDirectory().path)
+        return StorageSpaceInfo(stat.availableBytes, stat.totalBytes)
+    }
+
+    /**
+     * Free/total space on the mounted SD card, or null if none is available.
+     */
+    fun getSdCardStorageSpace(): StorageSpaceInfo? {
+        val root = getSdCardRootDirectory() ?: return null
+        return try {
+            val stat = StatFs(root.path)
+            StorageSpaceInfo(stat.availableBytes, stat.totalBytes)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /**

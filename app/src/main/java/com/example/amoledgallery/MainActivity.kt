@@ -369,10 +369,15 @@ fun GalleryApp(viewModel: GalleryViewModel) {
                             }
 
                             GalleryTab.MENU -> {
+                                val internalStorage = remember(selectedTab) { viewModel.getInternalStorageSpace() }
+                                val sdCardStorage = remember(selectedTab) { viewModel.getSdCardStorageSpace() }
                                 MenuScreen(
                                     favoriteCount = favoriteMedia.size,
                                     trashedCount = trashedMedia.size,
-                                    isSdCardAvailable = viewModel.isSdCardAvailable,
+                                    internalFreeBytes = internalStorage.freeBytes,
+                                    internalTotalBytes = internalStorage.totalBytes,
+                                    sdCardFreeBytes = sdCardStorage?.freeBytes,
+                                    sdCardTotalBytes = sdCardStorage?.totalBytes,
                                     appVersionName = appVersionName,
                                     graphicsQuality = graphicsQuality,
                                     onSetGraphicsQuality = { viewModel.setGraphicsQuality(it) },

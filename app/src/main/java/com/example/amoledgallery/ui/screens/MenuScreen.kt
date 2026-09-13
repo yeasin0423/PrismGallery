@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.SdCard
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
@@ -64,7 +65,10 @@ import com.example.amoledgallery.ui.theme.TextMuted
 fun MenuScreen(
     favoriteCount: Int,
     trashedCount: Int,
-    isSdCardAvailable: Boolean,
+    internalFreeBytes: Long,
+    internalTotalBytes: Long,
+    sdCardFreeBytes: Long?,
+    sdCardTotalBytes: Long?,
     appVersionName: String = "",
     graphicsQuality: PerformanceProfile = PerformanceProfile.MEDIUM,
     onSetGraphicsQuality: (PerformanceProfile) -> Unit = {},
@@ -167,7 +171,10 @@ fun MenuScreen(
 
     if (showSettingsDialog) {
         SettingsInfoDialog(
-            isSdCardAvailable = isSdCardAvailable,
+            internalFreeBytes = internalFreeBytes,
+            internalTotalBytes = internalTotalBytes,
+            sdCardFreeBytes = sdCardFreeBytes,
+            sdCardTotalBytes = sdCardTotalBytes,
             appVersionName = appVersionName,
             graphicsQuality = graphicsQuality,
             onSetGraphicsQuality = onSetGraphicsQuality,
@@ -235,7 +242,10 @@ private fun MenuRowItem(
 
 @Composable
 private fun SettingsInfoDialog(
-    isSdCardAvailable: Boolean,
+    internalFreeBytes: Long,
+    internalTotalBytes: Long,
+    sdCardFreeBytes: Long?,
+    sdCardTotalBytes: Long?,
     appVersionName: String,
     graphicsQuality: PerformanceProfile,
     onSetGraphicsQuality: (PerformanceProfile) -> Unit,
@@ -270,10 +280,19 @@ private fun SettingsInfoDialog(
                     label = "App-Version",
                     value = appVersionName.ifBlank { "Unbekannt" }
                 )
-                InfoBadgeRow(
+                StorageSpaceRow(
+                    icon = Icons.Rounded.PhoneAndroid,
+                    label = "Interner Speicher",
+                    freeBytes = internalFreeBytes,
+                    totalBytes = internalTotalBytes,
+                    notAvailableText = null
+                )
+                StorageSpaceRow(
                     icon = Icons.Rounded.SdCard,
-                    label = "MicroSD-Speicher",
-                    value = if (isSdCardAvailable) "Erkannt & Verfügbar" else "Nicht vorhanden"
+                    label = "SD-Karte",
+                    freeBytes = sdCardFreeBytes,
+                    totalBytes = sdCardTotalBytes,
+                    notAvailableText = "Nicht vorhanden"
                 )
 
                 HorizontalDivider(
@@ -397,4 +416,74 @@ private fun InfoBadgeRow(
             )
         }
     }
+}
+
+/**
+ * Clean, simple free/total storage readout with a thin usage bar, for internal storage
+ * (always available) and the SD card (shows [notAvailableText] instead when null).
+ */
+@Composable
+private fun StorageSpaceRow(
+    icon: ImageVector,
+    label: String,
+    freeBytes: Long?,
+    totalBytes: Long?,
+    notAvailableText: String?
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = TextMuted,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                color = TextMuted,
+                fontSize = 12.sp
+            )
+            if (freeBytes != null && totalBytes != null && totalBytes > 0) {
+                Text(
+                    text = "${formatBytes(freeBytes)} frei von ${formatBytes(totalBytes)}",
+                    color = PureWhite,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                val usedFraction = (1f - (freeBytes.toFloat() / totalBytes.toFloat())).coerceIn(0f, 1f)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(SurfaceDark)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(usedFraction)
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(OneUiBlue)
+                    )
+                }
+            } else {
+                Text(
+                    text = notAvailableText ?: "Unbekannt",
+                    color = PureWhite,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+private fun formatBytes(bytes: Long): String {
+    val gb = bytes / (1024.0 * 1024.0 * 1024.0)
+    return java.util.Locale.getDefault().let { locale -> String.format(locale, "%.1f GB", gb) }
 }

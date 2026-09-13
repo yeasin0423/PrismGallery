@@ -1,37 +1,31 @@
 package com.example.amoledgallery.ui.components
 
 import android.graphics.Bitmap
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -45,17 +39,14 @@ import coil3.request.crossfade
 import coil3.size.Precision
 import com.example.amoledgallery.data.ThumbnailManager
 import com.example.amoledgallery.model.MediaItem
-import com.example.amoledgallery.ui.theme.AmoledBlack
+import com.example.amoledgallery.ui.theme.OneUiBlue
 import com.example.amoledgallery.ui.theme.PureWhite
-import com.example.amoledgallery.ui.theme.SurfaceDark
 
 /**
  * Ultra-performance Samsung OneUI AMOLED media grid tile:
- * - 160x160 EXACT downscaled Hardware Bitmaps for minimal RAM and max 120fps scroll speed
- * - Zero layout recalculations: ColorPainter dark placeholder
- * - Refined 8.dp corner radius for modern OneUI grid design
- * - Zero-Recomposition Selection: lambda-based `isSelected: () -> Boolean` inside Canvas
- * - Bug-free isolated bottom-start Video Badge
+ * - Downscaled Hardware Bitmaps sized by the current graphics quality tier
+ * - Dark placeholder to avoid a white flash while the thumbnail decodes
+ * - Selection checkbox (top-start), favorite heart (top-end) and video duration badge (bottom-end)
  */
 private val DarkPlaceholder = ColorPainter(Color(0xFF101010))
 
@@ -82,14 +73,101 @@ fun MediaGridItem(
             .build()
     }
 
-    AsyncImage(
-        model = imageRequest,
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
+    Box(
         modifier = modifier
             .fillMaxSize()
             .aspectRatio(1f)
             .clip(RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
-    )
+    ) {
+        AsyncImage(
+            model = imageRequest,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            placeholder = DarkPlaceholder,
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(onClick = onClick)
+        )
+
+        if (isSelectionMode && isSelected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.25f))
+            )
+        }
+
+        if (item.isVideo) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(4.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.PlayArrow,
+                    contentDescription = null,
+                    tint = PureWhite,
+                    modifier = Modifier.size(10.dp)
+                )
+                Spacer(modifier = Modifier.width(2.dp))
+                Text(
+                    text = item.formattedDuration(),
+                    color = PureWhite,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        if (isFavorite) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(18.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.45f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Favorite,
+                    contentDescription = null,
+                    tint = Color(0xFFFF4D6D),
+                    modifier = Modifier.size(11.dp)
+                )
+            }
+        }
+
+        if (isSelectionMode) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp)
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(if (isSelected) OneUiBlue else Color.Black.copy(alpha = 0.35f))
+                    .then(
+                        if (!isSelected) {
+                            Modifier.border(1.5.dp, PureWhite.copy(alpha = 0.85f), CircleShape)
+                        } else {
+                            Modifier
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isSelected) {
+                    Icon(
+                        imageVector = Icons.Rounded.Check,
+                        contentDescription = null,
+                        tint = PureWhite,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+        }
+    }
 }

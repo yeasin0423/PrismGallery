@@ -44,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -246,6 +247,28 @@ fun GalleryScreen(
             val haptic = LocalHapticFeedback.current
             val context = LocalContext.current
 
+            // Compose's low-level long-press-drag detector (used for selection) and each tile's
+            // plain `clickable` both observe the same raw touch stream. A press-then-release with
+            // no movement is recognized by BOTH: the long-press already selects the item, and then
+            // the tile's own clickable ALSO fires as a completed tap and immediately toggles it
+            // back off - a genuine race, not something tied to any particular tile/position. This
+            // records which item a long-press just (de)selected so the trailing click for that same
+            // item can be ignored as the tail end of the same gesture rather than a fresh tap.
+            var lastLongPressId by remember { mutableStateOf<Long?>(null) }
+            var lastLongPressTime by remember { mutableLongStateOf(0L) }
+            var isLongPressGestureActive by remember { mutableStateOf(false) }
+
+            // Pause background thumbnail pre-indexing while actively flinging so it never competes
+            // with visible-tile decode threads, resume it as soon as the grid settles.
+            LaunchedEffect(gridState.isScrollInProgress) {
+                val thumbnailManager = ThumbnailManager.getInstance(context)
+                if (gridState.isScrollInProgress) {
+                    thumbnailManager.pausePreindexing()
+                } else {
+                    thumbnailManager.resumePreindexing(items)
+                }
+            }
+
             LazyVerticalGrid(
                 columns = GridCells.Fixed(columnCount),
                 state = gridState,
@@ -264,7 +287,15 @@ fun GalleryScreen(
                         onUpdateSelectedIds = onUpdateSelectedIds,
                         selectedIds = { selectedIds },
                         haptic = haptic,
-                        coroutineScope = coroutineScope
+                        coroutineScope = coroutineScope,
+                        onLongPressRecognized = { id ->
+                            lastLongPressId = id
+                            isLongPressGestureActive = true
+                        },
+                        onLongPressEnded = {
+                            lastLongPressTime = System.currentTimeMillis()
+                            isLongPressGestureActive = false
+                        }
                     ),
                 contentPadding = PaddingValues(
                     start = 3.dp,
@@ -325,7 +356,17 @@ fun GalleryScreen(
                             isSelected = selectedIds.contains(item.id),
                             isFavorite = isFavorite(item.id),
                             onClick = {
-                                if (isSelectionMode) {
+                                // Suppressed for the entire duration of an active long-press-drag on
+                                // this same item (covers holds of any length), plus a short grace
+                                // period after it ends as a backstop in case the child's tap and the
+                                // parent's onDragEnd/onDragCancel resolve in the opposite order.
+                                val isTrailingClickFromLongPress = item.id == lastLongPressId &&
+                                    (isLongPressGestureActive || (System.currentTimeMillis() - lastLongPressTime) < 600)
+                                if (isTrailingClickFromLongPress) {
+                                    // Same press-release the long-press gesture already handled -
+                                    // ignore it instead of letting the tile's own tap detector
+                                    // immediately toggle the selection it just made back off.
+                                } else if (isSelectionMode) {
                                     onToggleSelection(item.id)
                                 } else {
                                     val index = items.indexOf(item)
@@ -568,7 +609,9 @@ private fun Modifier.detectDragSelect(
     onUpdateSelectedIds: (Set<Long>) -> Unit,
     selectedIds: () -> Set<Long>,
     haptic: HapticFeedback,
-    coroutineScope: CoroutineScope
+    coroutineScope: CoroutineScope,
+    onLongPressRecognized: (Long) -> Unit,
+    onLongPressEnded: () -> Unit
 ): Modifier = pointerInput(gridState, items) {
     var dragSelectMode = true
     var autoScrollJob: Job? = null
@@ -577,6 +620,7 @@ private fun Modifier.detectDragSelect(
     var initialSelectedIds = emptySet<Long>()
     var lastProcessedRange: IntRange? = null
     var idToIndex = emptyMap<Long, Int>()
+    var dragStartPosition = Offset.Zero
 
     fun findMediaIndexAt(pos: Offset): Int? {
         val x = pos.x.toInt()
@@ -655,44 +699,63 @@ private fun Modifier.detectDragSelect(
                 }
                 lastProcessedRange = startIdx..startIdx
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onLongPressRecognized(startItem.id)
             } else {
                 dragStartIndex = null
             }
-
-            autoScrollJob?.cancel()
-            autoScrollJob = coroutineScope.launch {
-                val scrollMarginPx = 100.dp.toPx()
-                while (isActive) {
-                    val viewportH = gridState.layoutInfo.viewportSize.height.toFloat()
-                    if (viewportH > 0 && dragStartIndex != null) {
-                        val scrollAmount = when {
-                            currentTouch.y < scrollMarginPx -> {
-                                -((scrollMarginPx - currentTouch.y) / scrollMarginPx).coerceIn(0f, 1f) * 24f
-                            }
-                            currentTouch.y > viewportH - scrollMarginPx -> {
-                                ((currentTouch.y - (viewportH - scrollMarginPx)) / scrollMarginPx).coerceIn(0f, 1f) * 24f
-                            }
-                            else -> 0f
-                        }
-
-                        if (scrollAmount != 0f) {
-                            gridState.scrollBy(scrollAmount)
-                            val curIdx = findMediaIndexAt(currentTouch)
-                            if (curIdx != null) {
-                                updateRangeSelection(curIdx)
-                            }
-                        }
-                    }
-                    delay(16)
-                }
-            }
+            dragStartPosition = offset
+            // Auto-scroll and range re-evaluation are intentionally NOT started here: onDragStart
+            // fires purely from a long-press with zero finger movement. Starting the timer-driven
+            // auto-scroll loop immediately meant that simply holding still on a tile sitting inside
+            // the top/bottom scroll margin could re-evaluate the range selection on every tick with
+            // no drag at all, occasionally toggling the very first selected item back off. Both are
+            // gated on real net displacement from the long-press origin in onDrag instead - NOT on
+            // "onDrag fired at all", and NOT on a running sum of per-tick deltas: some input sources
+            // (and a real finger's sensor noise, given enough time) report many tiny non-zero moves
+            // while effectively held still, and a running sum keeps growing the longer you hold even
+            // though the finger never actually travels anywhere - comparing against the fixed start
+            // position instead stays near-zero for as long as the hold is genuinely stationary.
         },
         onDrag = { change, _ ->
             change.consume()
             currentTouch = change.position
-            val curIdx = findMediaIndexAt(currentTouch)
-            if (curIdx != null) {
-                updateRangeSelection(curIdx)
+
+            // Ignore everything until the finger has actually moved away from where the long-press
+            // started (beyond a tiny touch-slop threshold).
+            if ((currentTouch - dragStartPosition).getDistance() > 8f) {
+                val curIdx = findMediaIndexAt(currentTouch)
+                if (curIdx != null) {
+                    updateRangeSelection(curIdx)
+                }
+
+                if (autoScrollJob == null) {
+                    autoScrollJob = coroutineScope.launch {
+                        val scrollMarginPx = 100.dp.toPx()
+                        while (isActive) {
+                            val viewportH = gridState.layoutInfo.viewportSize.height.toFloat()
+                            if (viewportH > 0 && dragStartIndex != null) {
+                                val scrollAmount = when {
+                                    currentTouch.y < scrollMarginPx -> {
+                                        -((scrollMarginPx - currentTouch.y) / scrollMarginPx).coerceIn(0f, 1f) * 24f
+                                    }
+                                    currentTouch.y > viewportH - scrollMarginPx -> {
+                                        ((currentTouch.y - (viewportH - scrollMarginPx)) / scrollMarginPx).coerceIn(0f, 1f) * 24f
+                                    }
+                                    else -> 0f
+                                }
+
+                                if (scrollAmount != 0f) {
+                                    gridState.scrollBy(scrollAmount)
+                                    val scrolledIdx = findMediaIndexAt(currentTouch)
+                                    if (scrolledIdx != null) {
+                                        updateRangeSelection(scrolledIdx)
+                                    }
+                                }
+                            }
+                            delay(16)
+                        }
+                    }
+                }
             }
         },
         onDragEnd = {
@@ -700,12 +763,14 @@ private fun Modifier.detectDragSelect(
             autoScrollJob = null
             dragStartIndex = null
             lastProcessedRange = null
+            onLongPressEnded()
         },
         onDragCancel = {
             autoScrollJob?.cancel()
             autoScrollJob = null
             dragStartIndex = null
             lastProcessedRange = null
+            onLongPressEnded()
         }
     )
 }

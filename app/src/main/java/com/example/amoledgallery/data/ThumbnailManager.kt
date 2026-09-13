@@ -13,6 +13,7 @@ import com.example.amoledgallery.model.MediaItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -272,20 +273,57 @@ class ThumbnailManager private constructor(private val context: Context) {
         } catch (_: Exception) {}
     }
 
+    /**
+     * Quietly walks [items] in the background and pre-decodes any thumbnail that isn't cached
+     * yet, so scrolling into previously-unseen content hits the disk cache instead of paying a
+     * full decode on the frame it first becomes visible. Disabled entirely on LOW (weakest
+     * devices skip the extra background work), throttled more gently as quality increases.
+     * A short delay between items - rather than firing everything at once - is what keeps this
+     * from overheating/draining battery on older SoCs while still catching up over time.
+     */
     fun startPreindexing(items: List<MediaItem>) {
-        // Disabled to eliminate device overheating, battery drain, and thermal throttling
+        if (quality == PerformanceProfile.LOW) return
+        val batchDelayMs = when (quality) {
+            PerformanceProfile.LOW -> return
+            PerformanceProfile.MEDIUM -> 30L
+            PerformanceProfile.HIGH -> 12L
+            PerformanceProfile.ULTRA -> 4L
+        }
+
+        preindexJob?.cancel()
+        isPreindexingPaused = false
+        preindexJob = preindexScope.launch {
+            for (item in items) {
+                if (!isActive) return@launch
+                while (isPreindexingPaused) {
+                    if (!isActive) return@launch
+                    delay(200)
+                }
+                if (!isCached(item)) {
+                    getOrCreateThumbnailFile(item)
+                }
+                delay(batchDelayMs)
+            }
+        }
     }
 
+    /** Pauses the background pre-indexer without losing its place - e.g. while the user is actively flinging the grid. */
     fun pausePreindexing() {
-        // No-op
+        isPreindexingPaused = true
     }
 
+    /** Resumes a paused pre-indexer, or starts a fresh one if none is running. */
     fun resumePreindexing(items: List<MediaItem>) {
-        // No-op
+        isPreindexingPaused = false
+        if (preindexJob?.isActive != true) {
+            startPreindexing(items)
+        }
     }
 
     fun stopPreindexing() {
-        // No-op
+        preindexJob?.cancel()
+        preindexJob = null
+        isPreindexingPaused = false
     }
 
     companion object {
