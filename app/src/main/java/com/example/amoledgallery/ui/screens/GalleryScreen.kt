@@ -1,4 +1,7 @@
 package com.example.amoledgallery.ui.screens
+import com.example.amoledgallery.ui.i18n.LanguageState
+import com.example.amoledgallery.ui.i18n.displayLabel
+import com.example.amoledgallery.ui.i18n.strings
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -108,6 +111,7 @@ import com.example.amoledgallery.ui.viewmodel.MediaFilter
 import com.example.amoledgallery.util.DateUtils
 import dev.chrisbanes.haze.HazeState
 import com.example.amoledgallery.ui.design.HazeSource
+import com.example.amoledgallery.ui.design.MediaZoomTransition
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -138,7 +142,7 @@ fun GalleryScreen(
     onZoomOut: () -> Unit,
     onItemClick: (MediaItem, Int) -> Unit,
     modifier: Modifier = Modifier,
-    title: String = stringResource(R.string.tab_pictures),
+    title: String = strings.tabPictures,
     selectedFilter: MediaFilter = MediaFilter.ALL,
     onFilterSelected: ((MediaFilter) -> Unit)? = null,
     onBackClick: (() -> Unit)? = null,
@@ -176,7 +180,7 @@ fun GalleryScreen(
     val theme = LocalAppTheme.current
     val palette = theme.palette
     val language = theme.language
-    val countText = if (items.size == 1) "1 Element" else "${items.size} Elemente"
+    val countText = strings.items(items.size)
 
     Box(modifier = modifier.fillMaxSize()) {
         if (isLoading) {
@@ -211,7 +215,7 @@ fun GalleryScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = stringResource(R.string.empty_gallery),
+                        text = strings.emptyGallery,
                         color = palette.textMuted,
                         fontSize = 16.sp
                     )
@@ -219,7 +223,7 @@ fun GalleryScreen(
             }
         } else {
             // Group items into date sections (Day for columns 2-3, Month for 4-5)
-            val dateSections = remember(items, columnCount) {
+            val dateSections = remember(items, columnCount, LanguageState.language) {
                 DateUtils.groupMediaByDate(items, columnCount)
             }
 
@@ -431,7 +435,7 @@ fun GalleryScreen(
                         var anchor by remember { mutableStateOf<Rect?>(null) }
                         ThemedIconButton(
                             icon = Icons.Rounded.MoreHoriz,
-                            contentDescription = "Optionen",
+                            contentDescription = strings.options,
                             onClick = { openViewMenu(anchor) },
                             hazeState = gridHaze,
                             modifier = Modifier.onGloballyPositioned { anchor = it.boundsInRoot() }
@@ -448,7 +452,7 @@ fun GalleryScreen(
                         var anchor by remember { mutableStateOf<Rect?>(null) }
                         ThemedIconButton(
                             icon = Icons.Rounded.MoreVert,
-                            contentDescription = "Optionen",
+                            contentDescription = strings.options,
                             onClick = { openViewMenu(anchor) },
                             hazeState = gridHaze,
                             modifier = Modifier.onGloballyPositioned { anchor = it.boundsInRoot() }
@@ -495,11 +499,11 @@ fun GalleryScreen(
                 entries = buildList {
                     if (onFilterSelected != null && language == DesignLanguage.SAMSUNG_ONEUI) {
                         MediaFilter.entries.forEach { filter ->
-                            add(MenuEntry(filter.label, checked = filter == selectedFilter) { onFilterSelected(filter) })
+                            add(MenuEntry(filter.displayLabel, checked = filter == selectedFilter) { onFilterSelected(filter) })
                         }
                     }
-                    add(MenuEntry("Größere Vorschaubilder", icon = Icons.Rounded.ZoomIn) { onZoomIn() })
-                    add(MenuEntry("Kleinere Vorschaubilder", icon = Icons.Rounded.ZoomOut) { onZoomOut() })
+                    add(MenuEntry(strings.largerThumbnails, icon = Icons.Rounded.ZoomIn) { onZoomIn() })
+                    add(MenuEntry(strings.smallerThumbnails, icon = Icons.Rounded.ZoomOut) { onZoomOut() })
                 }
             )
 
@@ -526,15 +530,12 @@ fun GalleryScreen(
         // FULLSCREEN OVERLAY: Media Detail Viewer
         // Overlaid directly onto the LazyVerticalGrid without recreating GalleryScreen.
         // Preserves LazyGridState scroll position down to the exact pixel when dismissed!
-        AnimatedVisibility(
-            visible = selectedDetailIndex != null,
-            enter = fadeIn(animationSpec = qualityTween(graphicsQuality, 200)),
-            exit = fadeOut(animationSpec = qualityTween(graphicsQuality, 200))
-        ) {
-            selectedDetailIndex?.let { index ->
+        val detailIndexHolder = remember { IntArray(1) }
+        selectedDetailIndex?.let { detailIndexHolder[0] = it }
+        MediaZoomTransition(visible = selectedDetailIndex != null) {
                 MediaDetailScreen(
                     mediaList = items,
-                    initialIndex = index,
+                    initialIndex = detailIndexHolder[0],
                     onBack = onCloseDetail,
                     onTrashItem = onTrashItem,
                     onRenameItem = onRenameItem,
@@ -542,7 +543,6 @@ fun GalleryScreen(
                     onToggleFavorite = onToggleFavorite,
                     onPageChanged = onDetailIndexChanged
                 )
-            }
         }
     }
 }
@@ -565,7 +565,7 @@ private fun GalleryHeader(
     val menuButton: @Composable RowScope.() -> Unit = {
         ThemedIconButton(
             icon = Icons.Rounded.MoreVert,
-            contentDescription = "Optionen",
+            contentDescription = strings.options,
             onClick = { onOpenViewMenu(anchor) },
             hazeState = hazeState,
             modifier = Modifier.onGloballyPositioned { anchor = it.boundsInRoot() }
@@ -584,7 +584,7 @@ private fun GalleryHeader(
             ExpressiveHeroCard(
                 imageModel = items.firstOrNull()?.uri,
                 title = DateUtils.formatMonthYear(items.first().dateAdded),
-                caption = "Neueste Aufnahme",
+                caption = strings.latestShot,
                 onClick = onHeroClick
             )
             Spacer(modifier = Modifier.height(12.dp))

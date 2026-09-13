@@ -1,4 +1,5 @@
 package com.example.amoledgallery.ui.design
+import com.example.amoledgallery.ui.i18n.strings
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -87,6 +88,19 @@ import com.example.amoledgallery.ui.theme.destructive
 import com.example.amoledgallery.ui.theme.isLight
 import com.example.amoledgallery.ui.theme.onAccent
 import dev.chrisbanes.haze.HazeState
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.min
@@ -257,6 +271,7 @@ fun <T> ThemedSegmentedControl(
                     modifier = Modifier
                         .weight(1f)
                         .height(46.dp)
+                        .sparkleTap(if (isSelected) palette.onAccent else palette.accent)
                         .clip(shape)
                         .background(container)
                         .clickable { onSelect(option) },
@@ -304,23 +319,82 @@ fun <T> ThemedSegmentedControl(
         else -> Modifier.clip(trackShape).background(palette.surfaceVariant)
     }
 
+    val density = LocalDensity.current
+    val haptic = LocalHapticFeedback.current
+    val trackPaddingPx = with(density) { trackPadding.toPx() }
+    val latestOptions by rememberUpdatedState(options)
+    val latestSelected by rememberUpdatedState(selected)
+    val latestOnSelect by rememberUpdatedState(onSelect)
+    // Hold or drag on the control: the thumb follows the finger and the hovered segment is selected live.
+    var dragX by remember { mutableStateOf<Float?>(null) }
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .height(trackHeight)
             .then(trackModifier)
+            .sparkleTap()
+            // The slide gesture lives on the track itself, the parent of the segments, so it sees every
+            // touch. Once it becomes a slide it consumes the moves, which cancels the segment taps.
+            .pointerInput(trackPaddingPx) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val downTime = System.currentTimeMillis()
+                    var dragging = false
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) break
+                        if (!dragging) {
+                            // A surrounding vertical scroll took the gesture: leave it alone.
+                            if (change.isConsumed ||
+                                abs(change.position.y - down.position.y) > viewConfiguration.touchSlop * 1.5f
+                            ) break
+                            if (abs(change.position.x - down.position.x) > viewConfiguration.touchSlop ||
+                                System.currentTimeMillis() - downTime > 300
+                            ) {
+                                dragging = true
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                        }
+                        if (dragging) {
+                            change.consume()
+                            dragX = change.position.x
+                            val count = latestOptions.size.coerceAtLeast(1)
+                            val segmentPx = (size.width - trackPaddingPx * 2) / count
+                            val hovered = ((change.position.x - trackPaddingPx) / segmentPx).toInt().coerceIn(0, count - 1)
+                            val option = latestOptions[hovered]
+                            if (option != latestSelected) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                latestOnSelect(option)
+                            }
+                        }
+                    }
+                    dragX = null
+                }
+            }
     ) {
         val count = options.size.coerceAtLeast(1)
         val segmentWidth = (maxWidth - trackPadding * 2) / count
         val index = options.indexOf(selected).coerceAtLeast(0)
+        val segmentWidthPx = with(density) { segmentWidth.toPx() }
+        val fingerOffset = dragX?.let {
+            with(density) { (it - trackPaddingPx - segmentWidthPx / 2f).coerceIn(0f, segmentWidthPx * (count - 1)).toDp() }
+        }
         val thumbOffset by animateDpAsState(
-            targetValue = segmentWidth * index,
-            animationSpec = when (language) {
-                DesignLanguage.IOS_LIQUID_GLASS -> spring(dampingRatio = 0.72f, stiffness = 420f)
-                DesignLanguage.XIAOMI_HYPEROS -> tween(160)
+            targetValue = fingerOffset ?: (segmentWidth * index),
+            animationSpec = when {
+                fingerOffset != null -> snap()
+                language == DesignLanguage.IOS_LIQUID_GLASS -> spring(dampingRatio = 0.72f, stiffness = 420f)
+                language == DesignLanguage.XIAOMI_HYPEROS -> tween(160)
                 else -> tween(260, easing = FastOutSlowInEasing)
             },
             label = "segment_thumb"
+        )
+        val thumbScale by animateFloatAsState(
+            targetValue = if (dragX != null) (if (language == DesignLanguage.IOS_LIQUID_GLASS) 1.1f else 1.04f) else 1f,
+            animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
+            label = "segment_thumb_scale"
         )
 
         Box(
@@ -329,6 +403,10 @@ fun <T> ThemedSegmentedControl(
                 .offset(x = thumbOffset)
                 .width(segmentWidth)
                 .fillMaxHeight()
+                .graphicsLayer {
+                    scaleX = thumbScale
+                    scaleY = thumbScale
+                }
                 .then(
                     when (language) {
                         DesignLanguage.SAMSUNG_ONEUI -> Modifier
@@ -522,7 +600,7 @@ private fun ListRowContent(row: ListRow) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (row.onClick != null) Modifier.clickable(onClick = row.onClick) else Modifier)
+            .then(if (row.onClick != null) Modifier.sparkleTap().clickable(onClick = row.onClick) else Modifier)
             .heightIn(min = if (language == DesignLanguage.IOS_LIQUID_GLASS) 52.dp else 60.dp)
             .padding(
                 start = if (language == DesignLanguage.IOS_LIQUID_GLASS) 16.dp else if (language == DesignLanguage.SAMSUNG_ONEUI) 22.dp else 18.dp,
@@ -890,13 +968,35 @@ fun ThemedIconButton(
     val resolvedTint = (if (tint == Color.Unspecified) palette.onBackground else tint)
         .let { if (enabled) it else it.copy(alpha = 0.35f) }
 
+    // Tap pulse: a quick squeeze and springy bounce on every click, so even a fast tap is clearly
+    // acknowledged (a pure press-scale only shows while the finger is held down).
+    val pulse = remember { androidx.compose.animation.core.Animatable(1f) }
+    val scope = rememberCoroutineScope()
+    val pulseDepth = when (theme.language) {
+        DesignLanguage.GOOGLE_EXPRESSIVE -> 0.78f
+        DesignLanguage.IOS_LIQUID_GLASS -> 0.86f
+        else -> 0.82f
+    }
+    val pulsingClick: () -> Unit = {
+        scope.launch {
+            pulse.animateTo(pulseDepth, tween(70))
+            pulse.animateTo(1f, spring(dampingRatio = 0.38f, stiffness = 600f))
+        }
+        onClick()
+    }
+    val pulseModifier = Modifier.graphicsLayer {
+        scaleX = pulse.value
+        scaleY = pulse.value
+    }
+
     when (theme.language) {
         DesignLanguage.IOS_LIQUID_GLASS -> Box(
             modifier = modifier
+                .then(pulseModifier)
                 .pressScale(interaction, 0.88f)
                 .size(44.dp)
                 .glass(CircleShape, barGlass(), hazeState)
-                .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick),
+                .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = pulsingClick),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, contentDescription, tint = resolvedTint, modifier = Modifier.size(21.dp))
@@ -904,10 +1004,12 @@ fun ThemedIconButton(
 
         DesignLanguage.GOOGLE_EXPRESSIVE -> Box(
             modifier = modifier
+                .then(pulseModifier)
                 .pressScale(interaction, 0.9f)
                 .size(44.dp)
+                .sparkleTap()
                 .glass(CircleShape, barGlass(), hazeState)
-                .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick),
+                .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = pulsingClick),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, contentDescription, tint = resolvedTint, modifier = Modifier.size(22.dp))
@@ -915,9 +1017,11 @@ fun ThemedIconButton(
 
         else -> Box(
             modifier = modifier
+                .then(pulseModifier)
                 .size(if (theme.language == DesignLanguage.SAMSUNG_ONEUI) 48.dp else 44.dp)
+                .sparkleTap()
                 .clip(CircleShape)
-                .clickable(interactionSource = interaction, indication = ripple(), enabled = enabled, onClick = onClick),
+                .clickable(interactionSource = interaction, indication = ripple(), enabled = enabled, onClick = pulsingClick),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -1022,7 +1126,7 @@ fun ThemedTopBar(
                     if (onBack != null) {
                         ThemedIconButton(
                             icon = navigationIcon ?: Icons.AutoMirrored.Rounded.ArrowBackIos,
-                            contentDescription = "Zurück",
+                            contentDescription = strings.back,
                             onClick = onBack,
                             hazeState = hazeState
                         )
@@ -1058,7 +1162,7 @@ fun ThemedTopBar(
                     if (onBack != null) {
                         ThemedIconButton(
                             icon = navigationIcon ?: Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "Zurück",
+                            contentDescription = strings.back,
                             onClick = onBack,
                             hazeState = hazeState
                         )

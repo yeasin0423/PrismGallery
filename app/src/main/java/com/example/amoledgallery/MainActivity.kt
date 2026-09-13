@@ -1,4 +1,5 @@
 package com.example.amoledgallery
+import com.example.amoledgallery.ui.i18n.strings
 
 import android.Manifest
 import android.app.Activity
@@ -75,18 +76,43 @@ import com.example.amoledgallery.ui.viewmodel.DetailSource
 import com.example.amoledgallery.ui.viewmodel.GalleryTab
 import com.example.amoledgallery.ui.viewmodel.GalleryUiState
 import com.example.amoledgallery.ui.viewmodel.GalleryViewModel
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.platform.createLifecycleAwareWindowRecomposer
+import com.example.amoledgallery.ui.design.AppMotionDurationScale
+import com.example.amoledgallery.ui.design.LocalMediaOpenOrigin
+import com.example.amoledgallery.ui.design.MediaOpenOrigin
+import com.example.amoledgallery.ui.design.MediaZoomTransition
+import com.example.amoledgallery.ui.design.SwitchTransitionState
+import com.example.amoledgallery.ui.design.blockTouchesBelow
+import com.example.amoledgallery.ui.design.pushSpec
+import com.example.amoledgallery.ui.design.pushTransition
+import com.example.amoledgallery.ui.design.tabSwitchSpec
+import com.example.amoledgallery.ui.design.tabSwitchTransition
+import com.example.amoledgallery.ui.design.ultraEffects
+import kotlin.math.sign
 import dev.chrisbanes.haze.HazeState
 import com.example.amoledgallery.ui.design.HazeSource
+import com.example.amoledgallery.ui.design.BottomEdgeFade
+import com.example.amoledgallery.ui.editor.LocalOnMediaEdited
+
+/** Screens pushed over the main tabs. */
+private enum class PushedScreen { FAVORITES, TRASH }
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: GalleryViewModel by viewModels()
 
+    @OptIn(ExperimentalComposeUiApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        setContent {
+        // Compose would otherwise scale every animation by the system "animator duration scale"
+        // developer option, and at 0x skip them all. The app's own graphics quality decides instead.
+        val recomposer = window.decorView.createLifecycleAwareWindowRecomposer(AppMotionDurationScale, lifecycle)
+        setContent(parent = recomposer) {
             AmoledGalleryTheme {
                 GalleryApp(viewModel = viewModel)
             }
@@ -104,12 +130,17 @@ fun GalleryApp(viewModel: GalleryViewModel) {
     val rootHaze = remember { HazeState() }
     val contentHaze = remember { HazeState() }
     val overlayHost = remember { OverlayHostState() }
+    val mediaOpenOrigin = remember { MediaOpenOrigin() }
+    // An edited copy was saved: reload so it shows up in the grid and its album.
+    val onMediaEdited: () -> Unit = remember(viewModel) { { viewModel.refreshAfterEdit() } }
 
     CompositionLocalProvider(
+        LocalMediaOpenOrigin provides mediaOpenOrigin,
         LocalGraphicsQuality provides graphicsQuality,
         LocalRootHaze provides rootHaze,
         LocalContentHaze provides contentHaze,
-        LocalOverlayHost provides overlayHost
+        LocalOverlayHost provides overlayHost,
+        LocalOnMediaEdited provides onMediaEdited
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             HazeSource(rootHaze, Modifier.fillMaxSize().screenBackground()) {
@@ -250,50 +281,36 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
             }
         }
 
-        if (isFavoritesOpen) {
-            FavoritesScreen(
-                favoriteItems = favoriteMedia,
-                onBack = { isFavoritesOpen = false },
-                onTrashItem = { item -> viewModel.trashMedia(item) },
-                onRenameItem = { item, newName -> viewModel.renameMedia(item, newName) },
-                isFavorite = { id -> favoriteIds.contains(id) },
-                onToggleFavorite = { id -> viewModel.toggleFavorite(id) },
-                columnCount = 4
-            )
-        } else if (isTrashOpen) {
-            BackHandler {
-                if (selectedItemIndex != null) {
-                    viewModel.closeDetail()
-                } else {
-                    viewModel.closeTrash()
-                }
-            }
+        // Favoriten and Papierkorb are pushed over the main tabs instead of replacing them, so the tabs
+        // (and their scroll positions) stay alive underneath and each design can animate the push.
+        val language = LocalAppTheme.current.language
+        val pushedScreen = when {
+            isFavoritesOpen -> PushedScreen.FAVORITES
+            isTrashOpen -> PushedScreen.TRASH
+            else -> null
+        }
+        val lastPushedScreen = remember { arrayOf(PushedScreen.FAVORITES) }
+        if (pushedScreen != null) lastPushedScreen[0] = pushedScreen
+        val pushProgress = animateFloatAsState(
+            targetValue = if (pushedScreen != null) 1f else 0f,
+            animationSpec = pushSpec(language),
+            label = "push_screen"
+        )
+        val pushStillVisible by remember { derivedStateOf { pushProgress.value > 0.001f } }
 
-            Box(modifier = Modifier.fillMaxSize()) {
-                TrashScreen(
-                    trashedItems = trashedMedia,
-                    onBack = { viewModel.closeTrash() },
-                    onRestoreItem = { item -> viewModel.restoreMedia(item) },
-                    onRestoreAll = { viewModel.restoreAllTrash() },
-                    onDeletePermanently = { item -> viewModel.deletePermanently(item) },
-                    onEmptyTrash = { viewModel.emptyTrash() }
-                )
-
-                if (selectedItemIndex != null && detailSource == DetailSource.TRASH) {
-                    MediaDetailScreen(
-                        mediaList = trashedMedia,
-                        initialIndex = selectedItemIndex ?: 0,
-                        onBack = { viewModel.closeDetail() },
-                        onTrashItem = { item -> viewModel.trashMedia(item) },
-                        onRenameItem = { item, newName -> viewModel.renameMedia(item, newName) },
-                        isFavorite = { id -> favoriteIds.contains(id) },
-                        onToggleFavorite = { id -> viewModel.toggleFavorite(id) }
-                    )
-                }
-            }
-        } else {
+        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pushTransition(language, { pushProgress.value }, isTop = false)
+        ) {
             val isFullscreenViewer = selectedItemIndex != null
             val allItems = (uiState as? GalleryUiState.Success)?.items ?: emptyList()
+
+            val tabTransition = remember { SwitchTransitionState(selectedTab) }
+            val tabSpec = tabSwitchSpec(language)
+            LaunchedEffect(selectedTab) { tabTransition.animateTo(selectedTab, tabSpec) }
+            val blurTabs = ultraEffects()
 
             Box(modifier = Modifier.fillMaxSize()) {
                 // Tab content draws edge-to-edge underneath the (floating) bottom bar, which blurs it.
@@ -304,16 +321,23 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                     // GalleryScreen's LazyGridState, gesture detectors and thumbnail pre-indexing.
                     GalleryTab.entries.forEach { tab ->
                         val isActiveTab = tab == selectedTab
-                        val tabAlpha by androidx.compose.animation.core.animateFloatAsState(
-                            targetValue = if (isActiveTab) 1f else 0f,
-                            animationSpec = qualityTween(graphicsQuality, 200),
-                            label = "tab_fade_$tab"
-                        )
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .zIndex(if (isActiveTab) 1f else 0f)
-                                .graphicsLayer { alpha = tabAlpha }
+                                .graphicsLayer {
+                                    // Only the leaving and the arriving tab are visible during a switch;
+                                    // they move apart in the direction of the tab order.
+                                    val from = tabTransition.from
+                                    val to = tabTransition.to
+                                    val p = tabTransition.progress.value
+                                    val direction = (GalleryTab.entries.indexOf(to) - GalleryTab.entries.indexOf(from)).sign.toFloat()
+                                    when (tab) {
+                                        to -> tabSwitchTransition(language, (1f - p) * direction, blurTabs)
+                                        from -> tabSwitchTransition(language, -p * direction, blurTabs)
+                                        else -> alpha = 0f
+                                    }
+                                }
                         ) {
                             when (tab) {
                                 GalleryTab.BILDER -> {
@@ -422,6 +446,13 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                     }
                 }
 
+                // Content fades softly into the background behind the bottom bar and the system
+                // navigation area (sized to its inset, so it fits both 3-button and gesture navigation).
+                BottomEdgeFade(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    visible = !isFullscreenViewer
+                )
+
                 val barEnter = slideInVertically(animationSpec = qualityTween(graphicsQuality, 260), initialOffsetY = { it }) +
                     fadeIn(animationSpec = qualityTween(graphicsQuality, 200))
                 val barExit = slideOutVertically(animationSpec = qualityTween(graphicsQuality, 220), targetOffsetY = { it }) +
@@ -457,7 +488,7 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                     putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
-                                context.startActivity(Intent.createChooser(shareIntent, "Medien teilen"))
+                                context.startActivity(Intent.createChooser(shareIntent, strings.shareMedia))
                             }
                         },
                         onMove = { viewModel.openMoveSheet() },
@@ -488,6 +519,65 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                 )
             }
         }
+
+        if (pushedScreen != null || pushStillVisible) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pushTransition(language, { pushProgress.value }, isTop = true)
+                    .screenBackground()
+                    .blockTouchesBelow()
+            ) {
+                when (lastPushedScreen[0]) {
+                    PushedScreen.FAVORITES -> FavoritesScreen(
+                        favoriteItems = favoriteMedia,
+                        onBack = { isFavoritesOpen = false },
+                        onTrashItem = { item -> viewModel.trashMedia(item) },
+                        onRenameItem = { item, newName -> viewModel.renameMedia(item, newName) },
+                        isFavorite = { id -> favoriteIds.contains(id) },
+                        onToggleFavorite = { id -> viewModel.toggleFavorite(id) },
+                        columnCount = 4
+                    )
+
+                    PushedScreen.TRASH -> {
+                        BackHandler(enabled = isTrashOpen) {
+                            if (selectedItemIndex != null) {
+                                viewModel.closeDetail()
+                            } else {
+                                viewModel.closeTrash()
+                            }
+                        }
+                        val trashDetailIndex = remember { IntArray(1) }
+                        if (detailSource == DetailSource.TRASH) selectedItemIndex?.let { trashDetailIndex[0] = it }
+
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            TrashScreen(
+                                trashedItems = trashedMedia,
+                                onBack = { viewModel.closeTrash() },
+                                onRestoreItem = { item -> viewModel.restoreMedia(item) },
+                                onRestoreAll = { viewModel.restoreAllTrash() },
+                                onDeletePermanently = { item -> viewModel.deletePermanently(item) },
+                                onEmptyTrash = { viewModel.emptyTrash() }
+                            )
+                            BottomEdgeFade(Modifier.align(Alignment.BottomCenter))
+
+                            MediaZoomTransition(visible = selectedItemIndex != null && detailSource == DetailSource.TRASH) {
+                                MediaDetailScreen(
+                                    mediaList = trashedMedia,
+                                    initialIndex = trashDetailIndex[0],
+                                    onBack = { viewModel.closeDetail() },
+                                    onTrashItem = { item -> viewModel.trashMedia(item) },
+                                    onRenameItem = { item, newName -> viewModel.renameMedia(item, newName) },
+                                    isFavorite = { id -> favoriteIds.contains(id) },
+                                    onToggleFavorite = { id -> viewModel.toggleFavorite(id) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        }
     }
 
     // In-app progress dialog for media move / album migration, styled per design language.
@@ -496,7 +586,7 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
         val palette = LocalAppTheme.current.palette
         ThemedDialog(
             onDismissRequest = { },
-            title = "Verschiebe Medien…",
+            title = strings.movingMediaTitle,
             dismissible = false
         ) {
             ThemedProgressBar(
@@ -505,7 +595,7 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
             )
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "${moveProgress.current} von ${moveProgress.total}",
+                text = strings.progressOf(moveProgress.current, moveProgress.total),
                 color = palette.textMuted,
                 fontSize = 14.sp
             )

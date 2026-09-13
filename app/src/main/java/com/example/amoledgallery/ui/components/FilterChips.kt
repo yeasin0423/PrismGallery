@@ -1,4 +1,5 @@
 package com.example.amoledgallery.ui.components
+import com.example.amoledgallery.ui.i18n.displayLabel
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -68,7 +69,7 @@ fun FilterChips(
         DesignLanguage.IOS_LIQUID_GLASS -> ThemedSegmentedControl(
             options = MediaFilter.entries,
             selected = selectedFilter,
-            label = { it.label },
+            label = { it.displayLabel },
             onSelect = onFilterSelected,
             floatingGlass = floatingGlass,
             modifier = modifier
@@ -110,7 +111,7 @@ fun FilterChips(
                         }
                     }
                     Text(
-                        text = filter.label,
+                        text = filter.displayLabel,
                         color = palette.onBackground,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium
@@ -142,7 +143,7 @@ fun FilterChips(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = filter.label,
+                        text = filter.displayLabel,
                         color = if (selected) palette.onBackground else palette.textMuted,
                         fontSize = 15.sp,
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
@@ -177,7 +178,7 @@ fun FilterChips(
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Text(
-                        text = filter.label,
+                        text = filter.displayLabel,
                         color = if (selected) palette.onBackground else palette.textMuted,
                         fontSize = 14.sp,
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal

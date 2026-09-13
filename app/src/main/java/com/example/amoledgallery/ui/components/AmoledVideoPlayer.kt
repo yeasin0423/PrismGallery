@@ -1,4 +1,5 @@
 package com.example.amoledgallery.ui.components
+import com.example.amoledgallery.ui.i18n.strings
 
 import android.view.ViewGroup
 import androidx.annotation.OptIn
@@ -240,7 +241,7 @@ private fun ActiveVideoPlayer(
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Abspielen",
+                        contentDescription = if (isPlaying) strings.pause else strings.play,
                         tint = PureWhite,
                         modifier = Modifier.size(40.dp)
                     )

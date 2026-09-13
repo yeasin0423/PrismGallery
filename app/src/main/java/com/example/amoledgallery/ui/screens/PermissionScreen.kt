@@ -1,4 +1,5 @@
 package com.example.amoledgallery.ui.screens
+import com.example.amoledgallery.ui.i18n.strings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -74,7 +75,7 @@ fun PermissionScreen(
             Spacer(modifier = Modifier.height(28.dp))
 
             Text(
-                text = stringResource(R.string.permission_title),
+                text = strings.permissionTitle,
                 color = palette.onBackground,
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
@@ -85,7 +86,7 @@ fun PermissionScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = stringResource(R.string.permission_description),
+                text = strings.permissionDescription,
                 color = palette.textMuted,
                 fontSize = 16.sp,
                 textAlign = TextAlign.Center,
@@ -96,7 +97,7 @@ fun PermissionScreen(
 
             ThemedCard {
                 Text(
-                    text = stringResource(R.string.permission_warning),
+                    text = strings.permissionWarning,
                     color = palette.destructive,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -104,18 +105,18 @@ fun PermissionScreen(
                 )
                 if (missingMedia) {
                     Spacer(modifier = Modifier.height(10.dp))
-                    MissingPermissionRow(stringResource(R.string.permission_missing_media))
+                    MissingPermissionRow(strings.permissionMissingMedia)
                 }
                 if (missingNotifications) {
                     Spacer(modifier = Modifier.height(10.dp))
-                    MissingPermissionRow(stringResource(R.string.permission_missing_notifications))
+                    MissingPermissionRow(strings.permissionMissingNotifications)
                 }
             }
 
             Spacer(modifier = Modifier.height(28.dp))
 
             ThemedButton(
-                text = stringResource(R.string.permission_grant_button),
+                text = strings.permissionGrant,
                 onClick = onRequestPermission,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -124,7 +125,7 @@ fun PermissionScreen(
 
             // Fallback for a permanently denied permission, where the system dialog no longer appears.
             Text(
-                text = stringResource(R.string.permission_open_settings),
+                text = strings.permissionOpenSettings,
                 color = palette.textMuted,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,

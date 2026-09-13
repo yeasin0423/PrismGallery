@@ -1,4 +1,5 @@
 package com.example.amoledgallery.ui.components
+import com.example.amoledgallery.ui.i18n.strings
 
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -46,7 +47,11 @@ import coil3.size.Precision
 import com.example.amoledgallery.AmoledGalleryApp
 import com.example.amoledgallery.data.ThumbnailManager
 import com.example.amoledgallery.model.MediaItem
+import com.example.amoledgallery.ui.design.LocalMediaOpenOrigin
 import com.example.amoledgallery.ui.design.PhotoBadgeTextStyle
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onPlaced
 import com.example.amoledgallery.ui.theme.AppTheme
 import com.example.amoledgallery.ui.theme.DesignLanguage
 import com.example.amoledgallery.ui.theme.LocalAppTheme
@@ -101,13 +106,26 @@ fun MediaGridItem(
     val placeholder = if (theme.palette.isLight) LightPlaceholder else DarkPlaceholder
     val selected = isSelectionMode && isSelected
 
+    // Remember where the tile sits so the fullscreen viewer can zoom out of it. Kept in a plain holder
+    // (not state) and only resolved to bounds on click, so scrolling costs nothing extra.
+    val openOrigin = LocalMediaOpenOrigin.current
+    val coordinatesHolder = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    val openAwareClick: () -> Unit = {
+        coordinatesHolder[0]?.takeIf { it.isAttached }?.let { openOrigin.record(it.boundsInRoot()) }
+        onClick()
+    }
+
     if (theme.language == DesignLanguage.GOOGLE_EXPRESSIVE) {
-        ExpressiveTile(item, imageRequest, placeholder, theme, isSelectionMode, selected, isFavorite, onClick, modifier)
+        ExpressiveTile(
+            item, imageRequest, placeholder, theme, isSelectionMode, selected, isFavorite, openAwareClick,
+            modifier.onPlaced { coordinatesHolder[0] = it }
+        )
         return
     }
 
     Box(
         modifier = modifier
+            .onPlaced { coordinatesHolder[0] = it }
             .fillMaxSize()
             .aspectRatio(1f)
             .clip(RoundedCornerShape(theme.shapes.gridItemCornerRadius))
@@ -119,7 +137,7 @@ fun MediaGridItem(
             placeholder = placeholder,
             modifier = Modifier
                 .fillMaxSize()
-                .clickable(onClick = onClick)
+                .clickable(onClick = openAwareClick)
         )
 
         if (selected) {
@@ -139,6 +157,12 @@ fun MediaGridItem(
         if (isFavorite) FavoriteBadge(theme.language)
 
         if (isSelectionMode) {
+            // The check pops in on a spring when a tile gets selected.
+            val checkScale by animateFloatAsState(
+                targetValue = if (isSelected) 1f else 0f,
+                animationSpec = spring(dampingRatio = 0.45f, stiffness = 700f),
+                label = "check_pop"
+            )
             when (theme.language) {
                 DesignLanguage.SAMSUNG_ONEUI -> Box(
                     modifier = Modifier
@@ -146,20 +170,36 @@ fun MediaGridItem(
                         .padding(8.dp)
                         .size(26.dp)
                         .clip(CircleShape)
-                        .background(if (isSelected) Color.White else Color.Black.copy(alpha = 0.22f))
-                        .then(if (!isSelected) Modifier.border(2.dp, Color.White, CircleShape) else Modifier),
+                        .background(Color.Black.copy(alpha = 0.22f))
+                        .border(2.dp, Color.White, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isSelected) {
-                        Icon(Icons.Rounded.Check, null, tint = Color.Black, modifier = Modifier.size(17.dp))
+                    if (checkScale > 0.01f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    scaleX = checkScale
+                                    scaleY = checkScale
+                                }
+                                .clip(CircleShape)
+                                .background(Color.White),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Rounded.Check, null, tint = Color.Black, modifier = Modifier.size(17.dp))
+                        }
                     }
                 }
 
-                DesignLanguage.IOS_LIQUID_GLASS -> if (isSelected) {
+                DesignLanguage.IOS_LIQUID_GLASS -> if (checkScale > 0.01f) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(6.dp)
+                            .graphicsLayer {
+                                scaleX = checkScale
+                                scaleY = checkScale
+                            }
                             .size(24.dp)
                             .clip(CircleShape)
                             .background(Color.White)
@@ -182,8 +222,18 @@ fun MediaGridItem(
                         .then(if (!isSelected) Modifier.border(1.5.dp, Color.White, CircleShape) else Modifier),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isSelected) {
-                        Icon(Icons.Rounded.Check, null, tint = Color.White, modifier = Modifier.size(15.dp))
+                    if (checkScale > 0.01f) {
+                        Icon(
+                            Icons.Rounded.Check,
+                            null,
+                            tint = Color.White,
+                            modifier = Modifier
+                                .size(15.dp)
+                                .graphicsLayer {
+                                    scaleX = checkScale
+                                    scaleY = checkScale
+                                }
+                        )
                     }
                 }
             }
@@ -338,7 +388,7 @@ private fun BoxScope.FavoriteBadge(language: DesignLanguage) {
     ) {
         Icon(
             imageVector = Icons.Rounded.Favorite,
-            contentDescription = "Favorit",
+            contentDescription = strings.favorite,
             tint = Color(0xFFFF4D6D),
             modifier = Modifier.size(14.dp)
         )

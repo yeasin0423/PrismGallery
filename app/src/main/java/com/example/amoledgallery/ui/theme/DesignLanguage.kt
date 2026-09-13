@@ -75,7 +75,7 @@ fun shapeTokensFor(language: DesignLanguage): AppShapeTokens = when (language) {
         gridItemCornerRadius = 0.dp,
         gridHorizontalPadding = 6.dp,
         headerTitleSize = 40.sp,
-        bottomBarHeight = 92.dp
+        bottomBarHeight = 76.dp
     )
     DesignLanguage.GOOGLE_EXPRESSIVE -> AppShapeTokens(
         cardCornerRadius = 28.dp,

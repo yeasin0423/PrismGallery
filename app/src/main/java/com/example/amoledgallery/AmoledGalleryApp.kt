@@ -1,4 +1,5 @@
 package com.example.amoledgallery
+import com.example.amoledgallery.ui.i18n.strings
 
 import android.app.Application
 import android.content.Context
@@ -59,6 +60,7 @@ class AmoledGalleryApp : Application(), SingletonImageLoader.Factory {
         super.onCreate()
         performanceProfile = loadGraphicsQuality()
         com.example.amoledgallery.ui.theme.ThemeState.load(this)
+        com.example.amoledgallery.ui.i18n.LanguageState.load(this)
         createNotificationChannels()
     }
 
@@ -86,10 +88,10 @@ class AmoledGalleryApp : Application(), SingletonImageLoader.Factory {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 "move_media_channel",
-                "Medien verschieben",
+                strings.moveChannelName,
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
-                description = "Fortschrittsanzeige beim Verschieben von Medien"
+                description = strings.moveChannelDescription
                 setShowBadge(false)
             }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager

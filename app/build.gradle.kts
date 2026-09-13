@@ -83,6 +83,9 @@ dependencies {
     // Media3 ExoPlayer for native video playback
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")
+    // Media3 Transformer for exporting cropped / rotated / mirrored videos in the editor
+    implementation("androidx.media3:media3-transformer:1.4.1")
+    implementation("androidx.media3:media3-effect:1.4.1")
 
     // ExifInterface for reading image camera metadata
     implementation("androidx.exifinterface:exifinterface:1.3.7")

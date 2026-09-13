@@ -1,4 +1,5 @@
 package com.example.amoledgallery.ui.components
+import com.example.amoledgallery.ui.i18n.strings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -57,7 +58,7 @@ import kotlinx.coroutines.launch
 /**
  * Top bar shown while items are selected, shared by the Bilder grid and album media grids:
  * - One UI 9: a floating frosted card with back chevron, n/total and "Alle".
- * - iOS: glass bar with "Alle" on the left, the count centred, a prominent "Fertig" on the right.
+ * - iOS: glass bar with "Alle" on the left, the count centred, a prominent strings.done on the right.
  * - Material / HyperOS: contextual top bar with a close icon and an "Alle" text action.
  */
 @Composable
@@ -72,8 +73,8 @@ fun SelectionTopBar(
     val theme = LocalAppTheme.current
     val palette = theme.palette
     val allSelected = totalCount > 0 && selectedCount == totalCount
-    val toggleLabel = if (allSelected) "Keine" else "Alle"
-    val title = if (selectedCount == 0) "Elemente auswählen" else "$selectedCount ausgewählt"
+    val toggleLabel = if (allSelected) strings.none else strings.all
+    val title = strings.selectionTitle(selectedCount)
 
     when (theme.language) {
         DesignLanguage.SAMSUNG_ONEUI -> Box(
@@ -96,7 +97,7 @@ fun SelectionTopBar(
             ) {
                 ThemedIconButton(
                     icon = Icons.AutoMirrored.Rounded.ArrowBackIos,
-                    contentDescription = "Auswahl beenden",
+                    contentDescription = strings.endSelection,
                     onClick = onClose
                 )
                 Text(
@@ -144,7 +145,7 @@ fun SelectionTopBar(
                             .weight(1f)
                             .padding(horizontal = 10.dp)
                     )
-                    SelectionGlassButton("Fertig", hazeState, prominent = true, onClick = onClose)
+                    SelectionGlassButton(strings.done, hazeState, prominent = true, onClick = onClose)
                 }
             }
         }

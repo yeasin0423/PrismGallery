@@ -1,4 +1,5 @@
 package com.example.amoledgallery.ui.screens
+import com.example.amoledgallery.ui.i18n.strings
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -104,6 +105,14 @@ import com.example.amoledgallery.ui.theme.destructive
 import com.example.amoledgallery.ui.theme.onAccent
 import dev.chrisbanes.haze.HazeState
 import com.example.amoledgallery.ui.design.HazeSource
+import com.example.amoledgallery.ui.design.pushSpec
+import com.example.amoledgallery.ui.design.pushTransition
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import com.example.amoledgallery.ui.design.MediaZoomTransition
 
 /**
  * Albums tab. Root albums are laid out per design language:
@@ -200,7 +209,40 @@ fun AlbumsScreen(
     // Section rows inside an album need their own inset when the media grid runs edge-to-edge.
     val sectionInset = if (outerPadding < 8.dp) 16.dp else 4.dp
 
-    val albumGridState = rememberLazyGridState()
+    // Opening an album (or going back up) slides the page in with the design language's push motion.
+    val navProgress = remember { androidx.compose.animation.core.Animatable(1f) }
+    val navDirection = remember { intArrayOf(1) }
+    val lastAlbumKey = remember { arrayOf(currentAlbum?.bucketId) }
+    val lastDepth = remember { intArrayOf(breadcrumbs.size) }
+    val navSpec = pushSpec(language)
+    val latestAlbumMedia = rememberUpdatedState(albumMedia)
+    LaunchedEffect(currentAlbum?.bucketId) {
+        val key = currentAlbum?.bucketId
+        if (key != lastAlbumKey[0]) {
+            navDirection[0] = if (breadcrumbs.size >= lastDepth[0]) 1 else -1
+            lastAlbumKey[0] = key
+            lastDepth[0] = breadcrumbs.size
+            navProgress.snapTo(0f)
+            if (key != null) {
+                // The album's media loads in the background. Keep the page hidden until it has arrived
+                // (or briefly, for an empty album) so the slide carries the real content instead of the
+                // content popping in after the animation.
+                withTimeoutOrNull(450) {
+                    snapshotFlow { latestAlbumMedia.value.firstOrNull()?.bucketId == key }.first { it }
+                }
+            }
+            navProgress.animateTo(1f, navSpec)
+        }
+    }
+
+    // The album list and each open album level keep their own scroll position, so going back from an
+    // album lands exactly where the list was left instead of at the top.
+    val rootGridState = rememberLazyGridState()
+    val albumGridStates = remember { mutableMapOf<Any, androidx.compose.foundation.lazy.grid.LazyGridState>() }
+    albumGridStates.keys.retainAll(breadcrumbs.map { it.bucketId }.toSet() + listOfNotNull(currentAlbum?.bucketId))
+    val albumGridState = currentAlbum?.let { album ->
+        albumGridStates.getOrPut(album.bucketId) { androidx.compose.foundation.lazy.grid.LazyGridState() }
+    } ?: rootGridState
     val haptic = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
     // Same long-press/tap race guard as the Bilder grid: the tap that ends a long-press must not
@@ -215,7 +257,12 @@ fun AlbumsScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        HazeSource(albumsHaze, Modifier.fillMaxSize()) {
+        HazeSource(
+            albumsHaze,
+            Modifier
+                .fillMaxSize()
+                .pushTransition(language, { navProgress.value }, isTop = true, direction = { navDirection[0] })
+        ) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(if (isInsideAlbum) columnCount else rootColumns),
                 state = albumGridState,
@@ -258,18 +305,18 @@ fun AlbumsScreen(
                 if (!isInsideAlbum) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "albums_header") {
                         LargeHeader(
-                            title = "Alben",
+                            title = strings.tabAlbums,
                             subtitle = if (language == DesignLanguage.SAMSUNG_ONEUI) null else albumCountText(albums.size)
                         ) {
                             ThemedIconButton(
                                 icon = Icons.Rounded.Add,
-                                contentDescription = "Neues Album",
+                                contentDescription = strings.newAlbum,
                                 onClick = { showCreateDialog = true },
                                 hazeState = albumsHaze
                             )
                             ThemedIconButton(
                                 icon = if (language == DesignLanguage.IOS_LIQUID_GLASS) Icons.Rounded.MoreHoriz else Icons.Rounded.MoreVert,
-                                contentDescription = "Menü",
+                                contentDescription = strings.tabMenu,
                                 onClick = { showMenu = true },
                                 hazeState = albumsHaze,
                                 modifier = Modifier.onGloballyPositioned { menuAnchor = it.boundsInRoot() }
@@ -280,7 +327,7 @@ fun AlbumsScreen(
                     if (language == DesignLanguage.IOS_LIQUID_GLASS || language == DesignLanguage.XIAOMI_HYPEROS) {
                         item(span = { GridItemSpan(maxLineSpan) }, key = "albums_section") {
                             AlbumsSectionTitle(
-                                text = if (language == DesignLanguage.IOS_LIQUID_GLASS) "Meine Alben" else "Alle Alben",
+                                text = if (language == DesignLanguage.IOS_LIQUID_GLASS) strings.myAlbums else strings.allAlbums,
                                 count = albums.size,
                                 modifier = Modifier.padding(horizontal = 4.dp)
                             )
@@ -298,7 +345,7 @@ fun AlbumsScreen(
                     if (albums.isEmpty()) {
                         item(span = { GridItemSpan(maxLineSpan) }, key = "albums_empty") {
                             Text(
-                                text = "Noch keine Alben",
+                                text = strings.noAlbums,
                                 color = palette.textMuted,
                                 fontSize = 15.sp,
                                 textAlign = TextAlign.Center,
@@ -321,7 +368,7 @@ fun AlbumsScreen(
 
                     if (albums.isNotEmpty()) {
                         item(span = { GridItemSpan(maxLineSpan) }, key = "sub_albums_title") {
-                            AlbumsSectionTitle("Unteralben", albums.size, Modifier.padding(horizontal = sectionInset))
+                            AlbumsSectionTitle(strings.subAlbums, albums.size, Modifier.padding(horizontal = sectionInset))
                         }
                         item(span = { GridItemSpan(maxLineSpan) }, key = "sub_albums") {
                             Column(
@@ -354,7 +401,7 @@ fun AlbumsScreen(
                     if (albumMedia.isNotEmpty()) {
                         if (albums.isNotEmpty()) {
                             item(span = { GridItemSpan(maxLineSpan) }, key = "album_media_title") {
-                                AlbumsSectionTitle("Medien", albumMedia.size, Modifier.padding(horizontal = sectionInset, vertical = 6.dp))
+                                AlbumsSectionTitle(strings.media, albumMedia.size, Modifier.padding(horizontal = sectionInset, vertical = 6.dp))
                             }
                         }
                         items(
@@ -389,10 +436,10 @@ fun AlbumsScreen(
                                     .padding(vertical = 64.dp, horizontal = 32.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Text("Dieses Album ist leer", color = palette.textMuted, fontSize = 16.sp)
+                                Text(strings.albumEmpty, color = palette.textMuted, fontSize = 16.sp)
                                 Spacer(modifier = Modifier.height(18.dp))
                                 ThemedButton(
-                                    text = "Unteralbum anlegen",
+                                    text = strings.createSubAlbum,
                                     icon = Icons.Rounded.CreateNewFolder,
                                     onClick = { showCreateSubDialog = true }
                                 )
@@ -417,14 +464,16 @@ fun AlbumsScreen(
         } else if (isInsideAlbum && currentAlbum != null) {
             ThemedTopBar(
                 title = currentAlbum.name,
-                subtitle = if (albumMedia.size == 1) "1 Element" else "${albumMedia.size} Elemente",
+                subtitle = strings.items(albumMedia.size),
                 onBack = { onBreadcrumbClick(breadcrumbs.size - 2) },
                 hazeState = albumsHaze,
-                modifier = Modifier.align(Alignment.TopCenter)
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .pushTransition(language, { navProgress.value }, isTop = true, direction = { navDirection[0] })
             ) {
                 ThemedIconButton(
                     icon = Icons.Rounded.CreateNewFolder,
-                    contentDescription = "Neues Unteralbum",
+                    contentDescription = strings.newSubAlbum,
                     onClick = { showCreateSubDialog = true },
                     hazeState = albumsHaze
                 )
@@ -433,15 +482,12 @@ fun AlbumsScreen(
 
         // FULLSCREEN OVERLAY: Media Detail Viewer inside Albums
         // Preserves scroll position of album media when returning
-        AnimatedVisibility(
-            visible = selectedDetailIndex != null,
-            enter = fadeIn(animationSpec = qualityTween(graphicsQuality, 200)),
-            exit = fadeOut(animationSpec = qualityTween(graphicsQuality, 200))
-        ) {
-            selectedDetailIndex?.let { index ->
+        val detailIndexHolder = remember { IntArray(1) }
+        selectedDetailIndex?.let { detailIndexHolder[0] = it }
+        MediaZoomTransition(visible = selectedDetailIndex != null) {
                 MediaDetailScreen(
                     mediaList = albumMedia,
-                    initialIndex = index,
+                    initialIndex = detailIndexHolder[0],
                     onBack = onCloseDetail,
                     onTrashItem = onTrashItem,
                     onRenameItem = onRenameItem,
@@ -449,7 +495,6 @@ fun AlbumsScreen(
                     onToggleFavorite = onToggleFavorite,
                     onPageChanged = onDetailIndexChanged
                 )
-            }
         }
     }
 
@@ -458,27 +503,27 @@ fun AlbumsScreen(
         onDismissRequest = { showMenu = false },
         anchorBounds = menuAnchor,
         entries = listOf(
-            MenuEntry("Neues Album", icon = Icons.Rounded.Add) { showCreateDialog = true },
-            MenuEntry("Ausgeblendete Alben", icon = Icons.Rounded.VisibilityOff) { showManageHiddenDialog = true }
+            MenuEntry(strings.newAlbum, icon = Icons.Rounded.Add) { showCreateDialog = true },
+            MenuEntry(strings.hiddenAlbums, icon = Icons.Rounded.VisibilityOff) { showManageHiddenDialog = true }
         )
     )
 
     // Album actions: a popup anchored on the tile for One UI / iOS, an action sheet elsewhere.
     contextMenuAlbum?.let { album ->
         val canMigrate = album.isSdCard || isSdCardAvailable
-        val migrateLabel = if (album.isSdCard) "Auf internen Speicher verschieben" else "Auf SD-Karte verschieben"
+        val migrateLabel = if (album.isSdCard) strings.moveToInternal else strings.moveToSd
         if (language == DesignLanguage.SAMSUNG_ONEUI || language == DesignLanguage.IOS_LIQUID_GLASS) {
             ThemedPopupMenu(
                 expanded = true,
                 onDismissRequest = { contextMenuAlbum = null },
                 anchorBounds = contextAnchor,
                 entries = buildList {
-                    add(MenuEntry("Umbenennen", icon = Icons.Rounded.Edit) { albumToRename = album })
+                    add(MenuEntry(strings.rename, icon = Icons.Rounded.Edit) { albumToRename = album })
                     if (canMigrate) {
                         add(MenuEntry(migrateLabel, icon = if (album.isSdCard) Icons.Rounded.PhoneAndroid else Icons.Rounded.SdCard) { albumToMigrate = album })
                     }
-                    add(MenuEntry("Ausblenden", icon = Icons.Rounded.VisibilityOff) { albumToHide = album })
-                    add(MenuEntry("Löschen", icon = Icons.Rounded.Delete, destructive = true) { albumToDelete = album })
+                    add(MenuEntry(strings.hide, icon = Icons.Rounded.VisibilityOff) { albumToHide = album })
+                    add(MenuEntry(strings.delete, icon = Icons.Rounded.Delete, destructive = true) { albumToDelete = album })
                 }
             )
         } else {
@@ -492,7 +537,7 @@ fun AlbumsScreen(
                         .padding(bottom = 20.dp)
                 ) {
                     Text(
-                        text = "${album.count} Elemente · " + if (album.isSdCard) "SD-Karte" else "Intern",
+                        text = strings.items(album.count) + " · " + (if (album.isSdCard) strings.sdCard else strings.internal),
                         color = palette.textMuted,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
@@ -500,13 +545,13 @@ fun AlbumsScreen(
                     ThemedListSection(
                         inSheet = true,
                         rows = buildList {
-                            add(ListRow("Album umbenennen", icon = Icons.Rounded.Edit, iconColor = palette.accent, showChevron = false, onClick = {
+                            add(ListRow(strings.renameAlbum, icon = Icons.Rounded.Edit, iconColor = palette.accent, showChevron = false, onClick = {
                                 contextMenuAlbum = null
                                 albumToRename = album
                             }))
                             add(ListRow(
                                 migrateLabel,
-                                subtitle = if (!canMigrate) "Keine SD-Karte verfügbar" else null,
+                                subtitle = if (!canMigrate) strings.noSdCard else null,
                                 icon = if (album.isSdCard) Icons.Rounded.PhoneAndroid else Icons.Rounded.SdCard,
                                 iconColor = Color(0xFF34C759),
                                 showChevron = false,
@@ -519,11 +564,11 @@ fun AlbumsScreen(
                                     null
                                 }
                             ))
-                            add(ListRow("Album ausblenden", icon = Icons.Rounded.VisibilityOff, iconColor = Color(0xFF8E8E93), showChevron = false, onClick = {
+                            add(ListRow(strings.hideAlbum, icon = Icons.Rounded.VisibilityOff, iconColor = Color(0xFF8E8E93), showChevron = false, onClick = {
                                 contextMenuAlbum = null
                                 albumToHide = album
                             }))
-                            add(ListRow("Album löschen", icon = Icons.Rounded.Delete, iconColor = palette.destructive, titleColor = palette.destructive, showChevron = false, onClick = {
+                            add(ListRow(strings.deleteAlbum, icon = Icons.Rounded.Delete, iconColor = palette.destructive, titleColor = palette.destructive, showChevron = false, onClick = {
                                 contextMenuAlbum = null
                                 albumToDelete = album
                             }))
@@ -561,11 +606,11 @@ fun AlbumsScreen(
     albumToHide?.let { album ->
         ThemedDialog(
             onDismissRequest = { albumToHide = null },
-            title = "Album ausblenden?",
-            message = "„${album.name}“ und seine Inhalte werden in der Galerie und in den Alben ausgeblendet. Über „Ausgeblendete Alben“ kannst du es jederzeit wieder einblenden.",
+            title = strings.hideAlbumTitle,
+            message = strings.hideAlbumMessage(album.name),
             buttons = listOf(
-                DialogButton("Abbrechen", DialogButtonStyle.Cancel) { albumToHide = null },
-                DialogButton("Ausblenden", DialogButtonStyle.Primary) {
+                DialogButton(strings.cancel, DialogButtonStyle.Cancel) { albumToHide = null },
+                DialogButton(strings.hide, DialogButtonStyle.Primary) {
                     albumToHide = null
                     onHideAlbum(album)
                 }
@@ -587,15 +632,15 @@ fun AlbumsScreen(
     albumToDelete?.let { album ->
         ThemedDialog(
             onDismissRequest = { albumToDelete = null },
-            title = "„${album.name}“ löschen?",
+            title = strings.deleteAlbumTitle(album.name),
             message = if (album.count > 0) {
-                "Alle ${album.count} Medien in diesem Album werden in den Papierkorb verschoben und der Ordner wird entfernt."
+                strings.deleteAlbumMessage(album.count)
             } else {
-                "Der leere Ordner „${album.name}“ wird dauerhaft gelöscht."
+                strings.deleteEmptyAlbumMessage(album.name)
             },
             buttons = listOf(
-                DialogButton("Abbrechen", DialogButtonStyle.Cancel) { albumToDelete = null },
-                DialogButton("Löschen", DialogButtonStyle.Destructive) {
+                DialogButton(strings.cancel, DialogButtonStyle.Cancel) { albumToDelete = null },
+                DialogButton(strings.delete, DialogButtonStyle.Destructive) {
                     albumToDelete = null
                     onDeleteAlbum(album)
                 }
@@ -605,14 +650,14 @@ fun AlbumsScreen(
 
     albumToMigrate?.let { album ->
         val toSdCard = !album.isSdCard
-        val destName = if (toSdCard) "die SD-Karte" else "den internen Speicher"
+        val destName = toSdCard
         ThemedDialog(
             onDismissRequest = { albumToMigrate = null },
-            title = "Speicherort ändern?",
-            message = "„${album.name}“ mit ${album.count} Element(en) wird auf $destName verschoben. Die Dateien werden physisch verschoben und der Medienindex sofort aktualisiert.",
+            title = strings.changeLocationTitle,
+            message = strings.migrateMessage(album.name, album.count, destName),
             buttons = listOf(
-                DialogButton("Abbrechen", DialogButtonStyle.Cancel) { albumToMigrate = null },
-                DialogButton("Verschieben", DialogButtonStyle.Primary) {
+                DialogButton(strings.cancel, DialogButtonStyle.Cancel) { albumToMigrate = null },
+                DialogButton(strings.move, DialogButtonStyle.Primary) {
                     albumToMigrate = null
                     onMigrateAlbum(album, toSdCard)
                 }
@@ -629,7 +674,7 @@ fun AlbumsScreen(
     }
 }
 
-private fun albumCountText(count: Int) = if (count == 1) "1 Album" else "$count Alben"
+private fun albumCountText(count: Int) = strings.albums(count)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -647,7 +692,7 @@ private fun AlbumTile(
     val interaction = remember { MutableInteractionSource() }
     val countText = buildString {
         append("${album.count}")
-        if (album.subAlbumCount > 0) append(" · ${album.subAlbumCount} Unteralben")
+        if (album.subAlbumCount > 0) append(strings.subAlbumSuffix(album.subAlbumCount))
     }
     val clickModifier = Modifier
         .onGloballyPositioned { bounds = it.boundsInRoot() }
@@ -746,7 +791,7 @@ private fun AlbumCover(album: AlbumItem, shape: Shape) {
                     .background(Color.Black.copy(alpha = 0.5f))
                     .padding(4.dp)
             ) {
-                Icon(Icons.Rounded.SdCard, "SD-Karte", tint = Color.White, modifier = Modifier.size(12.dp))
+                Icon(Icons.Rounded.SdCard, strings.sdCard, tint = Color.White, modifier = Modifier.size(12.dp))
             }
         }
     }
@@ -797,7 +842,7 @@ private fun Breadcrumbs(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (language == DesignLanguage.GOOGLE_EXPRESSIVE) 6.dp else 0.dp)
     ) {
-        val crumbs = listOf("Alben") + breadcrumbs.map { it.name }
+        val crumbs = listOf(strings.tabAlbums) + breadcrumbs.map { it.name }
         crumbs.forEachIndexed { position, name ->
             val index = position - 1
             val isCurrent = position == crumbs.lastIndex
@@ -843,10 +888,10 @@ private fun ManageHiddenAlbumsSheet(
     onUnhideAlbum: (String) -> Unit
 ) {
     val palette = LocalAppTheme.current.palette
-    ThemedSheet(onDismissRequest = onDismiss, title = "Ausgeblendete Alben") {
+    ThemedSheet(onDismissRequest = onDismiss, title = strings.hiddenAlbums) {
         if (hiddenAlbums.isEmpty()) {
             Text(
-                text = "Keine ausgeblendeten Alben vorhanden",
+                text = strings.noHiddenAlbums,
                 color = palette.textMuted,
                 fontSize = 15.sp,
                 textAlign = TextAlign.Center,
@@ -887,11 +932,11 @@ private fun ManageHiddenAlbumsSheet(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(album.name, color = palette.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${album.count} Elemente", color = palette.textMuted, fontSize = 13.sp)
+                                Text(strings.items(album.count), color = palette.textMuted, fontSize = 13.sp)
                             }
                             ThemedIconButton(
                                 icon = Icons.Rounded.Visibility,
-                                contentDescription = "Wieder einblenden",
+                                contentDescription = strings.unhide,
                                 onClick = { onUnhideAlbum(album.bucketId) },
                                 tint = palette.accent,
                                 hazeState = null
@@ -911,14 +956,14 @@ private fun CreateSubAlbumDialog(
     onCreate: (String) -> Unit
 ) {
     var subAlbumName by remember { mutableStateOf("") }
-    val location = if (parentAlbum.isSdCard) "SD-Karte" else "Intern"
+    val location = if (parentAlbum.isSdCard) strings.sdCard else strings.internal
     ThemedDialog(
         onDismissRequest = onDismiss,
-        title = "Neues Unteralbum",
-        message = "In „${parentAlbum.name}“ · $location",
+        title = strings.newSubAlbum,
+        message = strings.inAlbum(parentAlbum.name, location),
         buttons = listOf(
-            DialogButton("Abbrechen", DialogButtonStyle.Cancel, onClick = onDismiss),
-            DialogButton("Erstellen", DialogButtonStyle.Primary, enabled = subAlbumName.isNotBlank()) {
+            DialogButton(strings.cancel, DialogButtonStyle.Cancel, onClick = onDismiss),
+            DialogButton(strings.create, DialogButtonStyle.Primary, enabled = subAlbumName.isNotBlank()) {
                 if (subAlbumName.isNotBlank()) onCreate(subAlbumName.trim())
             }
         )
@@ -926,7 +971,7 @@ private fun CreateSubAlbumDialog(
         ThemedTextField(
             value = subAlbumName,
             onValueChange = { subAlbumName = it },
-            placeholder = "Name des Unteralbums",
+            placeholder = strings.subAlbumName,
             autoFocus = true
         )
     }
@@ -943,10 +988,10 @@ fun CreateAlbumDialog(
 
     ThemedDialog(
         onDismissRequest = onDismiss,
-        title = "Neues Album",
+        title = strings.newAlbum,
         buttons = listOf(
-            DialogButton("Abbrechen", DialogButtonStyle.Cancel, onClick = onDismiss),
-            DialogButton("Erstellen", DialogButtonStyle.Primary, enabled = albumName.isNotBlank()) {
+            DialogButton(strings.cancel, DialogButtonStyle.Cancel, onClick = onDismiss),
+            DialogButton(strings.create, DialogButtonStyle.Primary, enabled = albumName.isNotBlank()) {
                 if (albumName.isNotBlank()) onCreate(albumName.trim(), onSdCard)
             }
         )
@@ -954,19 +999,19 @@ fun CreateAlbumDialog(
         ThemedTextField(
             value = albumName,
             onValueChange = { albumName = it },
-            placeholder = "Albumname",
+            placeholder = strings.albumName,
             autoFocus = true
         )
         Spacer(modifier = Modifier.height(14.dp))
         StorageOption(
-            title = "Interner Speicher",
+            title = strings.internalStorage,
             subtitle = "Pictures/${albumName.ifBlank { "…" }}",
             selected = !onSdCard,
             enabled = true
         ) { onSdCard = false }
         StorageOption(
-            title = if (isSdCardAvailable) "SD-Karte" else "SD-Karte (nicht verfügbar)",
-            subtitle = "Externer Speicher",
+            title = if (isSdCardAvailable) strings.sdCard else strings.sdCardUnavailable,
+            subtitle = strings.externalStorage,
             selected = onSdCard,
             enabled = isSdCardAvailable
         ) { onSdCard = true }
@@ -1013,10 +1058,10 @@ private fun RenameAlbumDialog(
     val valid = newName.isNotBlank() && newName.trim() != album.name
     ThemedDialog(
         onDismissRequest = onDismiss,
-        title = "Album umbenennen",
+        title = strings.renameAlbum,
         buttons = listOf(
-            DialogButton("Abbrechen", DialogButtonStyle.Cancel, onClick = onDismiss),
-            DialogButton("Umbenennen", DialogButtonStyle.Primary, enabled = valid) {
+            DialogButton(strings.cancel, DialogButtonStyle.Cancel, onClick = onDismiss),
+            DialogButton(strings.rename, DialogButtonStyle.Primary, enabled = valid) {
                 if (valid) onRename(newName.trim())
             }
         )
@@ -1024,7 +1069,7 @@ private fun RenameAlbumDialog(
         ThemedTextField(
             value = newName,
             onValueChange = { newName = it },
-            placeholder = "Neuer Albumname",
+            placeholder = strings.newAlbumName,
             autoFocus = true
         )
     }

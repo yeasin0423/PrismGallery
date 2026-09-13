@@ -1,4 +1,5 @@
 package com.example.amoledgallery.service
+import com.example.amoledgallery.ui.i18n.strings
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -151,8 +152,8 @@ class MoveMediaService : Service() {
                     
                     val completeNotification = NotificationCompat.Builder(this@MoveMediaService, CHANNEL_ID)
                         .setSmallIcon(com.example.amoledgallery.R.drawable.ic_launcher_foreground)
-                        .setContentTitle("Verschieben abgeschlossen")
-                        .setContentText("${result.count} Element(e) erfolgreich nach '${targetAlbum.name}' verschoben")
+                        .setContentTitle(strings.moveDone)
+                        .setContentText(strings.movedItems(result.count, targetAlbum.name))
                         .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                         .setAutoCancel(true)
                         .build()
@@ -180,10 +181,10 @@ class MoveMediaService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Medien verschieben",
+                strings.moveChannelName,
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
-                description = "Fortschrittsanzeige beim Verschieben von Medien"
+                description = strings.moveChannelDescription
                 setShowBadge(false)
             }
             notificationManager.createNotificationChannel(channel)
@@ -193,8 +194,8 @@ class MoveMediaService : Service() {
     private fun buildNotification(current: Int, total: Int, targetAlbumName: String) =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(com.example.amoledgallery.R.drawable.ic_launcher_foreground)
-            .setContentTitle(if (targetAlbumName.isNotBlank()) "Verschiebe nach '$targetAlbumName'..." else "Medien werden verschoben...")
-            .setContentText("$current von $total abgeschlossen (${if (total > 0) (current * 100 / total) else 0}%)")
+            .setContentTitle(if (targetAlbumName.isNotBlank()) strings.movingTo(targetAlbumName) else strings.movingMedia)
+            .setContentText(strings.progressCompleted(current, total))
             .setProgress(total, current, total == 0)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -240,8 +241,8 @@ class MoveMediaService : Service() {
             fun postFallbackNotification(curr: Int) {
                 val notif = NotificationCompat.Builder(context, CHANNEL_ID)
                     .setSmallIcon(com.example.amoledgallery.R.drawable.ic_launcher_foreground)
-                    .setContentTitle("Verschiebe nach '${targetAlbum.name}'...")
-                    .setContentText("$curr von $total verarbeitet (${if (total > 0) (curr * 100 / total) else 0}%)")
+                    .setContentTitle(strings.movingTo(targetAlbum.name))
+                    .setContentText(strings.progressProcessed(curr, total))
                     .setProgress(total, curr, total == 0)
                     .setOngoing(true)
                     .setOnlyAlertOnce(true)
@@ -266,8 +267,8 @@ class MoveMediaService : Service() {
                         MoveProgressHolder.complete(targetAlbum.name, result.count)
                         val doneNotif = NotificationCompat.Builder(context, CHANNEL_ID)
                             .setSmallIcon(com.example.amoledgallery.R.drawable.ic_launcher_foreground)
-                            .setContentTitle("Verschieben abgeschlossen")
-                            .setContentText("${result.count} Element(e) erfolgreich nach '${targetAlbum.name}' verschoben")
+                            .setContentTitle(strings.moveDone)
+                            .setContentText(strings.movedItems(result.count, targetAlbum.name))
                             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                             .setAutoCancel(true)
                             .build()

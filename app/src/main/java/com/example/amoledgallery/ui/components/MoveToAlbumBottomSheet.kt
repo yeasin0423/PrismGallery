@@ -1,4 +1,5 @@
 package com.example.amoledgallery.ui.components
+import com.example.amoledgallery.ui.i18n.strings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -55,7 +56,7 @@ fun MoveToAlbumBottomSheet(
     onSelectAlbum: (AlbumItem) -> Unit,
     onCreateNewAlbum: () -> Unit
 ) {
-    ThemedSheet(onDismissRequest = onDismiss, title = "In Album verschieben") {
+    ThemedSheet(onDismissRequest = onDismiss, title = strings.moveToAlbum) {
         LazyColumn(
             modifier = Modifier.weight(1f, fill = false),
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 20.dp),
@@ -63,8 +64,8 @@ fun MoveToAlbumBottomSheet(
         ) {
             item(key = "create_new_album_option") {
                 MoveTargetRow(
-                    title = "Neues Album erstellen",
-                    subtitle = "Zielordner anlegen und verschieben",
+                    title = strings.createNewAlbum,
+                    subtitle = strings.createNewAlbumSubtitle,
                     cover = null,
                     icon = Icons.Rounded.Add,
                     highlighted = true,
@@ -78,7 +79,7 @@ fun MoveToAlbumBottomSheet(
             items(albums, key = { it.bucketId }) { album ->
                 MoveTargetRow(
                     title = album.name,
-                    subtitle = "${if (album.isSdCard) "SD-Karte" else "Intern"} · ${album.count} Elemente",
+                    subtitle = strings.albumTargetSubtitle(album.isSdCard, album.count),
                     cover = album.coverThumbnail,
                     icon = Icons.Rounded.Folder,
                     highlighted = false,
@@ -139,7 +140,7 @@ private fun MoveTargetRow(
                         .background(Color.Black.copy(alpha = 0.6f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Rounded.SdCard, "SD-Karte", tint = Color.White, modifier = Modifier.size(10.dp))
+                    Icon(Icons.Rounded.SdCard, strings.sdCard, tint = Color.White, modifier = Modifier.size(10.dp))
                 }
             }
         }

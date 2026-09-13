@@ -1,4 +1,5 @@
 package com.example.amoledgallery.ui.design
+import com.example.amoledgallery.ui.i18n.strings
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.MutableTransitionState
@@ -86,6 +87,13 @@ import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeChild
 import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /*
@@ -627,6 +635,48 @@ private fun SheetFrame(
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val dismissThresholdPx = with(LocalDensity.current) { 120.dp.toPx() }
     val dragState = rememberDraggableState { delta -> dragOffset = (dragOffset + delta).coerceAtLeast(0f) }
+    val dragScope = rememberCoroutineScope()
+
+    fun settleDrag(velocity: Float) {
+        if (dragOffset > dismissThresholdPx || velocity > 2000f) {
+            onDismissRequest()
+        } else {
+            dragScope.launch {
+                animate(dragOffset, 0f, animationSpec = spring(stiffness = 500f)) { value, _ -> dragOffset = value }
+            }
+        }
+    }
+
+    // The sheet can be pulled down from anywhere: non-scrolling content drags it directly (draggable on
+    // the whole panel), scrolling content hands over the rest of a downward drag once it is at its top.
+    val sheetNestedScroll = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y < 0f && dragOffset > 0f) {
+                    val consumed = maxOf(available.y, -dragOffset)
+                    dragOffset += consumed
+                    return Offset(0f, consumed)
+                }
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (available.y > 0f && source == NestedScrollSource.UserInput) {
+                    dragOffset += available.y
+                    return Offset(0f, available.y)
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (dragOffset > 0f) {
+                    settleDrag(available.y)
+                    return available
+                }
+                return Velocity.Zero
+            }
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         OverlayScrim(transition, onDismissRequest, blur = true)
@@ -651,25 +701,15 @@ private fun SheetFrame(
                     .graphicsLayer { translationY = (1f - progress) * size.height + dragOffset }
                     .sheetSurface(shape)
                     .pointerInput(Unit) { detectTapGestures { } }
+                    .nestedScroll(sheetNestedScroll)
+                    .draggable(
+                        state = dragState,
+                        orientation = Orientation.Vertical,
+                        onDragStopped = { velocity -> settleDrag(velocity) }
+                    )
                     .then(if (floating) Modifier else Modifier.navigationBarsPadding())
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .draggable(
-                            state = dragState,
-                            orientation = Orientation.Vertical,
-                            onDragStopped = { velocity ->
-                                if (dragOffset > dismissThresholdPx || velocity > 2000f) {
-                                    onDismissRequest()
-                                } else {
-                                    animate(dragOffset, 0f, animationSpec = spring(stiffness = 500f)) { value, _ ->
-                                        dragOffset = value
-                                    }
-                                }
-                            }
-                        )
-                ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     SheetHeader(title, onDismissRequest)
                 }
                 content()
@@ -756,7 +796,7 @@ private fun SheetHeader(title: String?, onDismissRequest: () -> Unit) {
                     .clickable(interactionSource = interaction, indication = null, onClick = onDismissRequest),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Rounded.Close, "Schließen", tint = palette.onBackground, modifier = Modifier.size(20.dp))
+                Icon(Icons.Rounded.Close, strings.close, tint = palette.onBackground, modifier = Modifier.size(20.dp))
             }
             Text(
                 text = title,

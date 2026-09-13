@@ -1,4 +1,6 @@
 package com.example.amoledgallery.ui.components
+import com.example.amoledgallery.ui.i18n.LanguageState
+import com.example.amoledgallery.ui.i18n.strings
 
 import android.content.Context
 import android.content.Intent
@@ -104,7 +106,7 @@ fun MediaInfoBottomSheet(
         }
     }
 
-    ThemedSheet(onDismissRequest = onDismiss, title = "Details") {
+    ThemedSheet(onDismissRequest = onDismiss, title = strings.details) {
         Column(
             modifier = Modifier
                 .weight(1f, fill = false)
@@ -120,12 +122,12 @@ fun MediaInfoBottomSheet(
                         .height(120.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "Metadaten werden geladen…", color = palette.textMuted, fontSize = 14.sp)
+                    Text(text = strings.loadingMetadata, color = palette.textMuted, fontSize = 14.sp)
                 }
             } else {
                 MetadataCard {
-                    MetadataRow(Icons.Rounded.CalendarToday, "Datum & Uhrzeit", meta.formattedDate)
-                    MetadataRow(Icons.Rounded.Description, "Dateiname", meta.fileName)
+                    MetadataRow(Icons.Rounded.CalendarToday, strings.dateTime, meta.formattedDate)
+                    MetadataRow(Icons.Rounded.Description, strings.fileName, meta.fileName)
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -137,20 +139,20 @@ fun MediaInfoBottomSheet(
                         } else {
                             meta.resolutionFormatted
                         }
-                        MetadataRow(Icons.Rounded.AspectRatio, "Auflösung", resSubtitle)
+                        MetadataRow(Icons.Rounded.AspectRatio, strings.resolution, resSubtitle)
                     }
                     if (meta.fileSizeFormatted.isNotBlank()) {
-                        MetadataRow(Icons.Rounded.Storage, "Dateigröße", meta.fileSizeFormatted)
+                        MetadataRow(Icons.Rounded.Storage, strings.fileSize, meta.fileSizeFormatted)
                     }
                     if (meta.durationFormatted != null) {
-                        MetadataRow(Icons.Rounded.Movie, "Videodauer", meta.durationFormatted)
+                        MetadataRow(Icons.Rounded.Movie, strings.videoDuration, meta.durationFormatted)
                     }
                     if (meta.bitrateFormatted != null) {
-                        MetadataRow(Icons.Rounded.Tune, "Bitrate", meta.bitrateFormatted)
+                        MetadataRow(Icons.Rounded.Tune, strings.bitrate, meta.bitrateFormatted)
                     }
                     MetadataRow(
                         Icons.Rounded.Folder,
-                        "Dateipfad",
+                        strings.filePath,
                         meta.storagePath.ifBlank { "Pictures/${meta.albumName}/${meta.fileName}" }
                     )
                 }
@@ -159,10 +161,10 @@ fun MediaInfoBottomSheet(
                     Spacer(modifier = Modifier.height(12.dp))
                     MetadataCard {
                         if (meta.cameraDevice != null) {
-                            MetadataRow(Icons.Rounded.CameraAlt, "Kameramodell", meta.cameraDevice)
+                            MetadataRow(Icons.Rounded.CameraAlt, strings.cameraModel, meta.cameraDevice)
                         }
                         if (meta.cameraSettings != null) {
-                            MetadataRow(Icons.Rounded.Tune, "Aufnahmeparameter", meta.cameraSettings)
+                            MetadataRow(Icons.Rounded.Tune, strings.captureSettings, meta.cameraSettings)
                         }
                     }
                 }
@@ -176,12 +178,12 @@ fun MediaInfoBottomSheet(
                         ) {
                             MetadataRow(
                                 icon = Icons.Rounded.LocationOn,
-                                title = "Aufnahmeort",
+                                title = strings.captureLocation,
                                 value = "${String.format(Locale.US, "%.5f", meta.latitude)}, ${String.format(Locale.US, "%.5f", meta.longitude)}",
                                 modifier = Modifier.weight(1f)
                             )
                             Text(
-                                text = "Karte",
+                                text = strings.map,
                                 color = palette.accent,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
@@ -256,7 +258,7 @@ private fun extractMediaMetadata(context: Context, item: MediaItem): MediaMetada
     // 1. Date formatting
     val millis = if (item.dateModified > 0) item.dateModified * 1000L else item.dateAdded * 1000L
     val dateStr = if (millis > 0) {
-        val sdf = SimpleDateFormat("d. MMMM yyyy, HH:mm 'Uhr'", Locale.GERMAN)
+        val sdf = SimpleDateFormat(strings.metadataDatePattern, LanguageState.locale)
         sdf.format(Date(millis))
     } else ""
 
@@ -307,7 +309,7 @@ private fun extractMediaMetadata(context: Context, item: MediaItem): MediaMetada
                 val m = (totalSec % 3600) / 60
                 val s = totalSec % 60
                 val hrs = totalSec / 3600
-                videoDuration = if (hrs > 0) "$hrs Std. $m Min. $s Sek." else "$m Min. $s Sek."
+                videoDuration = strings.durationText(hrs, m, s)
             }
             val bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toLongOrNull() ?: 0L
             if (bitrate > 0) {
@@ -396,7 +398,7 @@ private fun extractMediaMetadata(context: Context, item: MediaItem): MediaMetada
         resolutionFormatted = resStr,
         megapixelsFormatted = mpStr,
         storagePath = item.dataPath.ifBlank { item.relativePath },
-        albumName = item.bucketDisplayName.ifBlank { "Galerie" },
+        albumName = item.bucketDisplayName.ifBlank { strings.gallery },
         mimeType = item.mimeType,
         cameraDevice = camDevice,
         cameraSettings = camSettings,

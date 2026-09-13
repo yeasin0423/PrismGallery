@@ -1,4 +1,5 @@
 package com.example.amoledgallery.ui.screens
+import com.example.amoledgallery.ui.i18n.strings
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -36,6 +37,7 @@ import com.example.amoledgallery.ui.design.ThemedTopBar
 import com.example.amoledgallery.ui.theme.LocalAppTheme
 import dev.chrisbanes.haze.HazeState
 import com.example.amoledgallery.ui.design.HazeSource
+import com.example.amoledgallery.ui.design.MediaZoomTransition
 
 /**
  * Favorites: the grid scrolls underneath the language's frosted top bar; tapping opens the
@@ -71,8 +73,8 @@ fun FavoritesScreen(
         if (favoriteItems.isEmpty()) {
             ThemedEmptyState(
                 icon = Icons.Rounded.FavoriteBorder,
-                title = "Keine Favoriten",
-                message = "Tippe im Vollbild auf das Herz, um Fotos und Videos hier zu sammeln."
+                title = strings.noFavorites,
+                message = strings.noFavoritesMessage
             )
         } else {
             HazeSource(favoritesHaze, Modifier.fillMaxSize()) {
@@ -109,30 +111,28 @@ fun FavoritesScreen(
         }
 
         ThemedTopBar(
-            title = "Favoriten",
-            subtitle = if (favoriteItems.size == 1) "1 Element" else "${favoriteItems.size} Elemente",
+            title = strings.favorites,
+            subtitle = strings.items(favoriteItems.size),
             onBack = onBack,
             hazeState = favoritesHaze,
             modifier = Modifier.align(Alignment.TopCenter)
         )
 
+        com.example.amoledgallery.ui.design.BottomEdgeFade(Modifier.align(Alignment.BottomCenter))
+
         // Fullscreen Overlay Detail Viewer
-        AnimatedVisibility(
-            visible = selectedDetailIndex != null,
-            enter = fadeIn(animationSpec = tween(200)),
-            exit = fadeOut(animationSpec = tween(200))
-        ) {
-            selectedDetailIndex?.let { index ->
+        val detailIndexHolder = remember { IntArray(1) }
+        selectedDetailIndex?.let { detailIndexHolder[0] = it }
+        MediaZoomTransition(visible = selectedDetailIndex != null) {
                 MediaDetailScreen(
                     mediaList = favoriteItems,
-                    initialIndex = index,
+                    initialIndex = detailIndexHolder[0],
                     onBack = { selectedDetailIndex = null },
                     onTrashItem = onTrashItem,
                     onRenameItem = onRenameItem,
                     isFavorite = isFavorite,
                     onToggleFavorite = onToggleFavorite
                 )
-            }
         }
     }
 }

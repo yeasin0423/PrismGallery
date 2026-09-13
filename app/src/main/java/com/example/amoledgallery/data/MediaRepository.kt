@@ -1,4 +1,5 @@
 package com.example.amoledgallery.data
+import com.example.amoledgallery.ui.i18n.strings
 
 import android.app.PendingIntent
 import android.content.ContentResolver
@@ -372,7 +373,7 @@ class MediaRepository(private val context: Context) {
         } else {
             if (targetAlbum.isSdCard) {
                 val sdDir = getSdCardPicturesDirectory()
-                    ?: return@withContext MoveResult.Error("SD-Karte nicht verfügbar")
+                    ?: return@withContext MoveResult.Error(strings.sdCardNotAvailable)
                 File(sdDir, targetAlbum.name)
             } else {
                 File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), targetAlbum.name)
@@ -594,7 +595,7 @@ class MediaRepository(private val context: Context) {
     ): RenameResult = withContext(Dispatchers.IO) {
         val trimmedNewName = newDisplayName.trim()
         if (trimmedNewName.isBlank()) {
-            return@withContext RenameResult.Error("Name darf nicht leer sein.")
+            return@withContext RenameResult.Error(strings.nameEmpty)
         }
 
         val finalName = if (!trimmedNewName.contains(".") && oldDisplayName.contains(".")) {
@@ -613,17 +614,17 @@ class MediaRepository(private val context: Context) {
             if (rows > 0) {
                 RenameResult.Success(finalName)
             } else {
-                RenameResult.Error("Umbenennen fehlgeschlagen.")
+                RenameResult.Error(strings.renameFailed)
             }
         } catch (e: SecurityException) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val pendingIntent = MediaStore.createWriteRequest(contentResolver, listOf(uri))
                 RenameResult.PermissionRequired(pendingIntent, finalName)
             } else {
-                RenameResult.Error(e.localizedMessage ?: "Berechtigung verweigert.")
+                RenameResult.Error(e.localizedMessage ?: strings.permissionDenied)
             }
         } catch (e: Exception) {
-            RenameResult.Error(e.localizedMessage ?: "Fehler beim Umbenennen.")
+            RenameResult.Error(e.localizedMessage ?: strings.renameFailedGeneric)
         }
     }
 
@@ -634,12 +635,12 @@ class MediaRepository(private val context: Context) {
         try {
             val cleanName = albumName.trim()
             if (cleanName.isBlank()) {
-                return@withContext Result.failure(IllegalArgumentException("Name darf nicht leer sein."))
+                return@withContext Result.failure(IllegalArgumentException(strings.nameEmpty))
             }
 
             val targetDir: File = if (onSdCard) {
                 val sdDir = getSdCardPicturesDirectory()
-                    ?: return@withContext Result.failure(IllegalStateException("SD-Karte nicht gefunden oder nicht beschreibbar."))
+                    ?: return@withContext Result.failure(IllegalStateException(strings.sdCardNotWritable))
                 File(sdDir, cleanName)
             } else {
                 val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
@@ -649,7 +650,7 @@ class MediaRepository(private val context: Context) {
             if (!targetDir.exists()) {
                 val created = targetDir.mkdirs()
                 if (!created && !targetDir.exists()) {
-                    return@withContext Result.failure(IllegalStateException("Ordner konnte nicht erstellt werden."))
+                    return@withContext Result.failure(IllegalStateException(strings.folderCreateFailed))
                 }
             }
 
@@ -666,7 +667,7 @@ class MediaRepository(private val context: Context) {
         try {
             val cleanName = subAlbumName.trim()
             if (cleanName.isBlank()) {
-                return@withContext Result.failure(IllegalArgumentException("Name darf nicht leer sein."))
+                return@withContext Result.failure(IllegalArgumentException(strings.nameEmpty))
             }
 
             val parentDir: File = if (parentAlbum.directoryPath.isNotBlank()) {
@@ -674,7 +675,7 @@ class MediaRepository(private val context: Context) {
             } else {
                 if (parentAlbum.isSdCard) {
                     val sdDir = getSdCardPicturesDirectory()
-                        ?: return@withContext Result.failure(IllegalStateException("SD-Karte nicht gefunden oder nicht beschreibbar."))
+                        ?: return@withContext Result.failure(IllegalStateException(strings.sdCardNotWritable))
                     File(sdDir, parentAlbum.relativePath)
                 } else {
                     val root = Environment.getExternalStorageDirectory()
@@ -690,7 +691,7 @@ class MediaRepository(private val context: Context) {
             if (!targetDir.exists()) {
                 val created = targetDir.mkdirs()
                 if (!created && !targetDir.exists()) {
-                    return@withContext Result.failure(IllegalStateException("Unterordner konnte nicht erstellt werden."))
+                    return@withContext Result.failure(IllegalStateException(strings.subFolderCreateFailed))
                 }
             }
 
@@ -784,7 +785,7 @@ class MediaRepository(private val context: Context) {
         try {
             val cleanName = newName.trim()
             if (cleanName.isBlank()) {
-                return@withContext Result.failure(IllegalArgumentException("Name darf nicht leer sein."))
+                return@withContext Result.failure(IllegalArgumentException(strings.nameEmpty))
             }
 
             var targetDir: File? = null
@@ -882,7 +883,7 @@ class MediaRepository(private val context: Context) {
         try {
             val targetDir: File = if (toSdCard) {
                 val sdDir = getSdCardPicturesDirectory()
-                    ?: return@withContext Result.failure(IllegalStateException("SD-Karte nicht verfügbar"))
+                    ?: return@withContext Result.failure(IllegalStateException(strings.sdCardNotAvailable))
                 File(sdDir, album.name)
             } else {
                 val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)

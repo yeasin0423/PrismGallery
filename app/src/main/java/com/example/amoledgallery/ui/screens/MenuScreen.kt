@@ -1,4 +1,7 @@
 package com.example.amoledgallery.ui.screens
+import com.example.amoledgallery.ui.i18n.AppLanguage
+import com.example.amoledgallery.ui.i18n.LanguageState
+import com.example.amoledgallery.ui.i18n.strings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -67,6 +70,7 @@ import com.example.amoledgallery.ui.design.ThemedSegmentedControl
 import com.example.amoledgallery.ui.design.ThemedSheet
 import com.example.amoledgallery.ui.design.bottomBarContentPadding
 import com.example.amoledgallery.ui.design.pressScale
+import com.example.amoledgallery.ui.design.selectionPop
 import com.example.amoledgallery.ui.theme.AppColorPalette
 import com.example.amoledgallery.ui.theme.CUSTOM_PALETTE_ID
 import com.example.amoledgallery.ui.theme.DesignLanguage
@@ -114,12 +118,12 @@ fun MenuScreen(
     val palette = theme.palette
     val language = theme.language
 
-    val favoritesText = if (favoriteCount == 1) "1 Element" else "$favoriteCount Elemente"
-    val trashText = if (trashedCount == 1) "1 Element" else "$trashedCount Elemente"
+    val favoritesText = strings.items(favoriteCount)
+    val trashText = strings.items(trashedCount)
     val storageText = if (internalTotalBytes > 0) {
-        "${formatBytes(internalFreeBytes)} frei von ${formatBytes(internalTotalBytes)}"
+        strings.freeOf(formatBytes(internalFreeBytes), formatBytes(internalTotalBytes))
     } else {
-        "Unbekannt"
+        strings.unknown
     }
     val usedFraction = if (internalTotalBytes > 0) {
         (1f - internalFreeBytes.toFloat() / internalTotalBytes.toFloat()).coerceIn(0f, 1f)
@@ -136,7 +140,7 @@ fun MenuScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
     ) {
-        LargeHeader(title = "Menü")
+        LargeHeader(title = strings.tabMenu)
 
         Column(
             modifier = Modifier
@@ -148,15 +152,15 @@ fun MenuScreen(
             when (language) {
                 DesignLanguage.SAMSUNG_ONEUI -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OneUiShortcutTile(Icons.Rounded.Favorite, Color(0xFFFF5A7A), "Favoriten", favoritesText, Modifier.weight(1f), onOpenFavorites)
-                        OneUiShortcutTile(Icons.Rounded.Delete, Color(0xFFFFA24C), "Papierkorb", trashText, Modifier.weight(1f), onOpenTrash)
+                        OneUiShortcutTile(Icons.Rounded.Favorite, Color(0xFFFF5A7A), strings.favorites, favoritesText, Modifier.weight(1f), onOpenFavorites)
+                        OneUiShortcutTile(Icons.Rounded.Delete, Color(0xFFFFA24C), strings.trash, trashText, Modifier.weight(1f), onOpenTrash)
                     }
                     ThemedListSection(
                         rows = listOf(
-                            ListRow("Design", subtitle = "${ThemeState.designLanguage.displayName} · ${ThemeState.palette.label}", icon = Icons.Rounded.Palette, iconColor = Color(0xFFB39DFF), onClick = openDesign),
-                            ListRow("Einstellungen", subtitle = "Grafikqualität", icon = Icons.Rounded.Settings, iconColor = palette.onBackground, onClick = openSettings),
-                            ListRow("Speicher", subtitle = storageText, icon = Icons.Rounded.Storage, iconColor = Color(0xFF4FC3F7), onClick = openStorage),
-                            ListRow("Info", subtitle = "Version ${appVersionName.ifBlank { "unbekannt" }}", icon = Icons.Rounded.Info, iconColor = palette.textMuted, onClick = openInfo)
+                            ListRow(strings.design, subtitle = "${ThemeState.designLanguage.displayName} · ${strings.paletteLabel(ThemeState.palette)}", icon = Icons.Rounded.Palette, iconColor = Color(0xFFB39DFF), onClick = openDesign),
+                            ListRow(strings.settings, subtitle = strings.graphicsQuality, icon = Icons.Rounded.Settings, iconColor = palette.onBackground, onClick = openSettings),
+                            ListRow(strings.storage, subtitle = storageText, icon = Icons.Rounded.Storage, iconColor = Color(0xFF4FC3F7), onClick = openStorage),
+                            ListRow(strings.info, subtitle = strings.version(appVersionName), icon = Icons.Rounded.Info, iconColor = palette.textMuted, onClick = openInfo)
                         )
                     )
                 }
@@ -184,7 +188,7 @@ fun MenuScreen(
                             }
                             Spacer(modifier = Modifier.width(16.dp))
                             Column {
-                                Text("Gerätespeicher", color = palette.onBackground, fontSize = 20.sp, fontWeight = FontWeight.Medium)
+                                Text(strings.deviceStorage, color = palette.onBackground, fontSize = 20.sp, fontWeight = FontWeight.Medium)
                                 Text(storageText, color = palette.textMuted, fontSize = 14.sp)
                             }
                         }
@@ -192,55 +196,55 @@ fun MenuScreen(
                         ThemedProgressBar(progress = usedFraction)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "${(usedFraction * 100).roundToInt()} % belegt",
+                            text = strings.percentUsed((usedFraction * 100).roundToInt()),
                             color = palette.textMuted,
                             fontSize = 13.sp
                         )
                     }
                     ThemedListSection(
-                        header = "Bibliothek",
+                        header = strings.library,
                         rows = listOf(
-                            ListRow("Favoriten", subtitle = favoritesText, icon = Icons.Rounded.Favorite, iconColor = Color(0xFFFF8AB3), onClick = onOpenFavorites),
-                            ListRow("Papierkorb", subtitle = trashText, icon = Icons.Rounded.Delete, iconColor = Color(0xFFFFB870), onClick = onOpenTrash)
+                            ListRow(strings.favorites, subtitle = favoritesText, icon = Icons.Rounded.Favorite, iconColor = Color(0xFFFF8AB3), onClick = onOpenFavorites),
+                            ListRow(strings.trash, subtitle = trashText, icon = Icons.Rounded.Delete, iconColor = Color(0xFFFFB870), onClick = onOpenTrash)
                         )
                     )
                     ThemedListSection(
                         header = "App",
                         rows = listOf(
-                            ListRow("Design & Farben", subtitle = ThemeState.designLanguage.displayName, icon = Icons.Rounded.Palette, iconColor = Color(0xFFB39DFF), onClick = openDesign),
-                            ListRow("Einstellungen", subtitle = "Grafikqualität", icon = Icons.Rounded.Settings, iconColor = palette.accent, onClick = openSettings),
-                            ListRow("Info", subtitle = "Version ${appVersionName.ifBlank { "unbekannt" }}", icon = Icons.Rounded.Info, iconColor = Color(0xFF90CAF9), onClick = openInfo)
+                            ListRow(strings.designAndColors, subtitle = ThemeState.designLanguage.displayName, icon = Icons.Rounded.Palette, iconColor = Color(0xFFB39DFF), onClick = openDesign),
+                            ListRow(strings.settings, subtitle = strings.graphicsQuality, icon = Icons.Rounded.Settings, iconColor = palette.accent, onClick = openSettings),
+                            ListRow(strings.info, subtitle = strings.version(appVersionName), icon = Icons.Rounded.Info, iconColor = Color(0xFF90CAF9), onClick = openInfo)
                         )
                     )
                 }
 
                 DesignLanguage.IOS_LIQUID_GLASS -> {
                     ThemedListSection(
-                        header = "Mediathek",
+                        header = strings.mediaLibrary,
                         rows = listOf(
-                            ListRow("Favoriten", icon = Icons.Rounded.Favorite, iconColor = Color(0xFFFF375F), value = "$favoriteCount", onClick = onOpenFavorites),
-                            ListRow("Zuletzt gelöscht", icon = Icons.Rounded.Delete, iconColor = Color(0xFF8E8E93), value = "$trashedCount", onClick = onOpenTrash)
+                            ListRow(strings.favorites, icon = Icons.Rounded.Favorite, iconColor = Color(0xFFFF375F), value = "$favoriteCount", onClick = onOpenFavorites),
+                            ListRow(strings.recentlyDeleted, icon = Icons.Rounded.Delete, iconColor = Color(0xFF8E8E93), value = "$trashedCount", onClick = onOpenTrash)
                         )
                     )
                     ThemedListSection(
-                        header = "Allgemein",
+                        header = strings.general,
                         rows = listOf(
-                            ListRow("Darstellung", icon = Icons.Rounded.Palette, iconColor = Color(0xFF0A84FF), onClick = openDesign),
-                            ListRow("Einstellungen", icon = Icons.Rounded.Settings, iconColor = Color(0xFF8E8E93), onClick = openSettings),
-                            ListRow("Speicher", icon = Icons.Rounded.Storage, iconColor = Color(0xFF34C759), value = if (internalTotalBytes > 0) "${formatBytes(internalFreeBytes)} frei" else null, onClick = openStorage),
-                            ListRow("Info", icon = Icons.Rounded.Info, iconColor = Color(0xFF5E5CE6), value = appVersionName.ifBlank { null }, onClick = openInfo)
+                            ListRow(strings.appearance, icon = Icons.Rounded.Palette, iconColor = Color(0xFF0A84FF), onClick = openDesign),
+                            ListRow(strings.settings, icon = Icons.Rounded.Settings, iconColor = Color(0xFF8E8E93), onClick = openSettings),
+                            ListRow(strings.storage, icon = Icons.Rounded.Storage, iconColor = Color(0xFF34C759), value = if (internalTotalBytes > 0) strings.free(formatBytes(internalFreeBytes)) else null, onClick = openStorage),
+                            ListRow(strings.info, icon = Icons.Rounded.Info, iconColor = Color(0xFF5E5CE6), value = appVersionName.ifBlank { null }, onClick = openInfo)
                         )
                     )
                 }
 
                 DesignLanguage.XIAOMI_HYPEROS -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        HyperOsShortcutCard(Icons.Rounded.Favorite, Color(0xFFFF5C7A), "Favoriten", favoritesText, Modifier.weight(1f), onOpenFavorites)
-                        HyperOsShortcutCard(Icons.Rounded.Delete, Color(0xFF3482FF), "Papierkorb", trashText, Modifier.weight(1f), onOpenTrash)
+                        HyperOsShortcutCard(Icons.Rounded.Favorite, Color(0xFFFF5C7A), strings.favorites, favoritesText, Modifier.weight(1f), onOpenFavorites)
+                        HyperOsShortcutCard(Icons.Rounded.Delete, Color(0xFF3482FF), strings.trash, trashText, Modifier.weight(1f), onOpenTrash)
                     }
                     ThemedCard(modifier = Modifier.clickable(onClick = openStorage)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Speicher", color = palette.onBackground, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            Text(strings.storage, color = palette.onBackground, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                             Text(storageText, color = palette.textMuted, fontSize = 13.sp)
                         }
                         Spacer(modifier = Modifier.height(14.dp))
@@ -248,9 +252,9 @@ fun MenuScreen(
                     }
                     ThemedListSection(
                         rows = listOf(
-                            ListRow("Design", subtitle = ThemeState.designLanguage.displayName, icon = Icons.Rounded.Palette, iconColor = Color(0xFFFF9F0A), onClick = openDesign),
-                            ListRow("Einstellungen", subtitle = "Grafikqualität", icon = Icons.Rounded.Settings, iconColor = Color(0xFF8A8A8E), onClick = openSettings),
-                            ListRow("Über Gallery", icon = Icons.Rounded.Info, iconColor = Color(0xFF34C759), value = appVersionName.ifBlank { null }, onClick = openInfo)
+                            ListRow(strings.design, subtitle = ThemeState.designLanguage.displayName, icon = Icons.Rounded.Palette, iconColor = Color(0xFFFF9F0A), onClick = openDesign),
+                            ListRow(strings.settings, subtitle = strings.graphicsQuality, icon = Icons.Rounded.Settings, iconColor = Color(0xFF8A8A8E), onClick = openSettings),
+                            ListRow(strings.aboutGallery, icon = Icons.Rounded.Info, iconColor = Color(0xFF34C759), value = appVersionName.ifBlank { null }, onClick = openInfo)
                         )
                     )
                 }
@@ -368,7 +372,7 @@ private fun SettingsSheet(
         ThemeState.apply(currentLanguage, next, context = context)
     }
 
-    ThemedSheet(onDismissRequest = onDismiss, title = "Einstellungen") {
+    ThemedSheet(onDismissRequest = onDismiss, title = strings.settings) {
         LaunchedEffect(initialSection) {
             if (initialSection != SettingsSection.DESIGN) {
                 val offset = snapshotFlow { sectionOffsets[initialSection] }.filterNotNull().first()
@@ -386,7 +390,7 @@ private fun SettingsSheet(
             verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
             Column(modifier = Modifier.sectionAnchor(SettingsSection.DESIGN)) {
-                ThemedSectionHeader("Design")
+                ThemedSectionHeader(strings.design)
                 ThemedCard(inSheet = true) {
                     DesignLanguage.entries.forEachIndexed { index, language ->
                         if (index > 0) Spacer(modifier = Modifier.height(4.dp))
@@ -405,7 +409,7 @@ private fun SettingsSheet(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(language.displayName, color = palette.onBackground, fontSize = 16.sp, fontWeight = FontWeight.Medium)
                                 Spacer(modifier = Modifier.height(2.dp))
-                                Text(language.shortDescription, color = palette.textMuted, fontSize = 13.sp, lineHeight = 17.sp)
+                                Text(strings.designDescription(language), color = palette.textMuted, fontSize = 13.sp, lineHeight = 17.sp)
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             ThemedRadioIndicator(selected = language == currentLanguage)
@@ -415,12 +419,12 @@ private fun SettingsSheet(
             }
 
             Column {
-                ThemedSectionHeader("Farben")
+                ThemedSectionHeader(strings.colors)
                 ThemedCard(inSheet = true) {
                     ThemedSegmentedControl(
                         options = listOf(true, false),
                         selected = lightMode,
-                        label = { light -> if (light) "Hell" else "Dunkel" },
+                        label = { light -> if (light) strings.light else strings.dark },
                         onSelect = { light -> switchBrightness(light) }
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -431,12 +435,20 @@ private fun SettingsSheet(
                         onOpenCustomEditor = { showCustomEditor = true }
                     )
                     Spacer(modifier = Modifier.height(10.dp))
-                    Text(currentPalette.label, color = palette.textMuted, fontSize = 13.sp)
+                    Text(strings.paletteLabel(currentPalette), color = palette.textMuted, fontSize = 13.sp)
                 }
             }
 
             Column(modifier = Modifier.sectionAnchor(SettingsSection.SETTINGS)) {
-                ThemedSectionHeader("Grafikqualität")
+                ThemedSectionHeader(strings.language)
+                ThemedSegmentedControl(
+                    options = AppLanguage.entries,
+                    selected = LanguageState.language,
+                    label = { it.displayName },
+                    onSelect = { LanguageState.apply(it, context) }
+                )
+                Spacer(modifier = Modifier.height(22.dp))
+                ThemedSectionHeader(strings.graphicsQuality)
                 ThemedSegmentedControl(
                     options = PerformanceProfile.entries,
                     selected = graphicsQuality,
@@ -454,20 +466,20 @@ private fun SettingsSheet(
             }
 
             Column(modifier = Modifier.sectionAnchor(SettingsSection.STORAGE)) {
-                ThemedSectionHeader("Speicher")
+                ThemedSectionHeader(strings.storage)
                 ThemedCard(inSheet = true) {
-                    StorageBlock("Interner Speicher", internalFreeBytes, internalTotalBytes, null)
+                    StorageBlock(strings.internalStorage, internalFreeBytes, internalTotalBytes, null)
                     Spacer(modifier = Modifier.height(18.dp))
-                    StorageBlock("SD-Karte", sdCardFreeBytes, sdCardTotalBytes, "Nicht vorhanden")
+                    StorageBlock(strings.sdCard, sdCardFreeBytes, sdCardTotalBytes, strings.notAvailable)
                 }
             }
 
             ThemedListSection(
-                header = "Info",
+                header = strings.info,
                 inSheet = true,
                 modifier = Modifier.sectionAnchor(SettingsSection.INFO),
                 rows = listOf(
-                    ListRow("App-Version", icon = Icons.Rounded.Info, iconColor = Color(0xFF8E8E93), value = appVersionName.ifBlank { "Unbekannt" }, showChevron = false)
+                    ListRow(strings.appVersion, icon = Icons.Rounded.Info, iconColor = Color(0xFF8E8E93), value = appVersionName.ifBlank { strings.unknown }, showChevron = false)
                 )
             )
         }
@@ -497,9 +509,9 @@ private fun StorageBlock(label: String, freeBytes: Long?, totalBytes: Long?, not
         Text(label, color = palette.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
         Text(
             text = if (freeBytes != null && totalBytes != null && totalBytes > 0) {
-                "${formatBytes(freeBytes)} frei von ${formatBytes(totalBytes)}"
+                strings.freeOf(formatBytes(freeBytes), formatBytes(totalBytes))
             } else {
-                notAvailableText ?: "Unbekannt"
+                notAvailableText ?: strings.unknown
             },
             color = palette.textMuted,
             fontSize = 13.sp
@@ -531,6 +543,7 @@ private fun PaletteRow(
             // Each swatch shows the preset's own background with its accent inside.
             Box(
                 modifier = Modifier
+                    .selectionPop(isSelected, fromScale = 0.72f, dampingRatio = 0.4f, stiffness = 600f)
                     .size(44.dp)
                     .clip(swatchShape)
                     .background(preset.background)
@@ -553,6 +566,7 @@ private fun PaletteRow(
         val isCustomSelected = currentPaletteId == CUSTOM_PALETTE_ID
         Box(
             modifier = Modifier
+                .selectionPop(isCustomSelected, fromScale = 0.72f, dampingRatio = 0.4f, stiffness = 600f)
                 .size(44.dp)
                 .clip(swatchShape)
                 .background(if (isCustomSelected) ThemeState.accent else palette.surface)
@@ -565,7 +579,7 @@ private fun PaletteRow(
             contentAlignment = Alignment.Center
         ) {
             if (!isCustomSelected) {
-                Icon(Icons.Rounded.Add, "Eigene Farbe", tint = palette.textMuted, modifier = Modifier.size(20.dp))
+                Icon(Icons.Rounded.Add, strings.customColor, tint = palette.textMuted, modifier = Modifier.size(20.dp))
             }
         }
     }
@@ -582,11 +596,11 @@ private fun CustomAccentDialog(
     var pickedColor by remember { mutableStateOf(initialAccent) }
     ThemedDialog(
         onDismissRequest = onDismiss,
-        title = "Eigene Akzentfarbe",
-        message = "Die ${if (lightMode) "hellen" else "dunklen"} Grundfarben von ${language.displayName} bleiben erhalten - nur der Akzent ändert sich.",
+        title = strings.customAccentTitle,
+        message = strings.customAccentMessage(lightMode, language.displayName),
         buttons = listOf(
-            DialogButton("Abbrechen", DialogButtonStyle.Cancel, onClick = onDismiss),
-            DialogButton("Übernehmen", DialogButtonStyle.Primary) { onConfirm(pickedColor) }
+            DialogButton(strings.cancel, DialogButtonStyle.Cancel, onClick = onDismiss),
+            DialogButton(strings.apply, DialogButtonStyle.Primary) { onConfirm(pickedColor) }
         )
     ) {
         HsvColorPicker(
@@ -603,12 +617,7 @@ private fun graphicsQualityLabel(tier: PerformanceProfile): String = when (tier)
     PerformanceProfile.ULTRA -> "Ultra"
 }
 
-private fun graphicsQualityDescription(tier: PerformanceProfile): String = when (tier) {
-    PerformanceProfile.LOW -> "Nur das Nötigste: keine Animationen, kein Glas, kleinere Vorschaubilder, geringster Speicher- & Akkuverbrauch."
-    PerformanceProfile.MEDIUM -> "Ausgewogen: reduzierte Animationen, undurchsichtige statt gläserne Leisten, gute Bildqualität."
-    PerformanceProfile.HIGH -> "Echtes Glas mit Hintergrundunschärfe, flüssige Animationen, hohe Bildqualität."
-    PerformanceProfile.ULTRA -> "Die volle Effektpalette: Glas, bewegte Wellen, längste Animationen, höchste Bildqualität und größte Caches."
-}
+private fun graphicsQualityDescription(tier: PerformanceProfile): String = strings.qualityDescription(tier)
 
 private fun formatBytes(bytes: Long): String {
     val gb = bytes / (1024.0 * 1024.0 * 1024.0)

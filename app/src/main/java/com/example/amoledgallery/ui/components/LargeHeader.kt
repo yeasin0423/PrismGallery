@@ -1,4 +1,5 @@
 package com.example.amoledgallery.ui.components
+import com.example.amoledgallery.ui.i18n.strings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -249,7 +250,7 @@ fun ExpressiveHeroCard(
                 .background(palette.accent)
                 .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
-            Text("Neu", color = palette.onAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(strings.newBadge, color = palette.onAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
         Column(
             modifier = Modifier

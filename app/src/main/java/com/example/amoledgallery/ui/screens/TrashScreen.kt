@@ -1,4 +1,5 @@
 package com.example.amoledgallery.ui.screens
+import com.example.amoledgallery.ui.i18n.strings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -87,8 +88,8 @@ fun TrashScreen(
         if (trashedItems.isEmpty()) {
             ThemedEmptyState(
                 icon = Icons.Rounded.DeleteOutline,
-                title = "Papierkorb ist leer",
-                message = "Gelöschte Medien werden hier 30 Tage aufbewahrt."
+                title = strings.trashEmpty,
+                message = strings.trashEmptyMessage
             )
         } else {
             HazeSource(trashHaze, Modifier.fillMaxSize()) {
@@ -106,7 +107,7 @@ fun TrashScreen(
                 ) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Text(
-                            text = "Elemente im Papierkorb werden nach 30 Tagen endgültig gelöscht.",
+                            text = strings.trashInfo,
                             color = palette.textMuted,
                             fontSize = 13.sp,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
@@ -134,25 +135,25 @@ fun TrashScreen(
         }
 
         ThemedTopBar(
-            title = "Papierkorb",
-            subtitle = if (trashedItems.isEmpty()) null else "${trashedItems.size} Elemente",
+            title = strings.trash,
+            subtitle = if (trashedItems.isEmpty()) null else strings.items(trashedItems.size),
             onBack = onBack,
             hazeState = trashHaze,
             modifier = Modifier.align(Alignment.TopCenter),
             // iOS and Material center/size their title so that two text actions beside it would leave
-            // no room for "Papierkorb"; they get a compact second row instead.
+            // no room for strings.trash; they get a compact second row instead.
             secondaryActions = if (compactActions) {
                 {
-                    ThemedChipAction("Wiederherstellen", palette.accent, onRestoreAll, trashHaze)
-                    ThemedChipAction("Leeren", palette.destructive, { showEmptyConfirmDialog = true }, trashHaze)
+                    ThemedChipAction(strings.restore, palette.accent, onRestoreAll, trashHaze)
+                    ThemedChipAction(strings.emptyAction, palette.destructive, { showEmptyConfirmDialog = true }, trashHaze)
                 }
             } else {
                 null
             }
         ) {
             if (trashedItems.isNotEmpty() && !compactActions) {
-                TopBarTextAction("Wiederherstellen", palette.accent, onRestoreAll)
-                TopBarTextAction("Leeren", palette.destructive) { showEmptyConfirmDialog = true }
+                TopBarTextAction(strings.restore, palette.accent, onRestoreAll)
+                TopBarTextAction(strings.emptyAction, palette.destructive) { showEmptyConfirmDialog = true }
             }
         }
     }
@@ -160,7 +161,7 @@ fun TrashScreen(
     selectedItem?.let { item ->
         ThemedSheet(
             onDismissRequest = { selectedItem = null },
-            title = "Gelöschtes Element"
+            title = strings.deletedItem
         ) {
             Column(
                 modifier = Modifier
@@ -184,7 +185,7 @@ fun TrashScreen(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = item.displayName.ifBlank { "Medium" },
+                    text = item.displayName.ifBlank { strings.itemFallback },
                     color = palette.textMuted,
                     fontSize = 14.sp,
                     maxLines = 1,
@@ -193,7 +194,7 @@ fun TrashScreen(
                 )
                 Spacer(modifier = Modifier.height(20.dp))
                 ThemedButton(
-                    text = "Wiederherstellen",
+                    text = strings.restore,
                     icon = Icons.Rounded.Restore,
                     style = DialogButtonStyle.Primary,
                     onClick = {
@@ -204,7 +205,7 @@ fun TrashScreen(
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 ThemedButton(
-                    text = "Endgültig löschen",
+                    text = strings.deletePermanently,
                     icon = Icons.Rounded.DeleteForever,
                     style = DialogButtonStyle.Destructive,
                     onClick = {
@@ -220,11 +221,11 @@ fun TrashScreen(
     if (showEmptyConfirmDialog) {
         ThemedDialog(
             onDismissRequest = { showEmptyConfirmDialog = false },
-            title = "Papierkorb leeren?",
-            message = "Alle ${trashedItems.size} Elemente im Papierkorb werden dauerhaft gelöscht.",
+            title = strings.emptyTrashTitle,
+            message = strings.emptyTrashMessage(trashedItems.size),
             buttons = listOf(
-                DialogButton("Abbrechen", DialogButtonStyle.Cancel) { showEmptyConfirmDialog = false },
-                DialogButton("Leeren", DialogButtonStyle.Destructive) {
+                DialogButton(strings.cancel, DialogButtonStyle.Cancel) { showEmptyConfirmDialog = false },
+                DialogButton(strings.emptyAction, DialogButtonStyle.Destructive) {
                     showEmptyConfirmDialog = false
                     onEmptyTrash()
                 }

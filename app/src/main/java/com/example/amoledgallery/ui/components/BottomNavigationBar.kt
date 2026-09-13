@@ -1,4 +1,5 @@
 package com.example.amoledgallery.ui.components
+import com.example.amoledgallery.ui.i18n.strings
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -77,6 +78,14 @@ import com.example.amoledgallery.ui.design.GlassRim
 import com.example.amoledgallery.ui.design.glass
 import com.example.amoledgallery.ui.design.glassRim
 import com.example.amoledgallery.ui.design.pressScale
+import com.example.amoledgallery.ui.design.selectionPop
+import com.example.amoledgallery.ui.design.SamsungGalleryIcons
+import com.example.amoledgallery.ui.design.sparkleTap
+import androidx.compose.animation.core.snap
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.graphics.Brush
 import com.example.amoledgallery.ui.theme.DesignLanguage
 import com.example.amoledgallery.ui.theme.LocalAppTheme
 import com.example.amoledgallery.ui.theme.destructive
@@ -85,19 +94,32 @@ import com.example.amoledgallery.ui.theme.onAccent
 import com.example.amoledgallery.ui.viewmodel.GalleryTab
 import kotlin.math.abs
 
-private const val HOLD_TO_SLIDE_TIMEOUT_MS = 350L
+private const val HOLD_TO_SLIDE_TIMEOUT_MS = 250L
 
 private data class NavTab(
     val tab: GalleryTab,
-    val label: String,
     val selectedIcon: ImageVector,
     val icon: ImageVector
-)
+) {
+    val label: String
+        get() = when (tab) {
+            GalleryTab.BILDER -> strings.tabPictures
+            GalleryTab.ALBEN -> strings.tabAlbums
+            GalleryTab.MENU -> strings.tabMenu
+        }
+}
+
+/** One UI uses Samsung Gallery's own album and menu glyphs. */
+private fun NavTab.oneUiIcon(selected: Boolean): ImageVector = when (tab) {
+    GalleryTab.ALBEN -> if (selected) SamsungGalleryIcons.AlbumsSelected else SamsungGalleryIcons.Albums
+    GalleryTab.MENU -> if (selected) SamsungGalleryIcons.MenuSelected else SamsungGalleryIcons.Menu
+    else -> if (selected) selectedIcon else icon
+}
 
 private val NAV_TABS = listOf(
-    NavTab(GalleryTab.BILDER, "Bilder", Icons.Rounded.Image, Icons.Outlined.Image),
-    NavTab(GalleryTab.ALBEN, "Alben", Icons.Rounded.Collections, Icons.Outlined.Collections),
-    NavTab(GalleryTab.MENU, "Menü", Icons.Rounded.Menu, Icons.Rounded.Menu)
+    NavTab(GalleryTab.BILDER, Icons.Rounded.Image, Icons.Outlined.Image),
+    NavTab(GalleryTab.ALBEN, Icons.Rounded.Collections, Icons.Outlined.Collections),
+    NavTab(GalleryTab.MENU, Icons.Rounded.Menu, Icons.Rounded.Menu)
 )
 
 /**
@@ -126,6 +148,8 @@ fun BottomNavigationBar(
     var gestureRootX by remember { mutableFloatStateOf(0f) }
     var slideRootX by remember { mutableStateOf<Float?>(null) }
     var pressed by remember { mutableStateOf(false) }
+    // Where the finger touches the bar (local to the bar), for the iOS glass glint.
+    var touchPoint by remember { mutableStateOf(Offset.Unspecified) }
     val latestTab by rememberUpdatedState(currentTab)
     val latestOnTabSelected by rememberUpdatedState(onTabSelected)
 
@@ -142,26 +166,37 @@ fun BottomNavigationBar(
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 pressed = true
+                touchPoint = down.position
                 val downTime = System.currentTimeMillis()
                 var slideActive = false
-                var lastX = down.position.x
+                var hoveredIndex = -1
                 while (true) {
                     val event = awaitPointerEvent()
                     val change = event.changes.firstOrNull { it.id == down.id }
                     if (change == null || !change.pressed) {
-                        if (slideActive) latestOnTabSelected(NAV_TABS[indexForRootX(gestureRootX + lastX)].tab)
                         slideRootX = null
                         pressed = false
                         break
                     }
-                    lastX = change.position.x
-                    if (!slideActive && System.currentTimeMillis() - downTime >= HOLD_TO_SLIDE_TIMEOUT_MS) {
+                    touchPoint = change.position
+                    // Sliding starts after a short hold, or as soon as the finger clearly moves sideways.
+                    if (!slideActive && (System.currentTimeMillis() - downTime >= HOLD_TO_SLIDE_TIMEOUT_MS ||
+                            abs(change.position.x - down.position.x) > viewConfiguration.touchSlop)
+                    ) {
                         slideActive = true
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     }
                     if (slideActive) {
-                        slideRootX = gestureRootX + lastX
+                        val rootX = gestureRootX + change.position.x
+                        slideRootX = rootX
                         change.consume()
+                        // Live switching: the hovered tab opens immediately, without waiting for release.
+                        val index = indexForRootX(rootX)
+                        if (index != hoveredIndex) {
+                            if (hoveredIndex != -1) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            hoveredIndex = index
+                            if (NAV_TABS[index].tab != latestTab) latestOnTabSelected(NAV_TABS[index].tab)
+                        }
                     }
                 }
             }
@@ -179,14 +214,15 @@ fun BottomNavigationBar(
             modifier = modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 12.dp)
+                .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 8.dp)
         ) {
             val barScale by animateFloatAsState(if (pressed) 0.985f else 1f, label = "oneui_bar_press")
             val pill = RoundedCornerShape(percent = 50)
+            // Proportions measured from Samsung Gallery: a slim pill whose active capsule nearly fills it.
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(72.dp)
+                    .height(62.dp)
                     .graphicsLayer {
                         scaleX = barScale
                         scaleY = barScale
@@ -194,11 +230,15 @@ fun BottomNavigationBar(
                     .glass(pill)
                     .then(holdSlideModifier)
             ) {
-                val inset = 6.dp
+                val inset = 4.dp
                 val itemWidth = (maxWidth - inset * 2) / NAV_TABS.size
+                // While sliding, the capsule sits exactly under the finger; afterwards it glides to the tab.
+                val fingerOffset = slideRootX?.let { rootX ->
+                    with(LocalDensity.current) { (rootX - gestureRootX).toDp() } - inset - itemWidth / 2
+                }?.coerceIn(0.dp, itemWidth * (NAV_TABS.size - 1))
                 val indicatorX by animateDpAsState(
-                    targetValue = itemWidth * highlighted,
-                    animationSpec = tween(280, easing = FastOutSlowInEasing),
+                    targetValue = fingerOffset ?: (itemWidth * highlighted),
+                    animationSpec = if (fingerOffset != null) snap() else tween(280, easing = FastOutSlowInEasing),
                     label = "oneui_indicator"
                 )
                 Box(
@@ -222,25 +262,28 @@ fun BottomNavigationBar(
                                 .weight(1f)
                                 .fillMaxHeight()
                                 .then(reportCenter(index))
+                                .sparkleTap()
                                 .clip(pill)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
+                                    indication = ripple(color = palette.onBackground)
                                 ) { onTabSelected(tab.tab) },
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
                             Icon(
-                                imageVector = if (selected) tab.selectedIcon else tab.icon,
+                                imageVector = tab.oneUiIcon(selected),
                                 contentDescription = tab.label,
                                 tint = palette.onBackground,
-                                modifier = Modifier.size(25.dp)
+                                modifier = Modifier
+                                    .size(23.dp)
+                                    .selectionPop(selected, fromScale = 0.78f, dampingRatio = 0.5f, stiffness = 650f)
                             )
-                            Spacer(modifier = Modifier.height(3.dp))
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = tab.label,
                                 color = palette.onBackground,
-                                fontSize = 13.sp,
+                                fontSize = 14.sp,
                                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                                 maxLines = 1
                             )
@@ -289,11 +332,12 @@ fun BottomNavigationBar(
                         modifier = Modifier
                             .then(reportCenter(index))
                             .height(52.dp)
+                            .sparkleTap(if (selected) palette.onAccent else palette.accent)
                             .clip(pill)
                             .background(container)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
-                                indication = null
+                                indication = ripple(color = if (selected) palette.onAccent else palette.accent)
                             ) { onTabSelected(tab.tab) }
                             .animateContentSize(spring(dampingRatio = 0.62f, stiffness = 500f))
                             .padding(horizontal = if (selected) 20.dp else 16.dp),
@@ -303,7 +347,9 @@ fun BottomNavigationBar(
                             imageVector = if (selected) tab.selectedIcon else tab.icon,
                             contentDescription = tab.label,
                             tint = content,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier
+                                .size(24.dp)
+                                .selectionPop(selected, fromScale = 0.55f, dampingRatio = 0.35f, stiffness = 520f)
                         )
                         if (selected) {
                             Spacer(modifier = Modifier.width(8.dp))
@@ -333,6 +379,12 @@ fun BottomNavigationBar(
                 label = "ios_swell"
             )
             val pill = RoundedCornerShape(percent = 50)
+            // Specular glint: a soft light spot under the finger while the glass is touched.
+            val glint by animateFloatAsState(
+                targetValue = if (pressed) 1f else 0f,
+                animationSpec = tween(if (pressed) 90 else 420),
+                label = "ios_glint"
+            )
             BoxWithConstraints(
                 modifier = Modifier
                     .weight(1f)
@@ -342,6 +394,22 @@ fun BottomNavigationBar(
                         scaleY = swell
                     }
                     .glass(pill)
+                    .drawWithContent {
+                        drawContent()
+                        val point = touchPoint
+                        if (glint > 0f && point.isSpecified) {
+                            val radius = 78.dp.toPx()
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    listOf(Color.White.copy(alpha = 0.30f * glint), Color.Transparent),
+                                    center = point,
+                                    radius = radius
+                                ),
+                                radius = radius,
+                                center = point
+                            )
+                        }
+                    }
                     .then(holdSlideModifier)
             ) {
                 val inset = 4.dp
@@ -350,8 +418,28 @@ fun BottomNavigationBar(
                 val itemWidthPx = with(LocalDensity.current) { itemWidth.toPx() }
                 val bubbleIndex = highlighted.coerceAtMost(contentTabs - 1)
                 val bubbleX = remember { Animatable(bubbleIndex * itemWidthPx) }
-                LaunchedEffect(bubbleIndex, itemWidthPx) {
-                    bubbleX.animateTo(bubbleIndex * itemWidthPx, spring(dampingRatio = 0.62f, stiffness = 300f))
+                // While sliding, the bubble sits exactly under the finger. A fast spring "follower" trails
+                // it only to derive the liquid stretch, which relaxes as soon as the finger stops. After
+                // release the bubble springs from the finger position to the selected tab.
+                val slideTarget = slideRootX?.let {
+                    (it - gestureRootX - itemWidthPx / 2f).coerceIn(0f, itemWidthPx * (contentTabs - 1))
+                }
+                val follower = remember { Animatable(bubbleIndex * itemWidthPx) }
+                val lastFinger = remember { floatArrayOf(Float.NaN) }
+                if (slideTarget != null) lastFinger[0] = slideTarget
+                LaunchedEffect(slideTarget) {
+                    if (slideTarget != null) follower.animateTo(slideTarget, spring(dampingRatio = 1f, stiffness = 700f))
+                }
+                LaunchedEffect(slideTarget == null, bubbleIndex, itemWidthPx) {
+                    if (slideTarget == null) {
+                        if (!lastFinger[0].isNaN()) {
+                            bubbleX.snapTo(lastFinger[0])
+                            lastFinger[0] = Float.NaN
+                        }
+                        bubbleX.animateTo(bubbleIndex * itemWidthPx, spring(dampingRatio = 0.7f, stiffness = 420f))
+                    } else {
+                        follower.snapTo(bubbleX.value)
+                    }
                 }
                 val bubbleAlpha by animateFloatAsState(
                     targetValue = if (highlighted < contentTabs) 1f else 0f,
@@ -363,9 +451,14 @@ fun BottomNavigationBar(
                         .width(itemWidth)
                         .fillMaxHeight()
                         .graphicsLayer {
-                            translationX = bubbleX.value
-                            // Liquid stretch: the bubble elongates with its speed and settles back round.
-                            val stretch = (abs(bubbleX.velocity) / 3800f).coerceAtMost(0.32f)
+                            val finger = slideTarget
+                            translationX = finger ?: bubbleX.value
+                            // Liquid stretch: elongates with speed and settles back round.
+                            val stretch = if (finger != null) {
+                                (abs(finger - follower.value) / itemWidthPx * 0.45f).coerceAtMost(0.2f)
+                            } else {
+                                (abs(bubbleX.velocity) / 4500f).coerceAtMost(0.2f)
+                            }
                             scaleX = 1f + stretch
                             scaleY = 1f - stretch * 0.3f
                             alpha = bubbleAlpha
@@ -401,7 +494,9 @@ fun BottomNavigationBar(
                                 imageVector = if (index == 0) Icons.Rounded.PhotoLibrary else tab.selectedIcon,
                                 contentDescription = tab.label,
                                 tint = tint,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .selectionPop(selected, fromScale = 0.84f, dampingRatio = 0.5f, stiffness = 700f)
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
@@ -442,7 +537,14 @@ fun BottomNavigationBar(
                         .clip(CircleShape)
                         .background(if (palette.isLight) Color.Black.copy(alpha = 0.07f) else Color.White.copy(alpha = 0.16f))
                 )
-                Icon(menuTab.selectedIcon, menuTab.label, tint = menuTint, modifier = Modifier.size(24.dp))
+                Icon(
+                    menuTab.selectedIcon,
+                    menuTab.label,
+                    tint = menuTint,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .selectionPop(menuSelected, fromScale = 0.8f, dampingRatio = 0.5f, stiffness = 700f)
+                )
             }
         }
 
@@ -473,13 +575,21 @@ fun BottomNavigationBar(
                         animationSpec = tween(140),
                         label = "hyperos_scale"
                     )
+                    val dotScale by animateFloatAsState(
+                        targetValue = if (selected) 1f else 0f,
+                        animationSpec = spring(dampingRatio = 0.5f, stiffness = 800f),
+                        label = "hyperos_dot"
+                    )
+                    val tabInteraction = remember { MutableInteractionSource() }
                     Box(
                         modifier = Modifier
                             .then(reportCenter(index))
+                            // HyperOS icons squeeze on touch and snap back quickly.
+                            .pressScale(tabInteraction, 0.84f)
                             .size(width = 62.dp, height = 44.dp)
                             .clip(pill)
                             .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
+                                interactionSource = tabInteraction,
                                 indication = null
                             ) { onTabSelected(tab.tab) },
                         contentAlignment = Alignment.Center
@@ -494,6 +604,19 @@ fun BottomNavigationBar(
                                     scaleX = iconScale
                                     scaleY = iconScale
                                 }
+                        )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 3.dp)
+                                .size(4.dp)
+                                .graphicsLayer {
+                                    scaleX = dotScale
+                                    scaleY = dotScale
+                                    alpha = dotScale.coerceIn(0f, 1f)
+                                }
+                                .clip(CircleShape)
+                                .background(palette.accent)
                         )
                     }
                 }
@@ -524,18 +647,18 @@ fun SelectionActionBar(
             modifier = modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 12.dp)
+                .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 8.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(72.dp)
+                    .height(62.dp)
                     .glass(RoundedCornerShape(percent = 50))
-                    .padding(6.dp)
+                    .padding(4.dp)
             ) {
-                LabeledAction(Icons.Outlined.Share, "Teilen", enabled, palette.onBackground, Modifier.weight(1f), onShare)
-                LabeledAction(Icons.AutoMirrored.Rounded.DriveFileMove, "Verschieben", enabled, palette.onBackground, Modifier.weight(1f), onMove)
-                LabeledAction(Icons.Outlined.Delete, "Löschen", enabled, palette.onBackground, Modifier.weight(1f), onDelete)
+                LabeledAction(Icons.Outlined.Share, strings.share, enabled, palette.onBackground, Modifier.weight(1f), onShare)
+                LabeledAction(Icons.AutoMirrored.Rounded.DriveFileMove, strings.move, enabled, palette.onBackground, Modifier.weight(1f), onMove)
+                LabeledAction(Icons.Outlined.Delete, strings.delete, enabled, palette.onBackground, Modifier.weight(1f), onDelete)
             }
         }
 
@@ -554,8 +677,8 @@ fun SelectionActionBar(
                     .padding(6.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                ToolbarIcon(Icons.Rounded.Share, "Teilen", enabled, onShare)
-                ToolbarIcon(Icons.AutoMirrored.Rounded.DriveFileMove, "Verschieben", enabled, onMove)
+                ToolbarIcon(Icons.Rounded.Share, strings.share, enabled, onShare)
+                ToolbarIcon(Icons.AutoMirrored.Rounded.DriveFileMove, strings.move, enabled, onMove)
             }
             val fabInteraction = remember { MutableInteractionSource() }
             val fabShape = RoundedCornerShape(18.dp)
@@ -569,7 +692,7 @@ fun SelectionActionBar(
                     .clickable(interactionSource = fabInteraction, indication = ripple(), enabled = enabled, onClick = onDelete),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Rounded.Delete, "Löschen", tint = palette.onAccent, modifier = Modifier.size(26.dp))
+                Icon(Icons.Rounded.Delete, strings.delete, tint = palette.onAccent, modifier = Modifier.size(26.dp))
             }
         }
 
@@ -581,7 +704,7 @@ fun SelectionActionBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            GlassCircleAction(Icons.Rounded.Share, "Teilen", enabled, palette.onBackground, onShare)
+            GlassCircleAction(Icons.Rounded.Share, strings.share, enabled, palette.onBackground, onShare)
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -590,15 +713,15 @@ fun SelectionActionBar(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = if (selectedCount == 1) "1 Objekt ausgewählt" else "$selectedCount Objekte ausgewählt",
+                    text = strings.itemsSelected(selectedCount),
                     color = palette.onBackground,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1
                 )
             }
-            GlassCircleAction(Icons.AutoMirrored.Rounded.DriveFileMove, "Verschieben", enabled, palette.onBackground, onMove)
-            GlassCircleAction(Icons.Rounded.Delete, "Löschen", enabled, palette.destructive, onDelete)
+            GlassCircleAction(Icons.AutoMirrored.Rounded.DriveFileMove, strings.move, enabled, palette.onBackground, onMove)
+            GlassCircleAction(Icons.Rounded.Delete, strings.delete, enabled, palette.destructive, onDelete)
         }
 
         DesignLanguage.XIAOMI_HYPEROS -> Row(
@@ -609,9 +732,9 @@ fun SelectionActionBar(
                 .height(66.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            LabeledAction(Icons.Outlined.Share, "Senden", enabled, palette.onBackground, Modifier.weight(1f), onShare)
-            LabeledAction(Icons.AutoMirrored.Rounded.DriveFileMove, "Verschieben", enabled, palette.onBackground, Modifier.weight(1f), onMove)
-            LabeledAction(Icons.Outlined.Delete, "Löschen", enabled, palette.onBackground, Modifier.weight(1f), onDelete)
+            LabeledAction(Icons.Outlined.Share, strings.send, enabled, palette.onBackground, Modifier.weight(1f), onShare)
+            LabeledAction(Icons.AutoMirrored.Rounded.DriveFileMove, strings.move, enabled, palette.onBackground, Modifier.weight(1f), onMove)
+            LabeledAction(Icons.Outlined.Delete, strings.delete, enabled, palette.onBackground, Modifier.weight(1f), onDelete)
         }
     }
 }

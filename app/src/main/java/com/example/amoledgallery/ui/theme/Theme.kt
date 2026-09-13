@@ -1,6 +1,10 @@
 package com.example.amoledgallery.ui.theme
 
 import android.app.Activity
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.runtime.getValue
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -11,13 +15,41 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+
+private const val REFERENCE_SMALLEST_WIDTH_DP = 420f
 
 @Composable
 fun AmoledGalleryTheme(
     content: @Composable () -> Unit
 ) {
-    val theme = ThemeState.currentTheme()
-    val palette = theme.palette
+    val targetTheme = ThemeState.currentTheme()
+    val target = targetTheme.palette
+
+    // Palette changes (accent, light/dark, design language) cross-fade instead of cutting over.
+    val colorSpec = tween<Color>(durationMillis = 450)
+    val background by animateColorAsState(target.background, colorSpec, label = "palette_background")
+    val onBackground by animateColorAsState(target.onBackground, colorSpec, label = "palette_on_background")
+    val textMuted by animateColorAsState(target.textMuted, colorSpec, label = "palette_text_muted")
+    val surface by animateColorAsState(target.surface, colorSpec, label = "palette_surface")
+    val surfaceVariant by animateColorAsState(target.surfaceVariant, colorSpec, label = "palette_surface_variant")
+    val accent by animateColorAsState(target.accent, colorSpec, label = "palette_accent")
+    val cardBorder by animateColorAsState(target.cardBorder, colorSpec, label = "palette_card_border")
+    val overlayScrim by animateColorAsState(target.overlayScrim, colorSpec, label = "palette_scrim")
+    val palette = target.copy(
+        background = background,
+        onBackground = onBackground,
+        textMuted = textMuted,
+        surface = surface,
+        surfaceVariant = surfaceVariant,
+        accent = accent,
+        cardBorder = cardBorder,
+        overlayScrim = overlayScrim
+    )
+    val theme = targetTheme.copy(palette = palette)
     val light = palette.isLight
 
     val colorScheme = if (light) {
@@ -50,6 +82,16 @@ fun AmoledGalleryTheme(
         )
     }
 
+    // UI size follows the physical screen: layouts are tuned for a ~420dp wide phone, so narrower or
+    // denser screens (e.g. the Galaxy A15 at 384dp) scale everything down proportionally instead of
+    // showing bars and text larger than the system's own apps. Tablets keep the normal size.
+    val baseDensity = LocalDensity.current
+    val smallestWidthDp = LocalConfiguration.current.smallestScreenWidthDp
+    val scaledDensity = remember(baseDensity, smallestWidthDp) {
+        val uiScale = (smallestWidthDp / REFERENCE_SMALLEST_WIDTH_DP).coerceIn(0.8f, 1f)
+        Density(baseDensity.density * uiScale, baseDensity.fontScale)
+    }
+
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -59,6 +101,8 @@ fun AmoledGalleryTheme(
                 // so the bars themselves stay transparent and only their icon color follows the theme.
                 window.statusBarColor = Color.Transparent.toArgb()
                 window.navigationBarColor = Color.Transparent.toArgb()
+                // No system scrim behind 3-button navigation; the app's own bottom fade blends it instead.
+                window.isNavigationBarContrastEnforced = false
                 val insetsController = WindowCompat.getInsetsController(window, view)
                 insetsController.isAppearanceLightStatusBars = light
                 insetsController.isAppearanceLightNavigationBars = light
@@ -66,11 +110,16 @@ fun AmoledGalleryTheme(
         }
     }
 
-    CompositionLocalProvider(LocalAppTheme provides theme) {
+    CompositionLocalProvider(LocalAppTheme provides theme, LocalDensity provides scaledDensity) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = Typography,
-            content = content
-        )
+            typography = Typography
+        ) {
+            // Every clickable without an explicit indication gets the language's own press feedback.
+            CompositionLocalProvider(
+                LocalIndication provides com.example.amoledgallery.ui.design.rememberThemedIndication(),
+                content = content
+            )
+        }
     }
 }

@@ -1,4 +1,6 @@
 package com.example.amoledgallery.ui.viewmodel
+import com.example.amoledgallery.ui.i18n.LanguageState
+import com.example.amoledgallery.ui.i18n.strings
 
 import android.app.Application
 import android.app.PendingIntent
@@ -243,7 +245,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         _favoriteIds.value = newSet
         favPrefs.edit().putStringSet(KEY_FAVORITES, newSet.map { it.toString() }.toSet()).apply()
         viewModelScope.launch {
-            _userMessage.emit(if (isNowFav) "Zu Favoriten hinzugefügt" else "Aus Favoriten entfernt")
+            _userMessage.emit(if (isNowFav) strings.favoriteAdded else strings.favoriteRemoved)
         }
     }
 
@@ -311,9 +313,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         val safeIndex = index.coerceIn(0, items.size - 1)
         val item = items[safeIndex]
         val millis = item.dateAdded * 1000L
-        val sdf = SimpleDateFormat("MMMM yyyy", Locale.GERMAN)
+        val sdf = SimpleDateFormat("MMMM yyyy", LanguageState.locale)
         val text = sdf.format(Date(millis))
-        return text.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.GERMAN) else it.toString() }
+        return text.replaceFirstChar { if (it.isLowerCase()) it.titlecase(LanguageState.locale) else it.toString() }
     }
 
     // --- Multi-Selection Mode ---
@@ -389,7 +391,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             if (pendingIntent != null) {
                 _pendingIntentSender.emit(pendingIntent)
             } else {
-                _userMessage.emit("${itemsToTrash.size} Element(e) in Papierkorb verschoben")
+                _userMessage.emit(strings.movedToTrash(itemsToTrash.size))
                 clearSelection()
                 loadMedia()
                 loadTrash()
@@ -421,8 +423,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             closeMoveSheet()
             val result = withContext(Dispatchers.IO) { repository.createAlbumFolder(albumName, onSdCard) }
             result.onSuccess { dir ->
-                val targetLocation = if (onSdCard) "auf SD-Karte" else "im internen Speicher"
-                _userMessage.emit("Album '${dir.name}' $targetLocation erstellt")
+                val targetLocation = onSdCard
+                _userMessage.emit(strings.albumCreated(dir.name, targetLocation))
                 loadAlbums()
                 val newAlbum = AlbumItem(
                     bucketId = "",
@@ -434,7 +436,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 )
                 moveSelectedItems(newAlbum)
             }.onFailure { err ->
-                _userMessage.emit("Fehler beim Erstellen: ${err.localizedMessage}")
+                _userMessage.emit(strings.createError(err.localizedMessage))
             }
         }
     }
@@ -444,20 +446,20 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             closeMoveSheet()
             val selected = _selectedIds.value
             if (selected.isEmpty()) {
-                _userMessage.emit("Keine Elemente ausgewählt")
+                _userMessage.emit(strings.noItemsSelected)
                 return@launch
             }
 
             val allItems = (_rawMedia.value + _albumMediaState.value).distinctBy { it.id }
             val itemsToMove = allItems.filter { it.id in selected }
             if (itemsToMove.isEmpty()) {
-                _userMessage.emit("Keine Elemente zum Verschieben gefunden")
+                _userMessage.emit(strings.noItemsToMove)
                 return@launch
             }
 
             clearSelection()
             
-            _userMessage.emit("Verschieben nach '${targetAlbum.name}' gestartet...")
+            _userMessage.emit(strings.moveStarted(targetAlbum.name))
             
             moveProgress.value = MoveProgress(isMoving = true, current = 0, total = itemsToMove.size)
 
@@ -482,7 +484,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             loadMedia()
             loadAlbums()
             _selectedAlbum.value?.let { loadAlbumContents(it) }
-            _userMessage.emit("${itemsToMove.size} Element(e) erfolgreich in '${targetAlbum.name}' verschoben")
+            _userMessage.emit(strings.movedItems(itemsToMove.size, targetAlbum.name))
         }
     }
 
@@ -497,7 +499,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     fun hideAlbum(album: AlbumItem) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { repository.setAlbumHidden(album.bucketId, true) }
-            _userMessage.emit("Album '${album.name}' ausgeblendet")
+            _userMessage.emit(strings.albumHidden(album.name))
             loadMedia()
             loadAlbums()
             loadHiddenAlbums()
@@ -507,7 +509,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     fun unhideAlbum(bucketId: String) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { repository.setAlbumHidden(bucketId, false) }
-            _userMessage.emit("Album wieder eingeblendet")
+            _userMessage.emit(strings.albumUnhidden)
             loadMedia()
             loadAlbums()
             loadHiddenAlbums()
@@ -561,6 +563,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         } else {
             false
         }
+    }
+
+    /** An edited copy was saved: refresh the grid, the albums and the open album's contents. */
+    fun refreshAfterEdit() {
+        loadMedia()
+        loadAlbums()
+        _selectedAlbum.value?.let { loadAlbumContents(it) }
     }
 
     private fun loadAlbumContents(album: AlbumItem) {
@@ -697,7 +706,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             if (pendingIntent != null) {
                 _pendingIntentSender.emit(pendingIntent)
             } else {
-                _userMessage.emit("In Papierkorb verschoben")
+                _userMessage.emit(strings.itemTrashed)
                 loadMedia()
             }
         }
@@ -712,7 +721,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             if (pendingIntent != null) {
                 _pendingIntentSender.emit(pendingIntent)
             } else {
-                _userMessage.emit("Wiederhergestellt")
+                _userMessage.emit(strings.restored)
                 loadTrash()
                 loadMedia()
             }
@@ -730,7 +739,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             if (pendingIntent != null) {
                 _pendingIntentSender.emit(pendingIntent)
             } else {
-                _userMessage.emit("Alle Elemente wiederhergestellt")
+                _userMessage.emit(strings.allRestored)
                 loadTrash()
                 loadMedia()
             }
@@ -746,7 +755,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             if (pendingIntent != null) {
                 _pendingIntentSender.emit(pendingIntent)
             } else {
-                _userMessage.emit("Endgültig gelöscht")
+                _userMessage.emit(strings.deletedPermanently)
                 loadTrash()
                 loadMedia()
             }
@@ -764,7 +773,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             if (pendingIntent != null) {
                 _pendingIntentSender.emit(pendingIntent)
             } else {
-                _userMessage.emit("Papierkorb geleert")
+                _userMessage.emit(strings.trashEmptied)
                 loadTrash()
                 loadMedia()
             }
@@ -778,7 +787,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             when (val result = withContext(Dispatchers.IO) { repository.renameMedia(item.uri, item.displayName, newName) }) {
                 is RenameResult.Success -> {
-                    _userMessage.emit("Datei umbenannt in ${result.newName}")
+                    _userMessage.emit(strings.fileRenamed(result.newName))
                     loadMedia()
                     _selectedAlbum.value?.let { openAlbum(it) }
                 }
@@ -787,7 +796,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     _pendingIntentSender.emit(result.pendingIntent)
                 }
                 is RenameResult.Error -> {
-                    _userMessage.emit("Fehler: ${result.message}")
+                    _userMessage.emit(strings.error(result.message))
                 }
             }
         }
@@ -805,10 +814,10 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 pendingRename = null
                 when (val result = withContext(Dispatchers.IO) { repository.renameMedia(rename.uri, rename.oldName, rename.targetName) }) {
                     is RenameResult.Success -> {
-                        _userMessage.emit("Datei umbenannt in ${result.newName}")
+                        _userMessage.emit(strings.fileRenamed(result.newName))
                     }
                     is RenameResult.Error -> {
-                        _userMessage.emit("Fehler: ${result.message}")
+                        _userMessage.emit(strings.error(result.message))
                     }
                     is RenameResult.PermissionRequired -> Unit
                 }
@@ -824,7 +833,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                         loadAlbums()
                         _selectedAlbum.value?.let { loadAlbumContents(it) }
                         viewModelScope.launch {
-                            _userMessage.emit("${move.itemsToMove.size} Element(e) erfolgreich nach '${move.targetAlbum.name}' verschoben")
+                            _userMessage.emit(strings.movedItems(move.itemsToMove.size, move.targetAlbum.name))
                             kotlinx.coroutines.delay(2500)
                             dismissMoveProgress()
                         }
@@ -832,7 +841,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 )
                 clearSelection()
             } else {
-                _userMessage.emit("Aktion erfolgreich ausgeführt")
+                _userMessage.emit(strings.actionSucceeded)
                 // Covers Trash/Delete/Album-migration write requests: MediaStore commits the
                 // underlying row changes shortly after RESULT_OK, so a brief delay avoids
                 // refreshing on stale data (e.g. a just-migrated album still showing its old location).
@@ -854,11 +863,11 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { repository.createAlbumFolder(albumName, onSdCard) }
             result.onSuccess { dir ->
-                val targetLocation = if (onSdCard) "auf SD-Karte" else "im internen Speicher"
-                _userMessage.emit("Album '${dir.name}' $targetLocation erstellt")
+                val targetLocation = onSdCard
+                _userMessage.emit(strings.albumCreated(dir.name, targetLocation))
                 loadAlbums()
             }.onFailure { err ->
-                _userMessage.emit("Fehler beim Erstellen: ${err.localizedMessage}")
+                _userMessage.emit(strings.createError(err.localizedMessage))
             }
         }
     }
@@ -870,12 +879,12 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val result = repository.createSubAlbumFolder(parentAlbum, subAlbumName)
             result.onSuccess { dir ->
-                val location = if (parentAlbum.isSdCard) "auf SD-Karte" else "im internen Speicher"
-                _userMessage.emit("Unteralbum '${dir.name}' in '${parentAlbum.name}' $location erstellt")
+                val location = parentAlbum.isSdCard
+                _userMessage.emit(strings.subAlbumCreated(dir.name, parentAlbum.name, location))
                 loadAlbums()
                 loadAlbumContents(parentAlbum)
             }.onFailure { err ->
-                _userMessage.emit("Fehler beim Erstellen: ${err.localizedMessage}")
+                _userMessage.emit(strings.createError(err.localizedMessage))
             }
         }
     }
@@ -887,7 +896,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val result = repository.renameAlbum(album, newName)
             result.onSuccess {
-                _userMessage.emit("Album in '$newName' umbenannt")
+                _userMessage.emit(strings.albumRenamed(newName))
                 loadAlbums()
                 loadMedia()
                 if (_selectedAlbum.value?.bucketId == album.bucketId) {
@@ -896,7 +905,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     loadAlbumContents(updated)
                 }
             }.onFailure { err ->
-                _userMessage.emit("Fehler beim Umbenennen: ${err.localizedMessage}")
+                _userMessage.emit(strings.renameError(err.localizedMessage))
             }
         }
     }
@@ -911,7 +920,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 if (pendingIntent != null) {
                     _pendingIntentSender.emit(pendingIntent)
                 } else {
-                    _userMessage.emit("Album '${album.name}' gelöscht")
+                    _userMessage.emit(strings.albumDeleted(album.name))
                     if (_selectedAlbum.value?.bucketId == album.bucketId) {
                         closeAlbum()
                     }
@@ -920,7 +929,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     loadTrash()
                 }
             }.onFailure { err ->
-                _userMessage.emit("Fehler beim Löschen: ${err.localizedMessage}")
+                _userMessage.emit(strings.deleteError(err.localizedMessage))
             }
         }
     }
@@ -930,8 +939,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
      */
     fun migrateAlbum(album: AlbumItem, toSdCard: Boolean) {
         viewModelScope.launch {
-            val destName = if (toSdCard) "SD-Karte" else "internen Speicher"
-            _userMessage.emit("Verschiebe '${album.name}' auf $destName...")
+            val destName = toSdCard
+            _userMessage.emit(strings.migrating(album.name, destName))
 
             moveProgress.value = MoveProgress(isMoving = true, current = 0, total = album.count)
 
@@ -952,7 +961,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 if (pendingIntent != null) {
                     _pendingIntentSender.emit(pendingIntent)
                 } else {
-                    _userMessage.emit("Album '${album.name}' erfolgreich auf $destName verschoben")
+                    _userMessage.emit(strings.migrated(album.name, destName))
                     loadAlbums()
                     loadMedia()
                     if (_selectedAlbum.value?.bucketId == album.bucketId) {
@@ -960,7 +969,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
             }.onFailure { err ->
-                _userMessage.emit("Fehler bei Migration: ${err.localizedMessage}")
+                _userMessage.emit(strings.migrationError(err.localizedMessage))
             }
         }
     }

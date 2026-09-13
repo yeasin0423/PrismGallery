@@ -2,32 +2,30 @@ package com.example.amoledgallery.util
 
 import com.example.amoledgallery.model.MediaDateSection
 import com.example.amoledgallery.model.MediaItem
+import com.example.amoledgallery.ui.i18n.LanguageState
+import com.example.amoledgallery.ui.i18n.strings
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
-import java.util.Locale
 
 /**
- * Utility functions for date-based media grouping and OneUI formatting.
+ * Utility functions for date-based media grouping and section header formatting, in the app's
+ * selected UI language.
  */
 object DateUtils {
 
-    private val dayFormatWithYear = SimpleDateFormat("d. MMMM yyyy", Locale.GERMAN)
-    private val dayFormatWithoutYear = SimpleDateFormat("d. MMMM", Locale.GERMAN)
-    private val monthYearFormat = SimpleDateFormat("MMMM yyyy", Locale.GERMAN)
-
     /**
-     * Formats timestamp into German Month & Year ("August 2024").
+     * Formats timestamp into Month & Year ("August 2024").
      */
     fun formatMonthYear(timestampSeconds: Long): String {
         val millis = timestampSeconds * 1000L
-        val formatted = monthYearFormat.format(Date(millis))
+        val formatted = SimpleDateFormat("MMMM yyyy", LanguageState.locale).format(Date(millis))
         return capitalizeFirst(formatted)
     }
 
     /**
      * Groups a sorted list of media items into date sections based on grid column count.
-     * When columns <= 3 (detail view), items are grouped by day ("Heute", "12. September", etc.).
+     * When columns <= 3 (detail view), items are grouped by day ("Today", "12. September", etc.).
      * When columns >= 4 (compact overview), items are grouped by month ("September 2024").
      */
     fun groupMediaByDate(items: List<MediaItem>, columnCount: Int): List<MediaDateSection> {
@@ -73,36 +71,32 @@ object DateUtils {
     }
 
     /**
-     * Formats timestamp into an elegant OneUI section header text.
+     * Formats timestamp into a section header text.
      */
     fun formatSectionHeader(timestampSeconds: Long, columnCount: Int): String {
         val itemMillis = timestampSeconds * 1000L
         val itemCalendar = Calendar.getInstance().apply { timeInMillis = itemMillis }
         val nowCalendar = Calendar.getInstance()
+        val locale = LanguageState.locale
 
         // Zoomed out (4-5 columns): Month & Year
         if (columnCount >= 4) {
-            val formatted = monthYearFormat.format(Date(itemMillis))
-            return capitalizeFirst(formatted)
+            return capitalizeFirst(SimpleDateFormat("MMMM yyyy", locale).format(Date(itemMillis)))
         }
 
         // Zoomed in (2-3 columns): Day format
         if (isSameDay(itemCalendar, nowCalendar)) {
-            return "Heute"
+            return strings.today
         }
 
         val yesterdayCalendar = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
         if (isSameDay(itemCalendar, yesterdayCalendar)) {
-            return "Gestern"
+            return strings.yesterday
         }
 
         val isCurrentYear = itemCalendar.get(Calendar.YEAR) == nowCalendar.get(Calendar.YEAR)
-        val formatted = if (isCurrentYear) {
-            dayFormatWithoutYear.format(Date(itemMillis))
-        } else {
-            dayFormatWithYear.format(Date(itemMillis))
-        }
-        return capitalizeFirst(formatted)
+        val pattern = if (isCurrentYear) strings.dayPattern else strings.dayWithYearPattern
+        return capitalizeFirst(SimpleDateFormat(pattern, locale).format(Date(itemMillis)))
     }
 
     private fun isSameDay(cal1: Calendar, cal2: Calendar): Boolean {
@@ -111,6 +105,6 @@ object DateUtils {
     }
 
     private fun capitalizeFirst(str: String): String {
-        return str.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.GERMAN) else it.toString() }
+        return str.replaceFirstChar { if (it.isLowerCase()) it.titlecase(LanguageState.locale) else it.toString() }
     }
 }

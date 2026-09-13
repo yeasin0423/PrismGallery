@@ -1,4 +1,6 @@
 package com.example.amoledgallery.ui.screens
+import com.example.amoledgallery.ui.i18n.LanguageState
+import com.example.amoledgallery.ui.i18n.strings
 
 import android.content.Intent
 import androidx.activity.compose.BackHandler
@@ -81,8 +83,16 @@ import com.example.amoledgallery.ui.theme.DesignLanguage
 import com.example.amoledgallery.ui.theme.LocalAppTheme
 import com.example.amoledgallery.ui.theme.destructive
 import com.example.amoledgallery.ui.theme.isLight
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.Stroke
+import kotlinx.coroutines.launch
 import dev.chrisbanes.haze.HazeState
 import com.example.amoledgallery.ui.design.HazeSource
+import com.example.amoledgallery.ui.design.OverlayWindow
+import com.example.amoledgallery.ui.editor.MediaEditorScreen
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -140,6 +150,7 @@ fun MediaDetailScreen(
     var showControls by remember { mutableStateOf(true) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showInfoSheet by remember { mutableStateOf(false) }
+    var editingItem by remember { mutableStateOf<MediaItem?>(null) }
 
     val currentItem = mediaList.getOrNull(pagerState.currentPage) ?: mediaList[0]
     val isFav = isFavorite(currentItem.id)
@@ -157,6 +168,17 @@ fun MediaDetailScreen(
     val palette = theme.palette
     val language = theme.language
     val detailHaze = remember { HazeState() }
+    val scope = rememberCoroutineScope()
+
+    // Pull-down-to-close: the photo follows the finger and shrinks, the background fades; released past
+    // the threshold it closes (zooming back into the grid), otherwise it springs back.
+    val dismissShrink = when (language) {
+        DesignLanguage.IOS_LIQUID_GLASS -> 0.45f
+        DesignLanguage.GOOGLE_EXPRESSIVE -> 0.3f
+        DesignLanguage.SAMSUNG_ONEUI -> 0.25f
+        DesignLanguage.XIAOMI_HYPEROS -> 0.2f
+    }
+    val favoriteBurst = remember { androidx.compose.animation.core.Animatable(1f) }
 
     // HyperOS shows photos on white while the controls are visible, black in immersive mode.
     val lightChrome = language == DesignLanguage.XIAOMI_HYPEROS && palette.isLight
@@ -167,15 +189,22 @@ fun MediaDetailScreen(
     )
 
     val dateMillis = if (currentItem.dateModified > 0) currentItem.dateModified * 1000L else currentItem.dateAdded * 1000L
-    val dateTitle = remember(dateMillis) { SimpleDateFormat("d. MMMM yyyy", Locale.GERMAN).format(Date(dateMillis)) }
-    val timeText = remember(dateMillis) { SimpleDateFormat("HH:mm", Locale.GERMAN).format(Date(dateMillis)) + " Uhr" }
+    val dateTitle = remember(dateMillis, LanguageState.language) { SimpleDateFormat(strings.longDatePattern, LanguageState.locale).format(Date(dateMillis)) }
+    val timeText = remember(dateMillis, LanguageState.language) { strings.timeLabel(SimpleDateFormat("HH:mm", LanguageState.locale).format(Date(dateMillis))) }
 
     val actions = DetailActions(
         isFavorite = isFav,
         favoriteScale = { favScale },
+        favoriteBurst = { favoriteBurst.value },
         onBack = onBack,
         onToggleFavorite = {
             bounceTrigger = true
+            if (!isFav) {
+                scope.launch {
+                    favoriteBurst.snapTo(0f)
+                    favoriteBurst.animateTo(1f, tween(520))
+                }
+            }
             onToggleFavorite(currentItem.id)
         },
         onShare = {
@@ -184,9 +213,10 @@ fun MediaDetailScreen(
                 putExtra(Intent.EXTRA_STREAM, currentItem.uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(shareIntent, "Medium teilen"))
+            context.startActivity(Intent.createChooser(shareIntent, strings.shareItem))
         },
         onRename = { showRenameDialog = true },
+        onEdit = { editingItem = currentItem },
         onInfo = { showInfoSheet = true },
         onDelete = { onTrashItem(currentItem) }
     )
@@ -194,9 +224,28 @@ fun MediaDetailScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(backgroundColor)
+            .drawBehind {
+                val fade = (dragOffsetY.value / size.height * 2.2f).coerceIn(0f, 0.9f)
+                drawRect(backgroundColor.copy(alpha = backgroundColor.alpha * (1f - fade)))
+            }
     ) {
-        HazeSource(detailHaze, Modifier.fillMaxSize()) {
+        HazeSource(
+            detailHaze,
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val offset = dragOffsetY.value
+                    val fraction = (offset / size.height).coerceIn(0f, 1f)
+                    translationY = offset
+                    val s = 1f - fraction * dismissShrink
+                    scaleX = s
+                    scaleY = s
+                    if (language == DesignLanguage.GOOGLE_EXPRESSIVE && fraction > 0f) {
+                        shape = RoundedCornerShape((fraction * 120f).dp)
+                        clip = true
+                    }
+                }
+        ) {
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier
@@ -204,24 +253,32 @@ fun MediaDetailScreen(
                     .pointerInput(isZoomed) {
                         if (isZoomed) return@pointerInput
                         var totalDragY = 0f
-                        var actionTriggered = false
+                        var infoTriggered = false
                         detectVerticalDragGestures(
                             onDragStart = {
                                 totalDragY = 0f
-                                actionTriggered = false
+                                infoTriggered = false
                             },
                             onVerticalDrag = { change, dragAmount ->
-                                if (actionTriggered) return@detectVerticalDragGestures
                                 totalDragY += dragAmount
-                                if (totalDragY > 80f) {
+                                if (totalDragY > 0f) {
                                     change.consume()
-                                    actionTriggered = true
-                                    onBack()
-                                } else if (totalDragY < -80f) {
+                                    scope.launch { dragOffsetY.snapTo(totalDragY) }
+                                } else if (!infoTriggered && totalDragY < -80f) {
                                     change.consume()
-                                    actionTriggered = true
+                                    infoTriggered = true
                                     showInfoSheet = true
                                 }
+                            },
+                            onDragEnd = {
+                                if (dragOffsetY.value > 170f) {
+                                    onBack()
+                                } else {
+                                    scope.launch { dragOffsetY.animateTo(0f, spring(dampingRatio = 0.75f, stiffness = 500f)) }
+                                }
+                            },
+                            onDragCancel = {
+                                scope.launch { dragOffsetY.animateTo(0f, spring(dampingRatio = 0.75f, stiffness = 500f)) }
                             }
                         )
                     },
@@ -260,7 +317,9 @@ fun MediaDetailScreen(
             visible = showControls,
             enter = fadeIn(tween(160)),
             exit = fadeOut(tween(160)),
-            modifier = Modifier.align(Alignment.TopCenter)
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .graphicsLayer { alpha = 1f - (dragOffsetY.value / 220f).coerceIn(0f, 1f) }
         ) {
             DetailTopBar(language, dateTitle, timeText, lightChrome, detailHaze, actions)
         }
@@ -269,7 +328,9 @@ fun MediaDetailScreen(
             visible = showControls,
             enter = fadeIn(tween(160)),
             exit = fadeOut(tween(160)),
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .graphicsLayer { alpha = 1f - (dragOffsetY.value / 220f).coerceIn(0f, 1f) }
         ) {
             DetailBottomBar(language, lightChrome, detailHaze, actions)
         }
@@ -293,15 +354,40 @@ fun MediaDetailScreen(
             onDismiss = { showInfoSheet = false }
         )
     }
+
+    // Crop / rotate / mirror editor, shown above everything (bars included) in the overlay host.
+    editingItem?.let { item ->
+        OverlayWindow { transition ->
+            val progress by transition.animateFloat(
+                transitionSpec = { tween(220) },
+                label = "editor_enter"
+            ) { visible -> if (visible) 1f else 0f }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = progress
+                        val s = 0.94f + 0.06f * progress
+                        scaleX = s
+                        scaleY = s
+                    }
+            ) {
+                MediaEditorScreen(item = item, onClose = { editingItem = null })
+            }
+        }
+    }
 }
 
 private class DetailActions(
     val isFavorite: Boolean,
     val favoriteScale: () -> Float,
+    /** 0..1 progress of the ring that bursts around the heart when an item is favorited (1 = idle). */
+    val favoriteBurst: () -> Float,
     val onBack: () -> Unit,
     val onToggleFavorite: () -> Unit,
     val onShare: () -> Unit,
     val onRename: () -> Unit,
+    val onEdit: () -> Unit,
     val onInfo: () -> Unit,
     val onDelete: () -> Unit
 )
@@ -326,11 +412,12 @@ private fun DetailTopBar(
                 .padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ChromeIcon(Icons.AutoMirrored.Rounded.ArrowBack, "Zurück", Color.White, actions.onBack)
+            ChromeIcon(Icons.AutoMirrored.Rounded.ArrowBack, strings.back, Color.White, actions.onBack)
             Column(modifier = Modifier.weight(1f).padding(start = 4.dp)) {
                 Text(dateTitle, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 Text(timeText, color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
             }
+            ChromeIcon(Icons.Outlined.DriveFileRenameOutline, strings.rename, Color.White, actions.onRename)
         }
 
         DesignLanguage.GOOGLE_EXPRESSIVE -> Row(
@@ -340,7 +427,9 @@ private fun DetailTopBar(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TonalCircle(Icons.AutoMirrored.Rounded.ArrowBack, "Zurück", actions.onBack)
+            TonalCircle(Icons.AutoMirrored.Rounded.ArrowBack, strings.back, actions.onBack)
+            // Balances the two circles on the right so the date pill stays centred.
+            Spacer(modifier = Modifier.width(56.dp))
             Spacer(modifier = Modifier.weight(1f))
             Column(
                 modifier = Modifier
@@ -352,7 +441,9 @@ private fun DetailTopBar(
                 Text(dateTitle, color = palette.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
             Spacer(modifier = Modifier.weight(1f))
-            TonalCircle(Icons.Outlined.Info, "Details", actions.onInfo)
+            TonalCircle(Icons.Outlined.DriveFileRenameOutline, strings.rename, actions.onRename)
+            Spacer(modifier = Modifier.width(8.dp))
+            TonalCircle(Icons.Outlined.Info, strings.details, actions.onInfo)
         }
 
         DesignLanguage.IOS_LIQUID_GLASS -> Box(
@@ -361,7 +452,7 @@ private fun DetailTopBar(
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            GlassCircle(Icons.AutoMirrored.Rounded.ArrowBackIos, "Zurück", palette.onBackground, hazeState, 48.dp, Modifier.align(Alignment.CenterStart), actions.onBack)
+            GlassCircle(Icons.AutoMirrored.Rounded.ArrowBackIos, strings.back, palette.onBackground, hazeState, 48.dp, Modifier.align(Alignment.CenterStart), actions.onBack)
             Column(
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -372,6 +463,7 @@ private fun DetailTopBar(
                 Text(dateTitle, color = palette.onBackground, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Text(timeText, color = palette.onBackground.copy(alpha = 0.7f), fontSize = 12.sp)
             }
+            GlassCircle(Icons.Outlined.DriveFileRenameOutline, strings.rename, palette.onBackground, hazeState, 48.dp, Modifier.align(Alignment.CenterEnd), actions.onRename)
         }
 
         DesignLanguage.XIAOMI_HYPEROS -> {
@@ -388,11 +480,12 @@ private fun DetailTopBar(
                     .padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                ChromeIcon(Icons.AutoMirrored.Rounded.ArrowBack, "Zurück", chrome, actions.onBack)
+                ChromeIcon(Icons.AutoMirrored.Rounded.ArrowBack, strings.back, chrome, actions.onBack)
                 Column(modifier = Modifier.weight(1f).padding(start = 4.dp)) {
                     Text(dateTitle, color = chrome, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                     Text(timeText, color = chrome.copy(alpha = 0.6f), fontSize = 12.sp)
                 }
+                ChromeIcon(Icons.Outlined.DriveFileRenameOutline, strings.rename, chrome, actions.onRename)
             }
         }
     }
@@ -407,11 +500,23 @@ private fun DetailBottomBar(
 ) {
     val palette = LocalAppTheme.current.palette
     val favoriteIcon = if (actions.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder
-    val favoriteModifier = Modifier.graphicsLayer {
-        val s = actions.favoriteScale()
-        scaleX = s
-        scaleY = s
-    }
+    val burstColor = if (language == DesignLanguage.GOOGLE_EXPRESSIVE) palette.accent else Color(0xFFFF4D6D)
+    val favoriteModifier = Modifier
+        .drawBehind {
+            val b = actions.favoriteBurst()
+            if (b < 1f) {
+                drawCircle(
+                    color = burstColor.copy(alpha = (1f - b) * 0.85f),
+                    radius = size.minDimension * (0.45f + b * 0.5f),
+                    style = Stroke(width = 3.dp.toPx() * (1f - b))
+                )
+            }
+        }
+        .graphicsLayer {
+            val s = actions.favoriteScale()
+            scaleX = s
+            scaleY = s
+        }
 
     when (language) {
         DesignLanguage.SAMSUNG_ONEUI -> Row(
@@ -422,11 +527,11 @@ private fun DetailBottomBar(
                 .padding(horizontal = 12.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            ChromeIcon(favoriteIcon, "Favorit", if (actions.isFavorite) Color(0xFFFF4D6D) else Color.White, actions.onToggleFavorite, favoriteModifier)
-            ChromeIcon(Icons.Outlined.Edit, "Umbenennen", Color.White, actions.onRename)
-            ChromeIcon(Icons.Outlined.Share, "Teilen", Color.White, actions.onShare)
-            ChromeIcon(Icons.Outlined.Info, "Details", Color.White, actions.onInfo)
-            ChromeIcon(Icons.Outlined.Delete, "Löschen", Color.White, actions.onDelete)
+            ChromeIcon(favoriteIcon, strings.favorite, if (actions.isFavorite) Color(0xFFFF4D6D) else Color.White, actions.onToggleFavorite, favoriteModifier)
+            ChromeIcon(Icons.Outlined.Edit, strings.edit, Color.White, actions.onEdit)
+            ChromeIcon(Icons.Outlined.Share, strings.share, Color.White, actions.onShare)
+            ChromeIcon(Icons.Outlined.Info, strings.details, Color.White, actions.onInfo)
+            ChromeIcon(Icons.Outlined.Delete, strings.delete, Color.White, actions.onDelete)
         }
 
         DesignLanguage.GOOGLE_EXPRESSIVE -> Box(
@@ -443,10 +548,10 @@ private fun DetailBottomBar(
                     .padding(6.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                ChromeIcon(Icons.Outlined.Share, "Teilen", palette.onBackground, actions.onShare)
-                ChromeIcon(Icons.Outlined.Edit, "Umbenennen", palette.onBackground, actions.onRename)
-                ChromeIcon(favoriteIcon, "Favorit", if (actions.isFavorite) palette.accent else palette.onBackground, actions.onToggleFavorite, favoriteModifier)
-                ChromeIcon(Icons.Outlined.Delete, "Löschen", palette.onBackground, actions.onDelete)
+                ChromeIcon(Icons.Outlined.Share, strings.share, palette.onBackground, actions.onShare)
+                ChromeIcon(Icons.Outlined.Edit, strings.edit, palette.onBackground, actions.onEdit)
+                ChromeIcon(favoriteIcon, strings.favorite, if (actions.isFavorite) palette.accent else palette.onBackground, actions.onToggleFavorite, favoriteModifier)
+                ChromeIcon(Icons.Outlined.Delete, strings.delete, palette.onBackground, actions.onDelete)
             }
         }
 
@@ -458,7 +563,7 @@ private fun DetailBottomBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            GlassCircle(Icons.Outlined.Share, "Teilen", palette.onBackground, hazeState, 56.dp, Modifier, actions.onShare)
+            GlassCircle(Icons.Outlined.Share, strings.share, palette.onBackground, hazeState, 56.dp, Modifier, actions.onShare)
             Row(
                 modifier = Modifier
                     .weight(1f)
@@ -467,11 +572,11 @@ private fun DetailBottomBar(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                ChromeIcon(favoriteIcon, "Favorit", if (actions.isFavorite) Color(0xFFFF375F) else palette.onBackground, actions.onToggleFavorite, favoriteModifier)
-                ChromeIcon(Icons.Outlined.Info, "Details", palette.onBackground, actions.onInfo)
-                ChromeIcon(Icons.Outlined.Edit, "Umbenennen", palette.onBackground, actions.onRename)
+                ChromeIcon(favoriteIcon, strings.favorite, if (actions.isFavorite) Color(0xFFFF375F) else palette.onBackground, actions.onToggleFavorite, favoriteModifier)
+                ChromeIcon(Icons.Outlined.Info, strings.details, palette.onBackground, actions.onInfo)
+                ChromeIcon(Icons.Outlined.Edit, strings.edit, palette.onBackground, actions.onEdit)
             }
-            GlassCircle(Icons.Outlined.Delete, "Löschen", palette.destructive, hazeState, 56.dp, Modifier, actions.onDelete)
+            GlassCircle(Icons.Outlined.Delete, strings.delete, palette.destructive, hazeState, 56.dp, Modifier, actions.onDelete)
         }
 
         DesignLanguage.XIAOMI_HYPEROS -> {
@@ -488,11 +593,11 @@ private fun DetailBottomBar(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                LabeledChromeAction(Icons.Outlined.Share, "Senden", chrome, actions.onShare)
-                LabeledChromeAction(favoriteIcon, "Favorit", if (actions.isFavorite) Color(0xFFFF5C7A) else chrome, actions.onToggleFavorite, favoriteModifier)
-                LabeledChromeAction(Icons.Outlined.Edit, "Bearbeiten", chrome, actions.onRename)
-                LabeledChromeAction(Icons.Outlined.Info, "Details", chrome, actions.onInfo)
-                LabeledChromeAction(Icons.Outlined.Delete, "Löschen", chrome, actions.onDelete)
+                LabeledChromeAction(Icons.Outlined.Share, strings.send, chrome, actions.onShare)
+                LabeledChromeAction(favoriteIcon, strings.favorite, if (actions.isFavorite) Color(0xFFFF5C7A) else chrome, actions.onToggleFavorite, favoriteModifier)
+                LabeledChromeAction(Icons.Outlined.Edit, strings.edit, chrome, actions.onEdit)
+                LabeledChromeAction(Icons.Outlined.Info, strings.details, chrome, actions.onInfo)
+                LabeledChromeAction(Icons.Outlined.Delete, strings.delete, chrome, actions.onDelete)
             }
         }
     }
@@ -593,10 +698,10 @@ private fun RenameDialog(
     var textValue by remember { mutableStateOf(currentName) }
     ThemedDialog(
         onDismissRequest = onDismiss,
-        title = "Datei umbenennen",
+        title = strings.renameFile,
         buttons = listOf(
-            DialogButton("Abbrechen", DialogButtonStyle.Cancel, onClick = onDismiss),
-            DialogButton("Umbenennen", DialogButtonStyle.Primary, enabled = textValue.isNotBlank()) {
+            DialogButton(strings.cancel, DialogButtonStyle.Cancel, onClick = onDismiss),
+            DialogButton(strings.rename, DialogButtonStyle.Primary, enabled = textValue.isNotBlank()) {
                 if (textValue.isNotBlank()) onConfirm(textValue.trim())
             }
         )
@@ -604,7 +709,7 @@ private fun RenameDialog(
         ThemedTextField(
             value = textValue,
             onValueChange = { textValue = it },
-            placeholder = "Name",
+            placeholder = strings.name,
             autoFocus = true
         )
     }
