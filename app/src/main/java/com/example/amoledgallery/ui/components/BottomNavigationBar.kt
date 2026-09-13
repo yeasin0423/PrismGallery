@@ -19,12 +19,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,17 +41,27 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import com.example.amoledgallery.AmoledGalleryApp
 import com.example.amoledgallery.ui.theme.AmoledBlack
 import com.example.amoledgallery.ui.theme.AppTheme
@@ -70,6 +84,9 @@ import com.example.amoledgallery.ui.viewmodel.GalleryTab
  * - XIAOMI_HYPEROS: no capsule at all - just an accent color change on the icon/label plus a
  *   thin underline dash, fast linear transitions.
  */
+private val TAB_ORDER = listOf(GalleryTab.BILDER, GalleryTab.ALBEN, GalleryTab.MENU)
+private const val HOLD_TO_SLIDE_TIMEOUT_MS = 350L
+
 @Composable
 fun BottomNavigationBar(
     currentTab: GalleryTab,
@@ -78,34 +95,101 @@ fun BottomNavigationBar(
 ) {
     val theme = LocalAppTheme.current
     val isLiquidGlass = theme.language == DesignLanguage.IOS_LIQUID_GLASS
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
 
-    val items = @Composable {
-        Row(
+    // Hold on any tab, then drag without lifting to slide between Bilder/Alben/Menü - the
+    // circle below follows the finger and releasing over a tab opens it. A plain tap still goes
+    // through each NavItem's own clickable untouched; this only activates past the hold timeout.
+    var rowWidthPx by remember { mutableFloatStateOf(0f) }
+    var slideIndicatorX by remember { mutableStateOf<Float?>(null) }
+
+    fun indexForX(x: Float): Int {
+        if (rowWidthPx <= 0f) return 0
+        val zoneWidth = rowWidthPx / TAB_ORDER.size
+        return (x / zoneWidth).toInt().coerceIn(0, TAB_ORDER.size - 1)
+    }
+
+    val holdSlideModifier = Modifier
+        .onGloballyPositioned { rowWidthPx = it.size.width.toFloat() }
+        .pointerInput(Unit) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                val downTime = System.currentTimeMillis()
+                var slideActive = false
+                var lastX = down.position.x
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val change = event.changes.firstOrNull { it.id == down.id }
+                    if (change == null || !change.pressed) {
+                        if (slideActive) {
+                            onTabSelected(TAB_ORDER[indexForX(lastX)])
+                        }
+                        slideIndicatorX = null
+                        break
+                    }
+                    lastX = change.position.x
+                    if (!slideActive && System.currentTimeMillis() - downTime >= HOLD_TO_SLIDE_TIMEOUT_MS) {
+                        slideActive = true
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    }
+                    if (slideActive) {
+                        slideIndicatorX = lastX
+                        change.consume()
+                    }
+                }
+            }
+        }
+
+    // Row and the follow-finger circle share one padded Box so slideIndicatorX (measured in the
+    // Row's pointerInput, which sits inside this same padding) lines up with the circle's offset.
+    val navContent = @Composable {
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(60.dp)
-                .padding(horizontal = 24.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceEvenly
+                .padding(horizontal = 24.dp)
+                .then(holdSlideModifier)
         ) {
-            NavItem(
-                title = "Bilder",
-                icon = Icons.Rounded.Image,
-                isSelected = currentTab == GalleryTab.BILDER,
-                onClick = { onTabSelected(GalleryTab.BILDER) }
-            )
-            NavItem(
-                title = "Alben",
-                icon = Icons.Rounded.Collections,
-                isSelected = currentTab == GalleryTab.ALBEN,
-                onClick = { onTabSelected(GalleryTab.ALBEN) }
-            )
-            NavItem(
-                title = "Menü",
-                icon = Icons.Rounded.Menu,
-                isSelected = currentTab == GalleryTab.MENU,
-                onClick = { onTabSelected(GalleryTab.MENU) }
-            )
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                NavItem(
+                    title = "Bilder",
+                    icon = Icons.Rounded.Image,
+                    isSelected = currentTab == GalleryTab.BILDER,
+                    onClick = { onTabSelected(GalleryTab.BILDER) }
+                )
+                NavItem(
+                    title = "Alben",
+                    icon = Icons.Rounded.Collections,
+                    isSelected = currentTab == GalleryTab.ALBEN,
+                    onClick = { onTabSelected(GalleryTab.ALBEN) }
+                )
+                NavItem(
+                    title = "Menü",
+                    icon = Icons.Rounded.Menu,
+                    isSelected = currentTab == GalleryTab.MENU,
+                    onClick = { onTabSelected(GalleryTab.MENU) }
+                )
+            }
+
+            slideIndicatorX?.let { x ->
+                val circleSizeDp = 56.dp
+                val circleSizePx = with(density) { circleSizeDp.toPx() }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset {
+                            IntOffset(x = (x - circleSizePx / 2f).roundToInt(), y = 0)
+                        }
+                        .size(circleSizeDp)
+                        .clip(CircleShape)
+                        .background(Color.Gray.copy(alpha = 0.38f))
+                )
+            }
         }
     }
 
@@ -124,7 +208,7 @@ fun BottomNavigationBar(
                     .background(Color(0xFF1C1C1E).copy(alpha = 0.78f))
                     .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(32.dp))
             ) {
-                items()
+                navContent()
             }
         }
     } else {
@@ -138,7 +222,7 @@ fun BottomNavigationBar(
                 thickness = 0.5.dp,
                 color = Color(0xFF161616)
             )
-            items()
+            navContent()
         }
     }
 }
