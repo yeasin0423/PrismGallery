@@ -219,7 +219,16 @@ class MediaRepository(private val context: Context) {
      */
     suspend fun getAlbums(includeHidden: Boolean = false): List<AlbumItem> = withContext(Dispatchers.IO) {
         val allMedia = getAllMedia(includeHidden = includeHidden)
-        if (allMedia.isEmpty()) return@withContext emptyList()
+        groupIntoAlbums(allMedia, includeHidden)
+    }
+
+    /**
+     * Groups an already-fetched media list into [AlbumItem]s without issuing any additional
+     * MediaStore queries. Callers that already hold a fresh [getAllMedia] snapshot should use
+     * this directly instead of [getAlbums] to avoid redundant ContentResolver round-trips.
+     */
+    fun groupIntoAlbums(allMedia: List<MediaItem>, includeHidden: Boolean = false): List<AlbumItem> {
+        if (allMedia.isEmpty()) return emptyList()
 
         val hiddenBuckets = if (!includeHidden) getHiddenBucketIds() else emptySet()
 
@@ -265,7 +274,7 @@ class MediaRepository(private val context: Context) {
         }
 
         // Sort: Camera / DCIM / Screenshots first, then alphabetically
-        albumsWithSubCount.sortedWith(
+        return albumsWithSubCount.sortedWith(
             compareBy<AlbumItem> {
                 val lower = it.name.lowercase()
                 when {
@@ -423,7 +432,16 @@ class MediaRepository(private val context: Context) {
                         }
                     }
 
-                    val collection = if (item.isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                    // Resolve the actual target volume so cross-volume copies land on the SD card
+                    // itself instead of silently falling back to the primary (internal) volume,
+                    // which previously created a duplicate same-named album on internal storage.
+                    val targetVolumeName = if (targetAlbum.isSdCard) getSdCardVolumeName() else MediaStore.VOLUME_EXTERNAL_PRIMARY
+                    val collection = when {
+                        targetVolumeName != null && item.isVideo -> MediaStore.Video.Media.getContentUri(targetVolumeName)
+                        targetVolumeName != null -> MediaStore.Images.Media.getContentUri(targetVolumeName)
+                        item.isVideo -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                        else -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                    }
                     val destUri = contentResolver.insert(collection, values)
 
                     if (destUri != null) {
@@ -688,6 +706,18 @@ class MediaRepository(private val context: Context) {
         return getSdCardPicturesDirectory() != null
     }
 
+    /**
+     * Resolves the MediaStore volume name of the mounted removable SD card, for use with
+     * [MediaStore.Images.Media.getContentUri]/[MediaStore.Video.Media.getContentUri] so inserts
+     * physically land on the SD card instead of silently defaulting to the primary volume.
+     */
+    private fun getSdCardVolumeName(): String? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        val storageManager = context.getSystemService(Context.STORAGE_SERVICE) as? StorageManager
+        val sdVolume = storageManager?.storageVolumes?.firstOrNull { it.isRemovable && it.state == Environment.MEDIA_MOUNTED }
+        return sdVolume?.mediaStoreVolumeName
+    }
+
     private fun getSdCardPicturesDirectory(): File? {
         val storageManager = context.getSystemService(Context.STORAGE_SERVICE) as? StorageManager
         if (storageManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -811,7 +841,11 @@ class MediaRepository(private val context: Context) {
      * Physically migrates all files of an album between Internal Storage and MicroSD card.
      * Updates the MediaStore index and invalidates thumbnail caches.
      */
-    suspend fun migrateAlbumStorage(album: AlbumItem, toSdCard: Boolean): Result<PendingIntent?> = withContext(Dispatchers.IO) {
+    suspend fun migrateAlbumStorage(
+        album: AlbumItem,
+        toSdCard: Boolean,
+        onProgress: ((current: Int, total: Int) -> Unit)? = null
+    ): Result<PendingIntent?> = withContext(Dispatchers.IO) {
         try {
             val targetDir: File = if (toSdCard) {
                 val sdDir = getSdCardPicturesDirectory()
@@ -829,8 +863,9 @@ class MediaRepository(private val context: Context) {
             val items = getAllMedia(album.bucketId, includeHidden = true)
             val thumbnailManager = ThumbnailManager.getInstance(context)
             val securityExceptionUris = mutableListOf<Uri>()
+            val total = items.size
 
-            for (item in items) {
+            for ((index, item) in items.withIndex()) {
                 val fileName = item.displayName.ifBlank { "media_${item.id}.jpg" }
                 var destFile = File(targetDir, fileName)
                 if (destFile.exists()) {
@@ -864,6 +899,7 @@ class MediaRepository(private val context: Context) {
 
                     thumbnailManager.getThumbnailFile(item).delete()
                 }
+                onProgress?.invoke(index + 1, total)
             }
 
             // Remove old folder if empty

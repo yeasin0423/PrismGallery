@@ -43,6 +43,7 @@ import coil3.request.ImageRequest
 import coil3.request.bitmapConfig
 import coil3.request.crossfade
 import coil3.size.Precision
+import com.example.amoledgallery.data.ThumbnailManager
 import com.example.amoledgallery.model.MediaItem
 import com.example.amoledgallery.ui.theme.AmoledBlack
 import com.example.amoledgallery.ui.theme.PureWhite
@@ -71,9 +72,10 @@ fun MediaGridItem(
 
     // Zero Main-Thread I/O: item.thumbnail is resolved directly by Coil's MediaThumbnailFetcher on Dispatchers.IO
     val imageRequest = remember(item.id, item.dateModified, context) {
+        val px = ThumbnailManager.getInstance(context).thumbnailPx
         ImageRequest.Builder(context)
             .data(item.thumbnail)
-            .size(coil3.size.Size(160, 160))
+            .size(coil3.size.Size(px, px))
             .precision(Precision.EXACT)
             .bitmapConfig(Bitmap.Config.RGB_565)
             .crossfade(false)

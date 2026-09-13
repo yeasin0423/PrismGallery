@@ -2,7 +2,6 @@ package com.example.amoledgallery.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -69,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.amoledgallery.R
 import com.example.amoledgallery.data.ThumbnailManager
+import com.example.amoledgallery.ui.qualityTween
 import com.example.amoledgallery.model.MediaDateSection
 import com.example.amoledgallery.model.MediaItem
 import com.example.amoledgallery.ui.components.DateHeader
@@ -135,7 +135,7 @@ fun GalleryScreen(
     onClearSelection: () -> Unit = {},
     onMoveClick: () -> Unit = {},
     onDeleteSelected: () -> Unit = {},
-    moveProgress: com.example.amoledgallery.ui.viewmodel.GalleryViewModel.MoveProgress? = null
+    graphicsQuality: com.example.amoledgallery.PerformanceProfile = com.example.amoledgallery.PerformanceProfile.MEDIUM
 ) {
     // Intercept back button if in selection mode and detail overlay is not open
     if (isSelectionMode && selectedDetailIndex == null) {
@@ -512,8 +512,8 @@ fun GalleryScreen(
         // Preserves LazyGridState scroll position down to the exact pixel when dismissed!
         AnimatedVisibility(
             visible = selectedDetailIndex != null,
-            enter = fadeIn(animationSpec = tween(200)),
-            exit = fadeOut(animationSpec = tween(200))
+            enter = fadeIn(animationSpec = qualityTween(graphicsQuality, 200)),
+            exit = fadeOut(animationSpec = qualityTween(graphicsQuality, 200))
         ) {
             selectedDetailIndex?.let { index ->
                 MediaDetailScreen(
@@ -526,25 +526,6 @@ fun GalleryScreen(
                     onToggleFavorite = onToggleFavorite
                 )
             }
-        }
-        
-        // Floating OneUI In-App Progress Dialog for Media Move Operations
-        if (moveProgress?.isMoving == true) {
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = { },
-                title = { Text("Verschiebe Medien...", color = androidx.compose.ui.graphics.Color.White) },
-                text = {
-                    Column {
-                        androidx.compose.material3.LinearProgressIndicator(
-                            progress = { if (moveProgress.total > 0) moveProgress.current.toFloat() / moveProgress.total.toFloat() else 0f },
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                        )
-                        Text("${moveProgress.current} von ${moveProgress.total}", color = androidx.compose.ui.graphics.Color.LightGray)
-                    }
-                },
-                confirmButton = {},
-                containerColor = androidx.compose.ui.graphics.Color(0xFF1E1E1E)
-            )
         }
     }
 }

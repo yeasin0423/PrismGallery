@@ -62,6 +62,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.amoledgallery.ui.qualityTween
 import com.example.amoledgallery.ui.components.BottomNavigationBar
 import com.example.amoledgallery.ui.components.MoveToAlbumBottomSheet
 import com.example.amoledgallery.ui.screens.AlbumsScreen
@@ -110,6 +111,10 @@ class MainActivity : ComponentActivity() {
 fun GalleryApp(viewModel: GalleryViewModel) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val appVersionName = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
+            .getOrNull() ?: ""
+    }
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
@@ -132,7 +137,7 @@ fun GalleryApp(viewModel: GalleryViewModel) {
     val selectedIds by viewModel.selectedIds.collectAsStateWithLifecycle()
     val isMoveSheetOpen by viewModel.isMoveSheetOpen.collectAsStateWithLifecycle()
     val hiddenAlbums by viewModel.hiddenAlbums.collectAsStateWithLifecycle()
-    val isAggressivePerformance by viewModel.isAggressivePerformance.collectAsStateWithLifecycle()
+    val graphicsQuality by viewModel.graphicsQuality.collectAsStateWithLifecycle()
     val moveProgress by viewModel.moveProgress.collectAsStateWithLifecycle()
     val isMoveProgressVisible by viewModel.isMoveProgressVisible.collectAsStateWithLifecycle()
 
@@ -265,8 +270,10 @@ fun GalleryApp(viewModel: GalleryViewModel) {
                 bottomBar = {
                     AnimatedVisibility(
                         visible = !isFullscreenViewer,
-                        enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                        exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+                        enter = slideInVertically(animationSpec = qualityTween(graphicsQuality, 250), initialOffsetY = { it }) +
+                            fadeIn(animationSpec = qualityTween(graphicsQuality, 200)),
+                        exit = slideOutVertically(animationSpec = qualityTween(graphicsQuality, 250), targetOffsetY = { it }) +
+                            fadeOut(animationSpec = qualityTween(graphicsQuality, 200))
                     ) {
                         BottomNavigationBar(
                             currentTab = selectedTab,
@@ -283,7 +290,10 @@ fun GalleryApp(viewModel: GalleryViewModel) {
                 ) {
                     AnimatedContent(
                         targetState = selectedTab,
-                        transitionSpec = { fadeIn() togetherWith fadeOut() },
+                        transitionSpec = {
+                            fadeIn(animationSpec = qualityTween(graphicsQuality, 200)) togetherWith
+                                fadeOut(animationSpec = qualityTween(graphicsQuality, 200))
+                        },
                         label = "tab_transition"
                     ) { tab ->
                         when (tab) {
@@ -320,7 +330,7 @@ fun GalleryApp(viewModel: GalleryViewModel) {
                                     onClearSelection = { viewModel.clearSelection() },
                                     onMoveClick = { viewModel.openMoveSheet() },
                                     onDeleteSelected = { viewModel.trashSelectedMedia() },
-                                    moveProgress = moveProgress
+                                    graphicsQuality = graphicsQuality
                                 )
                             }
 
@@ -328,6 +338,7 @@ fun GalleryApp(viewModel: GalleryViewModel) {
                                 AlbumsScreen(
                                     albums = if (breadcrumbStack.isNotEmpty()) currentSubAlbums else rootAlbums,
                                     isSdCardAvailable = viewModel.isSdCardAvailable,
+                                    graphicsQuality = graphicsQuality,
                                     onAlbumClick = { album -> viewModel.openAlbum(album) },
                                     onCreateAlbum = { name, onSdCard ->
                                         viewModel.createAlbum(name, onSdCard)
@@ -362,8 +373,9 @@ fun GalleryApp(viewModel: GalleryViewModel) {
                                     favoriteCount = favoriteMedia.size,
                                     trashedCount = trashedMedia.size,
                                     isSdCardAvailable = viewModel.isSdCardAvailable,
-                                    isAggressivePerformance = isAggressivePerformance,
-                                    onToggleAggressivePerformance = { viewModel.setAggressivePerformance(it) },
+                                    appVersionName = appVersionName,
+                                    graphicsQuality = graphicsQuality,
+                                    onSetGraphicsQuality = { viewModel.setGraphicsQuality(it) },
                                     onOpenFavorites = { isFavoritesOpen = true },
                                     onOpenTrash = { viewModel.openTrash() }
                                 )
@@ -396,6 +408,26 @@ fun GalleryApp(viewModel: GalleryViewModel) {
             }
 
         }
+    }
+
+    // Floating OneUI In-App Progress Dialog for Media Move / Album-Migration Operations.
+    // Rendered outside the tab-dependent content so it stays visible regardless of the active tab.
+    if (moveProgress.isMoving) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Verschiebe Medien...", color = PureWhite) },
+            text = {
+                Column {
+                    LinearProgressIndicator(
+                        progress = { if (moveProgress.total > 0) moveProgress.current.toFloat() / moveProgress.total.toFloat() else 0f },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                    )
+                    Text("${moveProgress.current} von ${moveProgress.total}", color = TextMuted)
+                }
+            },
+            confirmButton = {},
+            containerColor = SurfaceVariantDark
+        )
     }
 }
 

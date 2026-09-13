@@ -1,7 +1,6 @@
 package com.example.amoledgallery.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -85,6 +84,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.example.amoledgallery.model.AlbumItem
 import com.example.amoledgallery.model.MediaItem
 import com.example.amoledgallery.ui.components.MediaGridItem
+import com.example.amoledgallery.ui.qualityTween
 import com.example.amoledgallery.ui.theme.AmoledBlack
 import com.example.amoledgallery.ui.theme.OneUiCardBorder
 import com.example.amoledgallery.ui.theme.PureWhite
@@ -131,7 +131,8 @@ fun AlbumsScreen(
     // Album management actions
     onRenameAlbum: (AlbumItem, String) -> Unit = { _, _ -> },
     onDeleteAlbum: (AlbumItem) -> Unit = {},
-    onMigrateAlbum: (AlbumItem, Boolean) -> Unit = { _, _ -> }
+    onMigrateAlbum: (AlbumItem, Boolean) -> Unit = { _, _ -> },
+    graphicsQuality: com.example.amoledgallery.PerformanceProfile = com.example.amoledgallery.PerformanceProfile.MEDIUM
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
     var showCreateSubDialog by remember { mutableStateOf(false) }
@@ -433,8 +434,8 @@ fun AlbumsScreen(
         // Preserves scroll position of album media when returning
         AnimatedVisibility(
             visible = selectedDetailIndex != null,
-            enter = fadeIn(animationSpec = tween(200)),
-            exit = fadeOut(animationSpec = tween(200))
+            enter = fadeIn(animationSpec = qualityTween(graphicsQuality, 200)),
+            exit = fadeOut(animationSpec = qualityTween(graphicsQuality, 200))
         ) {
             selectedDetailIndex?.let { index ->
                 MediaDetailScreen(

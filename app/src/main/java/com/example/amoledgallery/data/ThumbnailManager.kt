@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.util.Size
+import com.example.amoledgallery.PerformanceProfile
 import com.example.amoledgallery.model.MediaItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,8 +40,28 @@ class ThumbnailManager private constructor(private val context: Context) {
     private val preindexScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(2))
     private var preindexJob: Job? = null
 
+    /**
+     * Current manual graphics quality tier. Drives thumbnail pixel size and JPEG quality for
+     * newly-written cache entries; applies instantly since it only affects future writes.
+     */
     @Volatile
-    var isAggressivePerformanceMode: Boolean = false
+    var quality: PerformanceProfile = PerformanceProfile.MEDIUM
+
+    val thumbnailPx: Int
+        get() = when (quality) {
+            PerformanceProfile.LOW -> 120
+            PerformanceProfile.MEDIUM -> 160
+            PerformanceProfile.HIGH -> 160
+            PerformanceProfile.ULTRA -> 200
+        }
+
+    private val jpegQuality: Int
+        get() = when (quality) {
+            PerformanceProfile.LOW -> 60
+            PerformanceProfile.MEDIUM -> 70
+            PerformanceProfile.HIGH -> 80
+            PerformanceProfile.ULTRA -> 85
+        }
 
     @Volatile
     private var isPreindexingPaused: Boolean = false
@@ -101,7 +122,7 @@ class ThumbnailManager private constructor(private val context: Context) {
             return@withContext targetFile
         }
 
-        val bitmap = loadThumbnailBitmap(uri, isVideo, 160, 160) ?: return@withContext null
+        val bitmap = loadThumbnailBitmap(uri, isVideo, thumbnailPx, thumbnailPx) ?: return@withContext null
         if (saveBitmapToCache(bitmap, targetFile)) {
             cleanupOutdatedThumbnails(id, targetFile.name)
             targetFile
@@ -117,8 +138,8 @@ class ThumbnailManager private constructor(private val context: Context) {
     fun loadThumbnailBitmap(
         uri: Uri,
         isVideo: Boolean,
-        targetWidth: Int = 160,
-        targetHeight: Int = 160
+        targetWidth: Int = thumbnailPx,
+        targetHeight: Int = thumbnailPx
     ): Bitmap? {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
@@ -204,9 +225,8 @@ class ThumbnailManager private constructor(private val context: Context) {
                 bitmap
             }
 
-            val quality = if (isAggressivePerformanceMode) 65 else 75
             FileOutputStream(tempFile).use { out ->
-                compressBitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
+                compressBitmap.compress(Bitmap.CompressFormat.JPEG, jpegQuality, out)
                 out.flush()
             }
 

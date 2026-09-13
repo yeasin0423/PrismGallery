@@ -22,10 +22,8 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.SdCard
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -46,6 +44,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.amoledgallery.PerformanceProfile
 import com.example.amoledgallery.ui.components.OneUiHeader
 import com.example.amoledgallery.ui.theme.AmoledBlack
 import com.example.amoledgallery.ui.theme.OneUiBlue
@@ -55,23 +54,20 @@ import com.example.amoledgallery.ui.theme.SurfaceDark
 import com.example.amoledgallery.ui.theme.SurfaceVariantDark
 import com.example.amoledgallery.ui.theme.TextMuted
 
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-
 /**
  * Clean Samsung OneUI style "Menü" tab in pure AMOLED black:
  * - Favorites shortcut showing favorite count
  * - Trash shortcut showing trashed media count
- * - Settings & system diagnostic info modal
- * - Aggressive Performance Mode switch for older SoCs (Exynos 9810)
+ * - Settings & info modal with manual Graphics Quality picker (Low/Medium/High/Ultra)
  */
 @Composable
 fun MenuScreen(
     favoriteCount: Int,
     trashedCount: Int,
     isSdCardAvailable: Boolean,
-    isAggressivePerformance: Boolean = true,
-    onToggleAggressivePerformance: (Boolean) -> Unit = {},
+    appVersionName: String = "",
+    graphicsQuality: PerformanceProfile = PerformanceProfile.MEDIUM,
+    onSetGraphicsQuality: (PerformanceProfile) -> Unit = {},
     onOpenFavorites: () -> Unit,
     onOpenTrash: () -> Unit,
     modifier: Modifier = Modifier
@@ -172,8 +168,9 @@ fun MenuScreen(
     if (showSettingsDialog) {
         SettingsInfoDialog(
             isSdCardAvailable = isSdCardAvailable,
-            isAggressivePerformance = isAggressivePerformance,
-            onToggleAggressivePerformance = onToggleAggressivePerformance,
+            appVersionName = appVersionName,
+            graphicsQuality = graphicsQuality,
+            onSetGraphicsQuality = onSetGraphicsQuality,
             onDismiss = { showSettingsDialog = false }
         )
     }
@@ -239,8 +236,9 @@ private fun MenuRowItem(
 @Composable
 private fun SettingsInfoDialog(
     isSdCardAvailable: Boolean,
-    isAggressivePerformance: Boolean,
-    onToggleAggressivePerformance: (Boolean) -> Unit,
+    appVersionName: String,
+    graphicsQuality: PerformanceProfile,
+    onSetGraphicsQuality: (PerformanceProfile) -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -268,14 +266,9 @@ private fun SettingsInfoDialog(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 InfoBadgeRow(
-                    icon = Icons.Rounded.Palette,
-                    label = "Display-Profil",
-                    value = "100% Pure AMOLED (#000000)"
-                )
-                InfoBadgeRow(
-                    icon = Icons.Rounded.Speed,
-                    label = "Scroll-Engine",
-                    value = if (isAggressivePerformance) "GPU Hardware Bitmaps (160px WebP 65%)" else "GPU Hardware Bitmaps (160px WebP 70%)"
+                    icon = Icons.Rounded.Info,
+                    label = "App-Version",
+                    value = appVersionName.ifBlank { "Unbekannt" }
                 )
                 InfoBadgeRow(
                     icon = Icons.Rounded.SdCard,
@@ -289,37 +282,24 @@ private fun SettingsInfoDialog(
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
 
-                // Aggressive Performance Mode Switch (Exynos 9810 Boost)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Aggressiver Performance-Modus",
-                            color = PureWhite,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Begrenzt Coil auf 2 CPU-Worker & pausiert Indexer beim Scrollen (ideal für Exynos 9810).",
-                            color = TextMuted,
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Switch(
-                        checked = isAggressivePerformance,
-                        onCheckedChange = onToggleAggressivePerformance,
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = PureWhite,
-                            checkedTrackColor = OneUiBlue,
-                            uncheckedThumbColor = TextMuted,
-                            uncheckedTrackColor = SurfaceDark
-                        )
+                Column {
+                    Text(
+                        text = "Grafikqualität",
+                        color = PureWhite,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    GraphicsQualitySelector(
+                        selected = graphicsQuality,
+                        onSelect = onSetGraphicsQuality
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = graphicsQualityDescription(graphicsQuality),
+                        color = TextMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
                     )
                 }
             }
@@ -332,6 +312,58 @@ private fun SettingsInfoDialog(
         containerColor = SurfaceVariantDark,
         shape = RoundedCornerShape(24.dp)
     )
+}
+
+/**
+ * Game-style 4-tier segmented picker for the manual graphics quality setting.
+ */
+@Composable
+private fun GraphicsQualitySelector(
+    selected: PerformanceProfile,
+    onSelect: (PerformanceProfile) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(SurfaceDark)
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        PerformanceProfile.entries.forEach { tier ->
+            val isSelected = tier == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(if (isSelected) OneUiBlue else Color.Transparent)
+                    .clickable { onSelect(tier) }
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = graphicsQualityLabel(tier),
+                    color = if (isSelected) PureWhite else TextMuted,
+                    fontSize = 13.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+private fun graphicsQualityLabel(tier: PerformanceProfile): String = when (tier) {
+    PerformanceProfile.LOW -> "Low"
+    PerformanceProfile.MEDIUM -> "Medium"
+    PerformanceProfile.HIGH -> "High"
+    PerformanceProfile.ULTRA -> "Ultra"
+}
+
+private fun graphicsQualityDescription(tier: PerformanceProfile): String = when (tier) {
+    PerformanceProfile.LOW -> "Nur das Nötigste: keine Animationen, kleinere Vorschaubilder, geringster Speicher- & Akkuverbrauch. Für ältere oder langsame Geräte."
+    PerformanceProfile.MEDIUM -> "Ausgewogen: reduzierte Animationen, gute Bildqualität. Empfohlen für die meisten Mittelklasse-Geräte."
+    PerformanceProfile.HIGH -> "Flüssige Animationen und Überblendungen, hohe Bildqualität. Für aktuelle Geräte."
+    PerformanceProfile.ULTRA -> "Alle Animationseffekte, höchste Bildqualität und größte Caches – für sehr starke Geräte."
 }
 
 @Composable

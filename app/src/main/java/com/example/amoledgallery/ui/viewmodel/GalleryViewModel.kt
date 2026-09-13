@@ -136,7 +136,12 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     // Grid column count: 2 to 5 (OneUI style pinch-to-zoom, fixed 5 columns as default)
     private val _columnCount = MutableStateFlow(
-        if (com.example.amoledgallery.AmoledGalleryApp.performanceProfile == com.example.amoledgallery.PerformanceProfile.LOW) 4 else 5
+        when (com.example.amoledgallery.AmoledGalleryApp.performanceProfile) {
+            com.example.amoledgallery.PerformanceProfile.LOW,
+            com.example.amoledgallery.PerformanceProfile.MEDIUM -> 4
+            com.example.amoledgallery.PerformanceProfile.HIGH,
+            com.example.amoledgallery.PerformanceProfile.ULTRA -> 5
+        }
     )
     val columnCount: StateFlow<Int> = _columnCount.asStateFlow()
 
@@ -189,22 +194,19 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         _isMoveProgressVisible.value = false
     }
 
-    // Aggressive Performance Mode state
-    private val perfPrefs = application.getSharedPreferences("amoled_gallery_perf", Context.MODE_PRIVATE)
-    private val _isAggressivePerformance = MutableStateFlow(
-        perfPrefs.getBoolean("pref_aggressive_performance", false)
-    )
-    val isAggressivePerformance: StateFlow<Boolean> = _isAggressivePerformance.asStateFlow()
+    // Manual Graphics Quality tier (Low/Medium/High/Ultra), like a game's video settings
+    private val _graphicsQuality = MutableStateFlow(com.example.amoledgallery.AmoledGalleryApp.performanceProfile)
+    val graphicsQuality: StateFlow<com.example.amoledgallery.PerformanceProfile> = _graphicsQuality.asStateFlow()
 
-    fun setAggressivePerformance(enabled: Boolean) {
-        _isAggressivePerformance.value = enabled
-        perfPrefs.edit().putBoolean("pref_aggressive_performance", enabled).apply()
-        ThumbnailManager.getInstance(getApplication()).isAggressivePerformanceMode = enabled
+    fun setGraphicsQuality(quality: com.example.amoledgallery.PerformanceProfile) {
+        _graphicsQuality.value = quality
+        ThumbnailManager.getInstance(getApplication()).quality = quality
+        com.example.amoledgallery.AmoledGalleryApp.applyGraphicsQuality(getApplication(), quality)
     }
 
     init {
         loadFavorites()
-        ThumbnailManager.getInstance(application).isAggressivePerformanceMode = _isAggressivePerformance.value
+        ThumbnailManager.getInstance(application).quality = _graphicsQuality.value
 
         // Listen for MediaStore Scoped Storage write permission requests and progress from MoveMediaService
         viewModelScope.launch {
@@ -461,13 +463,17 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 repository.moveMediaItems(itemsToMove, targetAlbum) { current, totalCount ->
                     val now = System.currentTimeMillis()
                     if (current == totalCount || now - lastUpdate >= 200 || current % maxOf(1, totalCount / 20) == 0) {
+                        // Local moveProgress only - deliberately NOT mirrored into the global
+                        // MoveProgressHolder (that singleton is for the actual MoveMediaService
+                        // foreground-service path only). Writing to both created a race where the
+                        // init{} collector below could clobber the final isMoving=false with a
+                        // stale isRunning=true from a delayed emission, freezing the progress dialog.
                         moveProgress.value = moveProgress.value.copy(current = current, total = totalCount)
-                        MoveMediaService.updateProgress(current, totalCount)
                         lastUpdate = now
                     }
                 }
             }
-            
+
             moveProgress.value = moveProgress.value.copy(isMoving = false)
 
             loadMedia()
@@ -600,12 +606,34 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     fun loadMedia() {
         viewModelScope.launch {
             _uiState.value = GalleryUiState.Loading
-            val media = withContext(Dispatchers.IO) { repository.getAllMedia() }
-            _rawMedia.value = media
+            withContext(Dispatchers.IO) {
+                // Single MediaStore scan (images + videos) reused to derive the main feed,
+                // the visible albums and the hidden albums - avoids 3-4x redundant re-queries.
+                val allMediaIncludingHidden = repository.getAllMedia(includeHidden = true)
+                val hiddenBuckets = repository.getHiddenBucketIds()
+                val visibleMedia = if (hiddenBuckets.isEmpty()) {
+                    allMediaIncludingHidden
+                } else {
+                    allMediaIncludingHidden.filter { it.bucketId !in hiddenBuckets }
+                }
+
+                val visibleAlbums = repository.groupIntoAlbums(visibleMedia, includeHidden = false)
+                val hiddenAlbums = if (hiddenBuckets.isEmpty()) {
+                    emptyList()
+                } else {
+                    repository.groupIntoAlbums(allMediaIncludingHidden, includeHidden = true)
+                        .filter { it.bucketId in hiddenBuckets }
+                }
+
+                _rawMedia.value = visibleMedia
+                _albumsState.value = visibleAlbums
+                _hiddenAlbums.value = hiddenAlbums
+            }
             applyFilter()
-            loadAlbums()
+            _selectedAlbum.value?.let { active ->
+                _currentSubAlbums.value = withContext(Dispatchers.IO) { repository.getSubAlbums(active, _albumsState.value) }
+            }
             loadTrash()
-            loadHiddenAlbums()
             loadFavorites()
         }
     }
@@ -783,6 +811,10 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 clearSelection()
             } else {
                 _userMessage.emit("Aktion erfolgreich ausgeführt")
+                // Covers Trash/Delete/Album-migration write requests: MediaStore commits the
+                // underlying row changes shortly after RESULT_OK, so a brief delay avoids
+                // refreshing on stale data (e.g. a just-migrated album still showing its old location).
+                kotlinx.coroutines.delay(300)
             }
 
             clearSelection()
@@ -878,7 +910,22 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val destName = if (toSdCard) "SD-Karte" else "internen Speicher"
             _userMessage.emit("Verschiebe '${album.name}' auf $destName...")
-            val result = repository.migrateAlbumStorage(album, toSdCard)
+
+            moveProgress.value = MoveProgress(isMoving = true, current = 0, total = album.count)
+
+            var lastUpdate = System.currentTimeMillis()
+            val result = withContext(Dispatchers.IO) {
+                repository.migrateAlbumStorage(album, toSdCard) { current, totalCount ->
+                    val now = System.currentTimeMillis()
+                    if (current == totalCount || now - lastUpdate >= 200 || current % maxOf(1, totalCount / 20) == 0) {
+                        moveProgress.value = moveProgress.value.copy(current = current, total = totalCount)
+                        lastUpdate = now
+                    }
+                }
+            }
+
+            moveProgress.value = moveProgress.value.copy(isMoving = false)
+
             result.onSuccess { pendingIntent ->
                 if (pendingIntent != null) {
                     _pendingIntentSender.emit(pendingIntent)
