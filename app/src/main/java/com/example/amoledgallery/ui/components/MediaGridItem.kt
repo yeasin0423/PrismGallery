@@ -38,8 +38,9 @@ import coil3.size.Precision
 import com.example.amoledgallery.AmoledGalleryApp
 import com.example.amoledgallery.data.ThumbnailManager
 import com.example.amoledgallery.model.MediaItem
-import com.example.amoledgallery.ui.theme.OneUiBlue
+import com.example.amoledgallery.ui.theme.LocalAppTheme
 import com.example.amoledgallery.ui.theme.PureWhite
+import com.example.amoledgallery.ui.theme.SelectionStyle
 
 /**
  * Ultra-performance Samsung OneUI AMOLED media grid tile:
@@ -81,11 +82,13 @@ fun MediaGridItem(
             .build()
     }
 
+    val theme = LocalAppTheme.current
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(theme.shapes.gridItemCornerRadius))
     ) {
         AsyncImage(
             model = imageRequest,
@@ -98,10 +101,16 @@ fun MediaGridItem(
         )
 
         if (isSelectionMode && isSelected) {
+            // One UI lightens the selected tile; the others darken it.
+            val scrim = if (theme.shapes.selectionStyle == SelectionStyle.ONEUI_LARGE_RING) {
+                Color.White.copy(alpha = 0.30f)
+            } else {
+                Color.Black.copy(alpha = 0.25f)
+            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.25f))
+                    .background(scrim)
             )
         }
 
@@ -151,29 +160,81 @@ fun MediaGridItem(
         }
 
         if (isSelectionMode) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(6.dp)
-                    .size(20.dp)
-                    .clip(CircleShape)
-                    .background(if (isSelected) OneUiBlue else Color.Black.copy(alpha = 0.35f))
-                    .then(
-                        if (!isSelected) {
-                            Modifier.border(1.5.dp, PureWhite.copy(alpha = 0.85f), CircleShape)
-                        } else {
-                            Modifier
-                        }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                if (isSelected) {
-                    Icon(
-                        imageVector = Icons.Rounded.Check,
-                        contentDescription = null,
-                        tint = PureWhite,
-                        modifier = Modifier.size(14.dp)
-                    )
+            when (theme.shapes.selectionStyle) {
+                // One UI 9: a large white ring top-left that fills white with a dark check.
+                SelectionStyle.ONEUI_LARGE_RING -> Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(if (isSelected) PureWhite else Color.Black.copy(alpha = 0.22f))
+                        .then(
+                            if (!isSelected) Modifier.border(2.dp, PureWhite, CircleShape) else Modifier
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = null,
+                            tint = Color.Black,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+
+                // iOS Photos: a smaller blue badge in the bottom-right corner.
+                SelectionStyle.IOS_BLUE_BADGE -> Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(if (isSelected) theme.palette.accent else Color.Black.copy(alpha = 0.30f))
+                        .then(
+                            if (!isSelected) {
+                                Modifier.border(1.5.dp, PureWhite.copy(alpha = 0.9f), CircleShape)
+                            } else {
+                                Modifier
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+
+                SelectionStyle.ACCENT_FILLED -> Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(if (isSelected) theme.palette.accent else Color.Black.copy(alpha = 0.35f))
+                        .then(
+                            if (!isSelected) {
+                                Modifier.border(1.5.dp, PureWhite.copy(alpha = 0.85f), CircleShape)
+                            } else {
+                                Modifier
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = null,
+                            tint = Color.Black,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
                 }
             }
         }

@@ -6,7 +6,9 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.amoledgallery.PerformanceProfile
 
 /**
@@ -37,6 +39,31 @@ enum class DesignLanguage(val displayName: String, val shortDescription: String)
 /** How a design language wants its transitions to feel, before quality-tier scaling. */
 enum class MotionStyle { STANDARD, SPRING, GLASS_EASE, FAST_CUT }
 
+/**
+ * Structural layout of the bottom navigation, which differs far more between these OSes than
+ * colour does - it is the single most recognisable element on screen.
+ */
+enum class NavStyle {
+    /** One UI: edge-to-edge bar, neutral capsule with an animated label behind the active tab. */
+    ONEUI_BAR,
+    /** Material 3 Expressive: edge-to-edge bar, tonal accent capsule and a springy icon bounce. */
+    EXPRESSIVE_BAR,
+    /** iOS Photos: a narrow floating glass pill for the content tabs plus a detached round button. */
+    GLASS_SPLIT_PILL,
+    /** HyperOS: a small, compact, icon-only floating pill centred above the gesture bar. */
+    HYPEROS_COMPACT_PILL
+}
+
+/** How the selection checkbox on a grid tile is drawn. */
+enum class SelectionStyle {
+    /** One UI: large white ring, filled white with a dark check, plus a light scrim on the tile. */
+    ONEUI_LARGE_RING,
+    /** Material: accent-filled circle with a white check. */
+    ACCENT_FILLED,
+    /** iOS: smaller blue filled circle with a white check, bottom-right of the tile. */
+    IOS_BLUE_BADGE
+}
+
 /** Shape/size/motion character of a design language, independent of color. */
 data class AppShapeTokens(
     val cardCornerRadius: Dp,
@@ -44,7 +71,15 @@ data class AppShapeTokens(
     val pillCornerRadius: Dp,
     val iconButtonSize: Dp,
     val useBlur: Boolean,
-    val motionStyle: MotionStyle
+    val motionStyle: MotionStyle,
+    /** Gap between grid tiles. One UI and iOS Photos both run a completely flush grid. */
+    val gridSpacing: Dp,
+    /** Corner rounding of a single grid tile. */
+    val gridItemCornerRadius: Dp,
+    val navStyle: NavStyle,
+    val selectionStyle: SelectionStyle,
+    /** Large-title size on the main header. */
+    val headerTitleSize: TextUnit
 )
 
 fun shapeTokensFor(language: DesignLanguage): AppShapeTokens = when (language) {
@@ -54,7 +89,12 @@ fun shapeTokensFor(language: DesignLanguage): AppShapeTokens = when (language) {
         pillCornerRadius = 24.dp,
         iconButtonSize = 44.dp,
         useBlur = true,
-        motionStyle = MotionStyle.STANDARD
+        motionStyle = MotionStyle.STANDARD,
+        gridSpacing = 0.dp,
+        gridItemCornerRadius = 0.dp,
+        navStyle = NavStyle.ONEUI_BAR,
+        selectionStyle = SelectionStyle.ONEUI_LARGE_RING,
+        headerTitleSize = 34.sp
     )
     DesignLanguage.GOOGLE_EXPRESSIVE -> AppShapeTokens(
         cardCornerRadius = 28.dp,
@@ -62,7 +102,12 @@ fun shapeTokensFor(language: DesignLanguage): AppShapeTokens = when (language) {
         pillCornerRadius = 28.dp,
         iconButtonSize = 48.dp,
         useBlur = false,
-        motionStyle = MotionStyle.SPRING
+        motionStyle = MotionStyle.SPRING,
+        gridSpacing = 6.dp,
+        gridItemCornerRadius = 18.dp,
+        navStyle = NavStyle.EXPRESSIVE_BAR,
+        selectionStyle = SelectionStyle.ACCENT_FILLED,
+        headerTitleSize = 36.sp
     )
     DesignLanguage.IOS_LIQUID_GLASS -> AppShapeTokens(
         cardCornerRadius = 24.dp,
@@ -70,7 +115,12 @@ fun shapeTokensFor(language: DesignLanguage): AppShapeTokens = when (language) {
         pillCornerRadius = 30.dp,
         iconButtonSize = 44.dp,
         useBlur = true,
-        motionStyle = MotionStyle.GLASS_EASE
+        motionStyle = MotionStyle.GLASS_EASE,
+        gridSpacing = 0.dp,
+        gridItemCornerRadius = 0.dp,
+        navStyle = NavStyle.GLASS_SPLIT_PILL,
+        selectionStyle = SelectionStyle.IOS_BLUE_BADGE,
+        headerTitleSize = 34.sp
     )
     DesignLanguage.XIAOMI_HYPEROS -> AppShapeTokens(
         cardCornerRadius = 12.dp,
@@ -78,7 +128,12 @@ fun shapeTokensFor(language: DesignLanguage): AppShapeTokens = when (language) {
         pillCornerRadius = 14.dp,
         iconButtonSize = 40.dp,
         useBlur = false,
-        motionStyle = MotionStyle.FAST_CUT
+        motionStyle = MotionStyle.FAST_CUT,
+        gridSpacing = 2.dp,
+        gridItemCornerRadius = 8.dp,
+        navStyle = NavStyle.HYPEROS_COMPACT_PILL,
+        selectionStyle = SelectionStyle.ACCENT_FILLED,
+        headerTitleSize = 26.sp
     )
 }
 
@@ -148,27 +203,29 @@ fun presetsFor(language: DesignLanguage): List<AppColorPalette> = when (language
             cardBorder = Color(0xFF2C2C2E), overlayScrim = Color(0x99000000)
         )
     )
+    // Material 3 Expressive is tonal: surfaces carry the accent's hue rather than being neutral
+    // black, which is what makes it read as "Google" at a glance.
     DesignLanguage.GOOGLE_EXPRESSIVE -> listOf(
         AppColorPalette(
-            id = "expressive_blue", label = "Material Blau",
-            background = Color(0xFF000000), onBackground = Color(0xFFE3E2E6),
-            textMuted = Color(0xFF9AA0A6), surface = Color(0xFF131316),
-            surfaceVariant = Color(0xFF1F2024), accent = Color(0xFF8AB4F8),
-            cardBorder = Color(0xFF2E3036), overlayScrim = Color(0x99000000)
+            id = "expressive_mint", label = "Material Mint",
+            background = Color(0xFF04110E), onBackground = Color(0xFFD6F5EC),
+            textMuted = Color(0xFF89A8A0), surface = Color(0xFF0D1F1B),
+            surfaceVariant = Color(0xFF16302A), accent = Color(0xFF5CE6C8),
+            cardBorder = Color(0xFF22423B), overlayScrim = Color(0x99001410)
         ),
         AppColorPalette(
-            id = "expressive_green", label = "Material Grün",
-            background = Color(0xFF000000), onBackground = Color(0xFFE3E2E6),
-            textMuted = Color(0xFF9AA0A6), surface = Color(0xFF131316),
-            surfaceVariant = Color(0xFF1F2024), accent = Color(0xFF81C995),
-            cardBorder = Color(0xFF2E3036), overlayScrim = Color(0x99000000)
+            id = "expressive_violet", label = "Material Violett",
+            background = Color(0xFF0C0716), onBackground = Color(0xFFE8DEF8),
+            textMuted = Color(0xFF9D93B0), surface = Color(0xFF16102A),
+            surfaceVariant = Color(0xFF231A3D), accent = Color(0xFFB69DFF),
+            cardBorder = Color(0xFF322A4D), overlayScrim = Color(0x99080415)
         ),
         AppColorPalette(
-            id = "expressive_peach", label = "Material Pfirsich",
-            background = Color(0xFF000000), onBackground = Color(0xFFE3E2E6),
-            textMuted = Color(0xFF9AA0A6), surface = Color(0xFF131316),
-            surfaceVariant = Color(0xFF1F2024), accent = Color(0xFFFFB4AB),
-            cardBorder = Color(0xFF2E3036), overlayScrim = Color(0x99000000)
+            id = "expressive_amber", label = "Material Bernstein",
+            background = Color(0xFF140D04), onBackground = Color(0xFFF7E6CE),
+            textMuted = Color(0xFFB09A7E), surface = Color(0xFF22180B),
+            surfaceVariant = Color(0xFF342614), accent = Color(0xFFFFB95C),
+            cardBorder = Color(0xFF493720), overlayScrim = Color(0x99120B03)
         )
     )
     DesignLanguage.IOS_LIQUID_GLASS -> listOf(

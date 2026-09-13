@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -45,6 +46,9 @@ fun OneUiHeader(
 ) {
     val theme = LocalAppTheme.current
     val useHero = heroThumbnail != null && theme.language == DesignLanguage.SAMSUNG_ONEUI
+    // iOS Photos puts the title straight on top of a sharp photo behind a bottom-up gradient,
+    // rather than One UI's blurred-and-dimmed backdrop.
+    val useSharpHero = heroThumbnail != null && theme.language == DesignLanguage.IOS_LIQUID_GLASS
     val useGradientWash = theme.language == DesignLanguage.GOOGLE_EXPRESSIVE
 
     Box(modifier = modifier.fillMaxWidth()) {
@@ -64,6 +68,29 @@ fun OneUiHeader(
                     .height(180.dp)
                     .background(Color.Black.copy(alpha = 0.55f))
             )
+        } else if (useSharpHero) {
+            AsyncImage(
+                model = heroThumbnail,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.45f),
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.78f)
+                            )
+                        )
+                    )
+            )
         } else if (useGradientWash) {
             Box(
                 modifier = Modifier
@@ -77,25 +104,28 @@ fun OneUiHeader(
             )
         }
 
+        val hasBackdrop = useHero || useSharpHero || useGradientWash
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (useHero || useGradientWash) Modifier else Modifier.background(AmoledBlack))
-                .statusBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 10.dp)
+                // iOS anchors the album title to the bottom edge of its hero photo.
+                .then(if (useSharpHero) Modifier.align(Alignment.BottomStart) else Modifier)
+                .then(if (hasBackdrop) Modifier else Modifier.background(AmoledBlack))
+                .then(if (useSharpHero) Modifier else Modifier.statusBarsPadding())
+                .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = if (useSharpHero) 16.dp else 10.dp)
         ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineLarge,
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
-                fontSize = 34.sp,
+                fontSize = theme.shapes.headerTitleSize,
                 letterSpacing = (-0.5).sp
             )
             if (mediaCount > 0) {
                 Spacer(modifier = Modifier.height(4.dp))
                 val countColor = when {
-                    useHero -> Color.White.copy(alpha = 0.85f)
+                    useHero || useSharpHero -> Color.White.copy(alpha = 0.85f)
                     theme.language == DesignLanguage.XIAOMI_HYPEROS -> theme.palette.accent
                     else -> TextMuted
                 }
