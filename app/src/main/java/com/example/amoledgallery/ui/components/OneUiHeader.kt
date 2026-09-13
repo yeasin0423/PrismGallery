@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -21,16 +22,19 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.example.amoledgallery.R
 import com.example.amoledgallery.ui.theme.AmoledBlack
+import com.example.amoledgallery.ui.theme.DesignLanguage
 import com.example.amoledgallery.ui.theme.LocalAppTheme
 import com.example.amoledgallery.ui.theme.TextMuted
 import com.example.amoledgallery.ui.themedBackgroundBlur
 
 /**
- * Samsung OneUI style large header with generous top space (Large Title),
- * prominent title and media count. When [heroThumbnail] is supplied (One UI 8.5's
- * "latest photo/video" album header preview), it's shown blurred and darkened
- * behind the title instead of a flat background - only where the active design
- * language wants blur and the device is on HIGH/ULTRA graphics quality.
+ * Large header (Large Title) whose backdrop changes per [DesignLanguage] so the app's most
+ * persistently visible screen element also carries the "different OS" feeling:
+ * - SAMSUNG_ONEUI: One UI 8.5's own "latest photo/video" hero preview, blurred+darkened behind
+ *   the title (only where blur is enabled, i.e. HIGH/ULTRA).
+ * - GOOGLE_EXPRESSIVE: a bold diagonal accent-color gradient wash instead of a photo.
+ * - IOS_LIQUID_GLASS / XIAOMI_HYPEROS: flat backdrop, no hero - Liquid Glass gets its
+ *   distinctiveness from the floating glass nav bar, HyperOS tints the item count in its accent.
  */
 @Composable
 fun OneUiHeader(
@@ -39,7 +43,9 @@ fun OneUiHeader(
     title: String = stringResource(R.string.header_media),
     heroThumbnail: Any? = null
 ) {
-    val useHero = heroThumbnail != null && LocalAppTheme.current.shapes.useBlur
+    val theme = LocalAppTheme.current
+    val useHero = heroThumbnail != null && theme.language == DesignLanguage.SAMSUNG_ONEUI
+    val useGradientWash = theme.language == DesignLanguage.GOOGLE_EXPRESSIVE
 
     Box(modifier = modifier.fillMaxWidth()) {
         if (useHero) {
@@ -58,12 +64,23 @@ fun OneUiHeader(
                     .height(180.dp)
                     .background(Color.Black.copy(alpha = 0.55f))
             )
+        } else if (useGradientWash) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(theme.palette.accent.copy(alpha = 0.32f), Color.Transparent)
+                        )
+                    )
+            )
         }
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (useHero) Modifier else Modifier.background(AmoledBlack))
+                .then(if (useHero || useGradientWash) Modifier else Modifier.background(AmoledBlack))
                 .statusBarsPadding()
                 .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 10.dp)
         ) {
@@ -77,10 +94,15 @@ fun OneUiHeader(
             )
             if (mediaCount > 0) {
                 Spacer(modifier = Modifier.height(4.dp))
+                val countColor = when {
+                    useHero -> Color.White.copy(alpha = 0.85f)
+                    theme.language == DesignLanguage.XIAOMI_HYPEROS -> theme.palette.accent
+                    else -> TextMuted
+                }
                 Text(
                     text = if (mediaCount == 1) "1 Element" else "$mediaCount Elemente",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (useHero) Color.White.copy(alpha = 0.85f) else TextMuted,
+                    color = countColor,
                     fontSize = 14.sp
                 )
             }
