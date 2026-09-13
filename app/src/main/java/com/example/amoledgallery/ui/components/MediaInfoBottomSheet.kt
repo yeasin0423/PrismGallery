@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import com.example.amoledgallery.ui.theme.LocalAppTheme
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.exifinterface.media.ExifInterface
@@ -122,7 +123,10 @@ fun MediaInfoBottomSheet(
         containerColor = SurfaceDark,
         contentColor = PureWhite,
         scrimColor = Color.Black.copy(alpha = 0.65f),
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        shape = RoundedCornerShape(
+            topStart = LocalAppTheme.current.shapes.dialogCornerRadius,
+            topEnd = LocalAppTheme.current.shapes.dialogCornerRadius
+        ),
         dragHandle = {
             Box(
                 modifier = Modifier

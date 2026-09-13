@@ -72,6 +72,7 @@ import com.example.amoledgallery.data.ThumbnailManager
 import com.example.amoledgallery.ui.qualityTween
 import com.example.amoledgallery.model.MediaDateSection
 import com.example.amoledgallery.model.MediaItem
+import com.example.amoledgallery.ui.components.CircularIconButton
 import com.example.amoledgallery.ui.components.DateHeader
 import com.example.amoledgallery.ui.components.FastScroller
 import com.example.amoledgallery.ui.components.FilterChips
@@ -169,13 +170,11 @@ fun GalleryScreen(
                             .padding(horizontal = 8.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = onBackClick) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                                contentDescription = "Zurück",
-                                tint = PureWhite
-                            )
-                        }
+                        CircularIconButton(
+                            onClick = onBackClick,
+                            contentDescription = "Zurück",
+                            icon = Icons.AutoMirrored.Rounded.ArrowBack
+                        )
                         Text(
                             text = title,
                             color = PureWhite,
@@ -317,6 +316,7 @@ fun GalleryScreen(
                             OneUiHeader(
                                 mediaCount = items.size,
                                 title = title,
+                                heroThumbnail = items.firstOrNull()?.uri,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -399,13 +399,12 @@ fun GalleryScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (onBackClick != null) {
-                            IconButton(onClick = onBackClick) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                                    contentDescription = "Zurück",
-                                    tint = PureWhite
-                                )
-                            }
+                            CircularIconButton(
+                                onClick = onBackClick,
+                                contentDescription = "Zurück",
+                                icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
                         }
 
                         // Compact title fading in smoothly as large title shrinks/scrolls
@@ -465,13 +464,11 @@ fun GalleryScreen(
                             .padding(horizontal = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = onClearSelection) {
-                            Icon(
-                                imageVector = Icons.Rounded.Close,
-                                contentDescription = "Auswahl beenden",
-                                tint = PureWhite
-                            )
-                        }
+                        CircularIconButton(
+                            onClick = onClearSelection,
+                            contentDescription = "Auswahl beenden",
+                            icon = Icons.Rounded.Close
+                        )
 
                         Text(
                             text = if (selectedIds.isEmpty()) "Elemente auswählen" else "${selectedIds.size} ausgewählt",

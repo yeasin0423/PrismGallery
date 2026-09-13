@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.example.amoledgallery.model.MediaItem
+import com.example.amoledgallery.ui.components.CircularIconButton
 import com.example.amoledgallery.ui.theme.AmoledBlack
 import com.example.amoledgallery.ui.theme.PureWhite
 import com.example.amoledgallery.ui.theme.SurfaceDark
@@ -95,13 +96,11 @@ fun TrashScreen(
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Zurück",
-                        tint = PureWhite
-                    )
-                }
+                CircularIconButton(
+                    onClick = onBack,
+                    contentDescription = "Zurück",
+                    icon = Icons.AutoMirrored.Rounded.ArrowBack
+                )
 
                 Text(
                     text = "Papierkorb",

@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.amoledgallery.model.MediaItem
+import com.example.amoledgallery.ui.components.CircularIconButton
 import com.example.amoledgallery.ui.components.MediaGridItem
 import com.example.amoledgallery.ui.theme.AmoledBlack
 import com.example.amoledgallery.ui.theme.PureWhite
@@ -90,19 +91,17 @@ fun FavoritesScreen(
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = {
-                    if (selectedDetailIndex != null) {
-                        selectedDetailIndex = null
-                    } else {
-                        onBack()
-                    }
-                }) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Zurück",
-                        tint = PureWhite
-                    )
-                }
+                CircularIconButton(
+                    onClick = {
+                        if (selectedDetailIndex != null) {
+                            selectedDetailIndex = null
+                        } else {
+                            onBack()
+                        }
+                    },
+                    contentDescription = "Zurück",
+                    icon = Icons.AutoMirrored.Rounded.ArrowBack
+                )
 
                 Column(modifier = Modifier.padding(start = 8.dp)) {
                     Text(

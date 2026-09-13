@@ -1,6 +1,7 @@
 package com.example.amoledgallery.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Info
@@ -48,12 +50,18 @@ import androidx.compose.ui.unit.sp
 import com.example.amoledgallery.PerformanceProfile
 import com.example.amoledgallery.ui.components.OneUiHeader
 import com.example.amoledgallery.ui.theme.AmoledBlack
+import com.example.amoledgallery.ui.theme.AppColorPalette
+import com.example.amoledgallery.ui.theme.CUSTOM_PALETTE_ID
+import com.example.amoledgallery.ui.theme.DesignLanguage
+import com.example.amoledgallery.ui.theme.LocalAppTheme
 import com.example.amoledgallery.ui.theme.OneUiBlue
 import com.example.amoledgallery.ui.theme.OneUiCardBorder
 import com.example.amoledgallery.ui.theme.PureWhite
 import com.example.amoledgallery.ui.theme.SurfaceDark
 import com.example.amoledgallery.ui.theme.SurfaceVariantDark
 import com.example.amoledgallery.ui.theme.TextMuted
+import com.example.amoledgallery.ui.theme.ThemeState
+import com.example.amoledgallery.ui.theme.presetsFor
 
 /**
  * Clean Samsung OneUI style "Menü" tab in pure AMOLED black:
@@ -108,7 +116,7 @@ fun MenuScreen(
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(LocalAppTheme.current.shapes.cardCornerRadius),
                 colors = CardDefaults.cardColors(containerColor = SurfaceDark),
                 border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(OneUiCardBorder))
             ) {
@@ -151,7 +159,7 @@ fun MenuScreen(
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(LocalAppTheme.current.shapes.cardCornerRadius),
                 colors = CardDefaults.cardColors(containerColor = SurfaceDark),
                 border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(OneUiCardBorder))
             ) {
@@ -240,6 +248,7 @@ private fun MenuRowItem(
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsInfoDialog(
     internalFreeBytes: Long,
@@ -251,9 +260,29 @@ private fun SettingsInfoDialog(
     onSetGraphicsQuality: (PerformanceProfile) -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var designLanguage by remember { mutableStateOf(ThemeState.designLanguage) }
+    var showCustomEditor by remember { mutableStateOf(false) }
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = {
+        sheetState = sheetState,
+        containerColor = SurfaceVariantDark,
+        contentColor = PureWhite,
+        shape = RoundedCornerShape(
+            topStart = LocalAppTheme.current.shapes.dialogCornerRadius,
+            topEnd = LocalAppTheme.current.shapes.dialogCornerRadius
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Rounded.Info,
@@ -269,8 +298,7 @@ private fun SettingsInfoDialog(
                     fontWeight = FontWeight.Bold
                 )
             }
-        },
-        text = {
+
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -303,6 +331,44 @@ private fun SettingsInfoDialog(
 
                 Column {
                     Text(
+                        text = "Design",
+                        color = PureWhite,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    DesignLanguageSelector(
+                        selected = designLanguage,
+                        onSelect = { language ->
+                            designLanguage = language
+                            val preset = presetsFor(language).first()
+                            ThemeState.apply(language, preset, context = context)
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = designLanguage.shortDescription,
+                        color = TextMuted,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    PaletteRow(
+                        language = designLanguage,
+                        currentPaletteId = ThemeState.palette.id,
+                        onSelectPreset = { preset -> ThemeState.apply(designLanguage, preset, context = context) },
+                        onOpenCustomEditor = { showCustomEditor = true }
+                    )
+                }
+
+                HorizontalDivider(
+                    color = Color(0xFF2A2A2A),
+                    thickness = 0.5.dp,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+
+                Column {
+                    Text(
                         text = "Grafikqualität",
                         color = PureWhite,
                         fontSize = 14.sp,
@@ -322,14 +388,168 @@ private fun SettingsInfoDialog(
                     )
                 }
             }
+
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text("Schließen", color = OneUiBlue, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+
+    if (showCustomEditor) {
+        CustomPaletteEditorDialog(
+            language = designLanguage,
+            initialAccent = if (ThemeState.palette.id == CUSTOM_PALETTE_ID) ThemeState.palette.accent else presetsFor(designLanguage).first().accent,
+            onConfirm = { accent ->
+                val base = presetsFor(designLanguage).first()
+                val custom = base.copy(id = CUSTOM_PALETTE_ID, label = "Eigene Palette", accent = accent)
+                ThemeState.apply(designLanguage, custom, context = context)
+                showCustomEditor = false
+            },
+            onDismiss = { showCustomEditor = false }
+        )
+    }
+}
+
+/** 4 design-language chips, always visible together so the switch is a single tap. */
+@Composable
+private fun DesignLanguageSelector(
+    selected: DesignLanguage,
+    onSelect: (DesignLanguage) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        DesignLanguage.entries.forEach { language ->
+            val isSelected = language == selected
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (isSelected) OneUiBlue.copy(alpha = 0.18f) else SurfaceDark)
+                    .clickable { onSelect(language) }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .clip(CircleShape)
+                        .background(if (isSelected) OneUiBlue else Color.Transparent)
+                        .border(1.5.dp, if (isSelected) OneUiBlue else TextMuted, CircleShape)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = language.displayName,
+                    color = if (isSelected) PureWhite else TextMuted,
+                    fontSize = 14.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+/** Preset color swatches for the active design language, plus a trailing "custom" swatch. */
+@Composable
+private fun PaletteRow(
+    language: DesignLanguage,
+    currentPaletteId: String,
+    onSelectPreset: (AppColorPalette) -> Unit,
+    onOpenCustomEditor: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        presetsFor(language).forEach { preset ->
+            val isSelected = preset.id == currentPaletteId
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(preset.accent)
+                    .border(
+                        width = if (isSelected) 2.5.dp else 1.dp,
+                        color = if (isSelected) PureWhite else Color.White.copy(alpha = 0.2f),
+                        shape = CircleShape
+                    )
+                    .clickable { onSelectPreset(preset) }
+            )
+        }
+        // Custom palette swatch: shows the current custom accent (or a placeholder ring)
+        val isCustomSelected = currentPaletteId == CUSTOM_PALETTE_ID
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(if (isCustomSelected) ThemeState.accent else SurfaceDark)
+                .border(
+                    width = if (isCustomSelected) 2.5.dp else 1.dp,
+                    color = if (isCustomSelected) PureWhite else TextMuted,
+                    shape = CircleShape
+                )
+                .clickable { onOpenCustomEditor() },
+            contentAlignment = Alignment.Center
+        ) {
+            if (!isCustomSelected) {
+                Icon(
+                    imageVector = Icons.Rounded.Add,
+                    contentDescription = "Eigene Farbe",
+                    tint = TextMuted,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CustomPaletteEditorDialog(
+    language: DesignLanguage,
+    initialAccent: Color,
+    onConfirm: (Color) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var pickedColor by remember { mutableStateOf(initialAccent) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Eigene Akzentfarbe",
+                color = PureWhite,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "Der Hintergrund bleibt reines AMOLED-Schwarz - wähle deine persönliche Akzentfarbe für ${language.displayName}.",
+                    color = TextMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                com.example.amoledgallery.ui.components.HsvColorPicker(
+                    initialColor = initialAccent,
+                    onColorChanged = { pickedColor = it }
+                )
+            }
         },
         confirmButton = {
+            TextButton(onClick = { onConfirm(pickedColor) }) {
+                Text("Übernehmen", color = OneUiBlue, fontWeight = FontWeight.SemiBold)
+            }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Schließen", color = OneUiBlue, fontWeight = FontWeight.SemiBold)
+                Text("Abbrechen", color = TextMuted)
             }
         },
         containerColor = SurfaceVariantDark,
-        shape = RoundedCornerShape(24.dp)
+        shape = RoundedCornerShape(LocalAppTheme.current.shapes.dialogCornerRadius)
     )
 }
 

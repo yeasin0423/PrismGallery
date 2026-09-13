@@ -86,6 +86,7 @@ import com.example.amoledgallery.model.MediaItem
 import com.example.amoledgallery.ui.components.MediaGridItem
 import com.example.amoledgallery.ui.qualityTween
 import com.example.amoledgallery.ui.theme.AmoledBlack
+import com.example.amoledgallery.ui.theme.LocalAppTheme
 import com.example.amoledgallery.ui.theme.OneUiCardBorder
 import com.example.amoledgallery.ui.theme.PureWhite
 import com.example.amoledgallery.ui.theme.SurfaceDark
@@ -413,7 +414,7 @@ fun AlbumsScreen(
                                         containerColor = SurfaceVariantDark,
                                         contentColor = PureWhite
                                     ),
-                                    shape = RoundedCornerShape(20.dp)
+                                    shape = RoundedCornerShape(LocalAppTheme.current.shapes.dialogCornerRadius)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Add,
@@ -504,7 +505,7 @@ fun AlbumsScreen(
                             containerColor = PureWhite,
                             contentColor = AmoledBlack
                         ),
-                        shape = RoundedCornerShape(20.dp)
+                        shape = RoundedCornerShape(LocalAppTheme.current.shapes.dialogCornerRadius)
                     ) {
                         Text("Ausblenden", fontWeight = FontWeight.SemiBold)
                     }
@@ -816,7 +817,7 @@ private fun ManageHiddenAlbumsDialog(
                     containerColor = PureWhite,
                     contentColor = AmoledBlack
                 ),
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(LocalAppTheme.current.shapes.dialogCornerRadius)
             ) {
                 Text("Fertig", fontWeight = FontWeight.SemiBold)
             }
@@ -890,7 +891,7 @@ private fun CreateSubAlbumDialog(
                     disabledContainerColor = SurfaceDark,
                     disabledContentColor = TextMuted
                 ),
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(LocalAppTheme.current.shapes.dialogCornerRadius)
             ) {
                 Text("Erstellen", fontWeight = FontWeight.SemiBold)
             }
@@ -1028,7 +1029,7 @@ fun CreateAlbumDialog(
                     disabledContainerColor = SurfaceDark,
                     disabledContentColor = TextMuted
                 ),
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(LocalAppTheme.current.shapes.dialogCornerRadius)
             ) {
                 Text("Erstellen", fontWeight = FontWeight.SemiBold)
             }
@@ -1279,7 +1280,7 @@ private fun RenameAlbumDialog(
                     disabledContainerColor = SurfaceDark,
                     disabledContentColor = TextMuted
                 ),
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(LocalAppTheme.current.shapes.dialogCornerRadius)
             ) {
                 Text("Umbenennen", fontWeight = FontWeight.SemiBold)
             }
@@ -1330,7 +1331,7 @@ private fun DeleteAlbumDialog(
                     containerColor = Color(0xFFFF5252),
                     contentColor = PureWhite
                 ),
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(LocalAppTheme.current.shapes.dialogCornerRadius)
             ) {
                 Text("Löschen", fontWeight = FontWeight.SemiBold)
             }
@@ -1380,7 +1381,7 @@ private fun MigrateAlbumDialog(
                     containerColor = PureWhite,
                     contentColor = AmoledBlack
                 ),
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(LocalAppTheme.current.shapes.dialogCornerRadius)
             ) {
                 Text("Verschieben", fontWeight = FontWeight.SemiBold)
             }

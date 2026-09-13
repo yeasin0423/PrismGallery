@@ -58,6 +58,7 @@ class AmoledGalleryApp : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
         performanceProfile = loadGraphicsQuality()
+        com.example.amoledgallery.ui.theme.ThemeState.load(this)
         createNotificationChannels()
     }
 

@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.example.amoledgallery.model.MediaItem
 import com.example.amoledgallery.ui.components.AmoledVideoPlayer
+import com.example.amoledgallery.ui.components.CircularIconButton
 import com.example.amoledgallery.ui.components.MediaInfoBottomSheet
 import com.example.amoledgallery.ui.components.ZoomableBox
 import com.example.amoledgallery.ui.theme.AmoledBlack
@@ -229,16 +230,14 @@ fun MediaDetailScreen(
                     .statusBarsPadding()
                     .padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
-                IconButton(
+                CircularIconButton(
                     onClick = onBack,
+                    contentDescription = "Zurück",
+                    icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                    tint = Color.White,
+                    backgroundColor = Color.Black.copy(alpha = 0.35f),
                     modifier = Modifier.align(Alignment.CenterStart)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Zurück",
-                        tint = Color.White
-                    )
-                }
+                )
 
                 Text(
                     text = "${pagerState.currentPage + 1} / ${mediaList.size}",
@@ -248,16 +247,14 @@ fun MediaDetailScreen(
                     modifier = Modifier.align(Alignment.Center)
                 )
 
-                IconButton(
+                CircularIconButton(
                     onClick = { showInfoSheet = true },
+                    contentDescription = "Details",
+                    icon = Icons.Rounded.Info,
+                    tint = Color.White,
+                    backgroundColor = Color.Black.copy(alpha = 0.35f),
                     modifier = Modifier.align(Alignment.CenterEnd)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Info,
-                        contentDescription = "Details",
-                        tint = Color.White
-                    )
-                }
+                )
             }
         }
 

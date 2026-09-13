@@ -431,7 +431,10 @@ fun GalleryApp(viewModel: GalleryViewModel) {
                 }
             },
             confirmButton = {},
-            containerColor = SurfaceVariantDark
+            containerColor = SurfaceVariantDark,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(
+                com.example.amoledgallery.ui.theme.LocalAppTheme.current.shapes.dialogCornerRadius
+            )
         )
     }
 }

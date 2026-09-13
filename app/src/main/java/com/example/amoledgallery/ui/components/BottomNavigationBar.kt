@@ -44,9 +44,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.amoledgallery.ui.theme.AmoledBlack
+import com.example.amoledgallery.ui.theme.LocalAppTheme
 import com.example.amoledgallery.ui.theme.OneUiBlue
 import com.example.amoledgallery.ui.theme.PureWhite
 import com.example.amoledgallery.ui.theme.TextMuted
+import com.example.amoledgallery.ui.themedBackgroundBlur
 import com.example.amoledgallery.ui.viewmodel.GalleryTab
 
 /**
@@ -62,10 +64,13 @@ fun BottomNavigationBar(
     onTabSelected: (GalleryTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val shapes = LocalAppTheme.current.shapes
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(AmoledBlack)
+            .themedBackgroundBlur(radiusDp = 30f)
+            .background(if (shapes.useBlur) AmoledBlack.copy(alpha = 0.72f) else AmoledBlack)
             .navigationBarsPadding()
     ) {
         HorizontalDivider(
@@ -113,6 +118,8 @@ private fun OneUiNavItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val pillCornerRadius = LocalAppTheme.current.shapes.pillCornerRadius
+
     val pillBgColor by animateColorAsState(
         targetValue = if (isSelected) Color(0xFF1E1E1E) else Color.Transparent,
         animationSpec = tween(durationMillis = 240),
@@ -127,7 +134,7 @@ private fun OneUiNavItem(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(pillCornerRadius))
             .background(pillBgColor)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },

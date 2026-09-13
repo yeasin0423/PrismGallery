@@ -2,11 +2,16 @@ package com.example.amoledgallery.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val AmoledBlack = Color(0xFF000000)
-val PureWhite = Color(0xFFFFFFFF)
-val TextMuted = Color(0xFF8E8E93)
-val SurfaceDark = Color(0xFF121212)
-val SurfaceVariantDark = Color(0xFF1C1C1E)
-val OneUiBlue = Color(0xFF0072DE)
-val OneUiCardBorder = Color(0xFF2C2C2E)
-val OverlayScrim = Color(0x99000000)
+/**
+ * These keep their original names for source-compatibility with every existing call site,
+ * but now read live from [ThemeState] instead of being fixed constants - switching design
+ * language/palette in Settings updates every screen that references them immediately.
+ */
+val AmoledBlack: Color get() = ThemeState.background
+val PureWhite: Color get() = ThemeState.onBackground
+val TextMuted: Color get() = ThemeState.textMuted
+val SurfaceDark: Color get() = ThemeState.surface
+val SurfaceVariantDark: Color get() = ThemeState.surfaceVariant
+val OneUiBlue: Color get() = ThemeState.accent
+val OneUiCardBorder: Color get() = ThemeState.cardBorder
+val OverlayScrim: Color get() = ThemeState.overlayScrim
