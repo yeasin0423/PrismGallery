@@ -100,11 +100,13 @@ class AmoledGalleryApp : Application(), SingletonImageLoader.Factory {
     override fun newImageLoader(context: Context): ImageLoader {
         // Bitmap depth, decode parallelism, animation and cache budgets scale with the manually
         // selected graphics quality tier (Low/Medium/High/Ultra) - see MenuScreen's quality picker.
+        // Decode parallelism. Two threads was too few even for LOW: a single screenful is ~25 tiles
+        // and each miss costs a JPEG decode, so the queue never drained during a fling.
         val maxParallelism = when (performanceProfile) {
-            PerformanceProfile.LOW -> 2
-            PerformanceProfile.MEDIUM -> 3
-            PerformanceProfile.HIGH -> 4
-            PerformanceProfile.ULTRA -> 6
+            PerformanceProfile.LOW -> 3
+            PerformanceProfile.MEDIUM -> 4
+            PerformanceProfile.HIGH -> 6
+            PerformanceProfile.ULTRA -> 8
         }
         val enableCrossfade = performanceProfile == PerformanceProfile.HIGH || performanceProfile == PerformanceProfile.ULTRA
         val bitmapConf = if (enableCrossfade) {
@@ -119,11 +121,12 @@ class AmoledGalleryApp : Application(), SingletonImageLoader.Factory {
             PerformanceProfile.HIGH -> 0.25
             PerformanceProfile.ULTRA -> 0.30
         }
+        // Coil's own disk cache only ever serves the full-size viewer and video frames -
+        // grid thumbnails come from MediaThumbnailFetcher's own cache dir and never touch it -
+        // so the previous 1GB budget just cost journal I/O at startup for nothing.
         val diskCacheBytes = when (performanceProfile) {
-            // LOW/ULTRA both favor a larger disk cache: LOW to avoid re-decoding on weak CPUs,
-            // ULTRA because the user explicitly opted into using more device resources.
-            PerformanceProfile.LOW, PerformanceProfile.ULTRA -> 1024L * 1024 * 1024
-            else -> 512L * 1024 * 1024
+            PerformanceProfile.LOW, PerformanceProfile.MEDIUM -> 128L * 1024 * 1024
+            else -> 256L * 1024 * 1024
         }
 
         return ImageLoader.Builder(context)
@@ -146,7 +149,12 @@ class AmoledGalleryApp : Application(), SingletonImageLoader.Factory {
                 add(VideoFrameDecoder.Factory())
                 add(coil3.gif.AnimatedImageDecoder.Factory())
             }
-            .coroutineContext(Dispatchers.IO.limitedParallelism(maxParallelism))
+            // NOTE: coroutineContext is deliberately left at Coil's default (Dispatchers.Main.immediate).
+            // It runs the request/interceptor chain, which is where the memory cache is consulted -
+            // moving it onto a limitedParallelism IO dispatcher meant even a guaranteed memory-cache
+            // hit had to queue behind in-flight JPEG decodes and then hop back to the main thread,
+            // so already-decoded tiles still appeared late while scrolling. Only the actual fetch and
+            // decode work belongs off the main thread.
             .fetcherCoroutineContext(Dispatchers.IO.limitedParallelism(maxParallelism))
             .decoderCoroutineContext(Dispatchers.IO.limitedParallelism(maxParallelism))
             .crossfade(enableCrossfade)

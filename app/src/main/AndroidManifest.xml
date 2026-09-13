@@ -30,6 +30,10 @@
         android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.AmoledGallery">
 
+        <!-- Lets `simpleperf`/Perfetto profile release builds from the shell. Has no effect on
+             behaviour or security posture beyond allowing on-device profiling of this app. -->
+        <profileable android:shell="true" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

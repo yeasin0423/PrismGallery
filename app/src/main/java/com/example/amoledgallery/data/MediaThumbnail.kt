@@ -31,10 +31,14 @@ data class MediaThumbnail(
  */
 class MediaThumbnailKeyer : Keyer<MediaThumbnail> {
     override fun key(data: MediaThumbnail, options: Options): String {
+        // The quality tier is part of the key because it determines the decoded resolution:
+        // requests are INEXACT, so without it a cached 120px LOW thumbnail would still be served
+        // after the user switches to ULTRA instead of being re-decoded at 320px.
+        val tier = com.example.amoledgallery.AmoledGalleryApp.performanceProfile.name
         return if (data.id != 0L) {
-            "thumb_${data.id}_${data.dateModified}_${data.isVideo}"
+            "thumb_${data.id}_${data.dateModified}_${data.isVideo}_$tier"
         } else {
-            "thumb_${data.uri}_${data.isVideo}"
+            "thumb_${data.uri}_${data.isVideo}_$tier"
         }
     }
 }

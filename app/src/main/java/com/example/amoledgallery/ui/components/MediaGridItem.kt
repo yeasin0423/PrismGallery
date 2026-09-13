@@ -35,6 +35,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import coil3.size.Precision
+import com.example.amoledgallery.AmoledGalleryApp
 import com.example.amoledgallery.data.ThumbnailManager
 import com.example.amoledgallery.model.MediaItem
 import com.example.amoledgallery.ui.theme.OneUiBlue
@@ -61,14 +62,21 @@ fun MediaGridItem(
 
     // Zero Main-Thread I/O: item.thumbnail is resolved directly by Coil's MediaThumbnailFetcher on
     // Dispatchers.IO. Note: bitmapConfig() is NOT set here - MediaThumbnailFetcher decodes the
-    // bitmap itself (bypassing Coil's own decoder) and always requests a GPU-resident HARDWARE
-    // bitmap for smooth scrolling, so a request-level override here would have no effect anyway.
-    val imageRequest = remember(item.id, item.dateModified, context) {
+    // bitmap itself (bypassing Coil's own decoder) and picks the config by quality tier, so a
+    // request-level override here would have no effect anyway.
+    //
+    // Precision must stay INEXACT: ContentResolver.loadThumbnail() returns aspect-ratio-preserving
+    // bitmaps (a 4:3 photo asked for at 120x120 comes back ~160x120), and Coil validates a memory
+    // cache entry by comparing its dimensions against the request. Under Precision.EXACT every
+    // single lookup was therefore rejected as "wrong size", so the memory cache never served a hit
+    // and every tile re-decoded its JPEG from disk on each scroll-in - the main cause of scroll jank.
+    val quality = AmoledGalleryApp.performanceProfile
+    val imageRequest = remember(item.id, item.dateModified, quality, context) {
         val px = ThumbnailManager.getInstance(context).thumbnailPx
         ImageRequest.Builder(context)
             .data(item.thumbnail)
             .size(coil3.size.Size(px, px))
-            .precision(Precision.EXACT)
+            .precision(Precision.INEXACT)
             .crossfade(false)
             .build()
     }
