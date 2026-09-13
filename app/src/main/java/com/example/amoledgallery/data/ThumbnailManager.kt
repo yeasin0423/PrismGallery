@@ -52,8 +52,10 @@ class ThumbnailManager private constructor(private val context: Context) {
         get() = when (quality) {
             PerformanceProfile.LOW -> 120
             PerformanceProfile.MEDIUM -> 160
-            PerformanceProfile.HIGH -> 160
-            PerformanceProfile.ULTRA -> 200
+            // HIGH/ULTRA target stronger devices, which can afford visibly sharper grid tiles -
+            // especially once pinch-zoom shows fewer, larger columns (bigger tiles = more upscaling).
+            PerformanceProfile.HIGH -> 220
+            PerformanceProfile.ULTRA -> 320
         }
 
     private val jpegQuality: Int
@@ -76,11 +78,15 @@ class ThumbnailManager private constructor(private val context: Context) {
 
     /**
      * Resolves the internal cache file location for a given [id] and [dateModified].
+     * The current [thumbnailPx] tier is baked into the filename so raising the graphics
+     * quality (and therefore the target resolution) naturally misses the old, lower-res
+     * cache entry instead of silently reusing it - [cleanupOutdatedThumbnails] then sweeps
+     * the stale file away once the new one is written.
      */
     fun getThumbnailFile(id: Long, dateModified: Long): File {
-        val jpg = cacheDir.resolve("${id}_${dateModified}.jpg")
+        val jpg = cacheDir.resolve("${id}_${dateModified}_${thumbnailPx}.jpg")
         if (jpg.exists()) return jpg
-        val webp = cacheDir.resolve("${id}_${dateModified}.webp")
+        val webp = cacheDir.resolve("${id}_${dateModified}_${thumbnailPx}.webp")
         if (webp.exists()) return webp
         return jpg
     }

@@ -289,7 +289,8 @@ fun AlbumsScreen(
                                 DropdownMenu(
                                     expanded = showMenu,
                                     onDismissRequest = { showMenu = false },
-                                    modifier = Modifier.background(SurfaceVariantDark)
+                                    modifier = Modifier.background(SurfaceVariantDark),
+                                    shape = RoundedCornerShape(LocalAppTheme.current.shapes.cardCornerRadius)
                                 ) {
                                     DropdownMenuItem(
                                         text = {
@@ -714,6 +715,7 @@ private fun ManageHiddenAlbumsDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = SurfaceVariantDark,
+        shape = RoundedCornerShape(LocalAppTheme.current.shapes.dialogCornerRadius),
         title = {
             Text(
                 text = "Ausgeblendete Alben",

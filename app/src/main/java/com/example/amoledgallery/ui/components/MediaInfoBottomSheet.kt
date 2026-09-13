@@ -137,6 +137,7 @@ fun MediaInfoBottomSheet(
             )
         }
     ) {
+        com.example.amoledgallery.ui.WindowBackgroundBlur()
         Column(
             modifier = Modifier
                 .fillMaxWidth()

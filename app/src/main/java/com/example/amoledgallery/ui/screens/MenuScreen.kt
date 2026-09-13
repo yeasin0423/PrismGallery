@@ -62,7 +62,6 @@ import com.example.amoledgallery.ui.theme.SurfaceVariantDark
 import com.example.amoledgallery.ui.theme.TextMuted
 import com.example.amoledgallery.ui.theme.ThemeState
 import com.example.amoledgallery.ui.theme.presetsFor
-import com.example.amoledgallery.ui.themedBackgroundBlur
 
 /**
  * Clean Samsung OneUI style "Menü" tab in pure AMOLED black:
@@ -116,9 +115,7 @@ fun MenuScreen(
             )
 
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .themedBackgroundBlur(radiusDp = 20f),
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(LocalAppTheme.current.shapes.cardCornerRadius),
                 colors = CardDefaults.cardColors(
                     containerColor = if (LocalAppTheme.current.shapes.useBlur) SurfaceDark.copy(alpha = 0.75f) else SurfaceDark
@@ -163,9 +160,7 @@ fun MenuScreen(
             )
 
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .themedBackgroundBlur(radiusDp = 20f),
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(LocalAppTheme.current.shapes.cardCornerRadius),
                 colors = CardDefaults.cardColors(
                     containerColor = if (LocalAppTheme.current.shapes.useBlur) SurfaceDark.copy(alpha = 0.75f) else SurfaceDark
@@ -284,6 +279,7 @@ private fun SettingsInfoDialog(
             topEnd = LocalAppTheme.current.shapes.dialogCornerRadius
         )
     ) {
+        com.example.amoledgallery.ui.WindowBackgroundBlur()
         Column(
             modifier = Modifier
                 .fillMaxWidth()

@@ -69,7 +69,10 @@ fun MoveToAlbumBottomSheet(
         containerColor = SurfaceDark,
         contentColor = PureWhite,
         scrimColor = Color.Black.copy(alpha = 0.65f),
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        shape = RoundedCornerShape(
+            topStart = com.example.amoledgallery.ui.theme.LocalAppTheme.current.shapes.dialogCornerRadius,
+            topEnd = com.example.amoledgallery.ui.theme.LocalAppTheme.current.shapes.dialogCornerRadius
+        ),
         dragHandle = {
             Box(
                 modifier = Modifier
@@ -80,6 +83,7 @@ fun MoveToAlbumBottomSheet(
             )
         }
     ) {
+        com.example.amoledgallery.ui.WindowBackgroundBlur()
         Column(
             modifier = Modifier
                 .fillMaxWidth()

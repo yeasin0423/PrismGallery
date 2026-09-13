@@ -386,6 +386,7 @@ private fun RenameDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = SurfaceVariantDark,
+        shape = RoundedCornerShape(com.example.amoledgallery.ui.theme.LocalAppTheme.current.shapes.dialogCornerRadius),
         title = {
             Text(
                 text = "Datei umbenennen",
@@ -396,6 +397,7 @@ private fun RenameDialog(
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
+                com.example.amoledgallery.ui.WindowBackgroundBlur()
                 OutlinedTextField(
                     value = textValue,
                     onValueChange = { textValue = it },

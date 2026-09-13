@@ -52,7 +52,6 @@ import com.example.amoledgallery.ui.theme.OneUiBlue
 import com.example.amoledgallery.ui.theme.PureWhite
 import com.example.amoledgallery.ui.theme.TextMuted
 import com.example.amoledgallery.ui.theme.designTween
-import com.example.amoledgallery.ui.themedBackgroundBlur
 import com.example.amoledgallery.ui.viewmodel.GalleryTab
 
 /**
@@ -73,7 +72,6 @@ fun BottomNavigationBar(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .themedBackgroundBlur(radiusDp = 30f)
             .background(if (shapes.useBlur) AmoledBlack.copy(alpha = 0.72f) else AmoledBlack)
             .navigationBarsPadding()
     ) {
