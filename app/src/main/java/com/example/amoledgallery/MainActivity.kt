@@ -49,6 +49,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -177,11 +178,18 @@ fun GalleryApp(viewModel: GalleryViewModel) {
         }
     }
 
-    // Explicitly request POST_NOTIFICATIONS on Android 13+ (API 33+) if not yet granted
+    // Ask for everything the app needs in one go on first launch - media access and notifications
+    // together - instead of popping the notification dialog first and then making the user tap
+    // through a separate screen for media access.
+    var hasRequestedPermissions by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                permissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+        if (!hasRequestedPermissions) {
+            hasRequestedPermissions = true
+            val missing = getRequiredPermissions().filter {
+                ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (missing.isNotEmpty()) {
+                permissionLauncher.launch(missing.toTypedArray())
             }
         }
     }
@@ -201,9 +209,21 @@ fun GalleryApp(viewModel: GalleryViewModel) {
     }
 
     if (uiState is GalleryUiState.PermissionRequired) {
+        val missingNotifications = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         PermissionScreen(
             onRequestPermission = {
                 permissionLauncher.launch(getRequiredPermissions())
+            },
+            missingMedia = true,
+            missingNotifications = missingNotifications,
+            onOpenSettings = {
+                context.startActivity(
+                    android.content.Intent(
+                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.fromParts("package", context.packageName, null)
+                    )
+                )
             }
         )
     } else {
@@ -326,6 +346,7 @@ fun GalleryApp(viewModel: GalleryViewModel) {
                                     // Overlay detail integration:
                                     selectedDetailIndex = if (detailSource == DetailSource.ALL) selectedItemIndex else null,
                                     onCloseDetail = { viewModel.closeDetail() },
+                                    onDetailIndexChanged = { viewModel.updateDetailIndex(it) },
                                     onTrashItem = { item -> viewModel.trashMedia(item) },
                                     onRenameItem = { item, newName -> viewModel.renameMedia(item, newName) },
                                     isFavorite = { id -> favoriteIds.contains(id) },
@@ -374,6 +395,7 @@ fun GalleryApp(viewModel: GalleryViewModel) {
                                     // Overlay detail integration:
                                     selectedDetailIndex = if (detailSource == DetailSource.ALBUM) selectedItemIndex else null,
                                     onCloseDetail = { viewModel.closeDetail() },
+                                    onDetailIndexChanged = { viewModel.updateDetailIndex(it) },
                                     onTrashItem = { item -> viewModel.trashMedia(item) },
                                     onRenameItem = { item, newName -> viewModel.renameMedia(item, newName) },
                                     isFavorite = { id -> favoriteIds.contains(id) },

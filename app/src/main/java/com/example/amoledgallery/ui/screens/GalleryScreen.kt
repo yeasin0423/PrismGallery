@@ -80,6 +80,7 @@ import com.example.amoledgallery.ui.components.MediaGridItem
 import com.example.amoledgallery.ui.components.OneUiHeader
 import com.example.amoledgallery.ui.components.detectPinchToZoomGrid
 import com.example.amoledgallery.ui.theme.AmoledBlack
+import com.example.amoledgallery.ui.theme.LocalAppTheme
 import com.example.amoledgallery.ui.theme.PureWhite
 import com.example.amoledgallery.ui.theme.SurfaceDark
 import com.example.amoledgallery.ui.theme.TextMuted
@@ -120,6 +121,7 @@ fun GalleryScreen(
     // Overlay detail viewer state
     selectedDetailIndex: Int? = null,
     onCloseDetail: () -> Unit = {},
+    onDetailIndexChanged: (Int) -> Unit = {},
     onTrashItem: (MediaItem) -> Unit = {},
     onRenameItem: (MediaItem, String) -> Unit = { _, _ -> },
     isFavorite: (Long) -> Boolean = { false },
@@ -218,6 +220,8 @@ fun GalleryScreen(
                 DateUtils.groupMediaByDate(items, columnCount)
             }
 
+            val gridSpacing = LocalAppTheme.current.shapes.gridSpacing
+
             // Preserved in memory permanently because GalleryScreen stays composed!
             val gridState = rememberLazyGridState()
             val coroutineScope = rememberCoroutineScope()
@@ -297,13 +301,13 @@ fun GalleryScreen(
                         }
                     ),
                 contentPadding = PaddingValues(
-                    start = 3.dp,
-                    end = if (items.size > 20) 14.dp else 3.dp,
+                    start = gridSpacing,
+                    end = if (items.size > 20) 14.dp else gridSpacing,
                     top = if (onBackClick != null) 60.dp else 0.dp,
                     bottom = 80.dp
                 ),
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+                horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                verticalArrangement = Arrangement.spacedBy(gridSpacing)
             ) {
                 // Top Header: Generous OneUI Large Title + Filter Chips
                 item(
@@ -561,7 +565,8 @@ fun GalleryScreen(
                     onTrashItem = onTrashItem,
                     onRenameItem = onRenameItem,
                     isFavorite = isFavorite,
-                    onToggleFavorite = onToggleFavorite
+                    onToggleFavorite = onToggleFavorite,
+                    onPageChanged = onDetailIndexChanged
                 )
             }
         }

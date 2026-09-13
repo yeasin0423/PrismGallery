@@ -126,6 +126,7 @@ fun AlbumsScreen(
     // Overlay detail viewer state
     selectedDetailIndex: Int? = null,
     onCloseDetail: () -> Unit = {},
+    onDetailIndexChanged: (Int) -> Unit = {},
     onTrashItem: (MediaItem) -> Unit = {},
     onRenameItem: (MediaItem, String) -> Unit = { _, _ -> },
     isFavorite: (Long) -> Boolean = { false },
@@ -460,7 +461,8 @@ fun AlbumsScreen(
                     onTrashItem = onTrashItem,
                     onRenameItem = onRenameItem,
                     isFavorite = isFavorite,
-                    onToggleFavorite = onToggleFavorite
+                    onToggleFavorite = onToggleFavorite,
+                    onPageChanged = onDetailIndexChanged
                 )
             }
         }

@@ -10,12 +10,14 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -42,12 +44,17 @@ import com.example.amoledgallery.ui.theme.SurfaceVariantDark
 import com.example.amoledgallery.ui.theme.TextMuted
 
 /**
- * Centered OneUI style permission prompt screen with a clean tactile button.
+ * Centered OneUI style permission prompt. Only shown when something is actually missing after the
+ * system dialogs have been answered - it names each missing permission and warns what breaks
+ * without it, rather than being an unconditional extra tap on the way into the app.
  */
 @Composable
 fun PermissionScreen(
     onRequestPermission: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    missingMedia: Boolean = true,
+    missingNotifications: Boolean = false,
+    onOpenSettings: () -> Unit = {}
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -108,7 +115,34 @@ fun PermissionScreen(
                 lineHeight = 22.sp
             )
 
-            Spacer(modifier = Modifier.height(36.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Warning card naming exactly what is still missing.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(SurfaceVariantDark)
+                    .padding(horizontal = 18.dp, vertical = 16.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.permission_warning),
+                    color = Color(0xFFFFB4AB),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 19.sp
+                )
+                if (missingMedia) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    MissingPermissionRow(stringResource(R.string.permission_missing_media))
+                }
+                if (missingNotifications) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    MissingPermissionRow(stringResource(R.string.permission_missing_notifications))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
 
             // OneUI style pill button with tactile scale animation
             Box(
@@ -135,6 +169,43 @@ fun PermissionScreen(
                     fontSize = 15.sp
                 )
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Fallback for a permanently denied permission, where the system dialog no longer appears.
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(24.dp))
+                    .clickable { onOpenSettings() }
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.permission_open_settings),
+                    color = TextMuted,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun MissingPermissionRow(text: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Box(
+            modifier = Modifier
+                .padding(top = 6.dp)
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFFFB4AB))
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = text,
+            color = Color.White,
+            fontSize = 13.sp,
+            lineHeight = 18.sp
+        )
     }
 }

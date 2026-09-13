@@ -104,6 +104,7 @@ fun MediaDetailScreen(
     onRenameItem: (MediaItem, String) -> Unit,
     isFavorite: (Long) -> Boolean = { false },
     onToggleFavorite: (Long) -> Unit = {},
+    onPageChanged: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (mediaList.isEmpty()) {
@@ -132,6 +133,9 @@ fun MediaDetailScreen(
     androidx.compose.runtime.LaunchedEffect(pagerState.currentPage) {
         isZoomed = false
         dragOffsetY.snapTo(0f)
+        // Report the page back so a delete acts on the item actually on screen and the index is
+        // left pointing at the following one.
+        onPageChanged(pagerState.currentPage)
     }
 
     var showControls by remember { mutableStateOf(true) }

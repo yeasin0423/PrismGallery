@@ -608,7 +608,14 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     fun loadMedia() {
         viewModelScope.launch {
-            _uiState.value = GalleryUiState.Loading
+            // Only blank the screen out for the very first load. Every later refresh (after a
+            // delete/move, or simply on app resume) keeps the current list on screen until the new
+            // one is ready - otherwise the list momentarily becomes empty, which flashes the grid
+            // and made the fullscreen viewer close itself mid-delete because it treats an empty
+            // list as "nothing left to show".
+            if (_uiState.value !is GalleryUiState.Success) {
+                _uiState.value = GalleryUiState.Loading
+            }
             withContext(Dispatchers.IO) {
                 // Single MediaStore scan (images + videos) reused to derive the main feed,
                 // the visible albums and the hidden albums - avoids 3-4x redundant re-queries.
@@ -664,6 +671,17 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         if (_isSelectionMode.value) return
         _detailSource.value = source
         _selectedItemIndex.value = index
+    }
+
+    /**
+     * Keeps the stored detail index in step with the page the user actually swiped to, so that
+     * deleting from the fullscreen viewer removes the visible item and leaves the index pointing
+     * at what is now the next one.
+     */
+    fun updateDetailIndex(index: Int) {
+        if (_selectedItemIndex.value != null && _selectedItemIndex.value != index) {
+            _selectedItemIndex.value = index
+        }
     }
 
     fun closeDetail() {
