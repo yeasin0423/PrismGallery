@@ -52,6 +52,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -288,14 +290,25 @@ fun GalleryApp(viewModel: GalleryViewModel) {
                         .fillMaxSize()
                         .padding(bottom = bottomPadding)
                 ) {
-                    AnimatedContent(
-                        targetState = selectedTab,
-                        transitionSpec = {
-                            fadeIn(animationSpec = qualityTween(graphicsQuality, 200)) togetherWith
-                                fadeOut(animationSpec = qualityTween(graphicsQuality, 200))
-                        },
-                        label = "tab_transition"
-                    ) { tab ->
+                    // All three tabs stay permanently composed (only cross-faded via alpha) instead
+                    // of being torn down and rebuilt by AnimatedContent on every switch - that
+                    // previously destroyed and recreated GalleryScreen's LazyGridState, gesture
+                    // detectors and thumbnail pre-indexing setup on every single tab switch, which
+                    // is what made switching tabs feel laggy despite the misleading comment above
+                    // this Scaffold claiming grid state was already being preserved.
+                    GalleryTab.entries.forEach { tab ->
+                        val isActiveTab = tab == selectedTab
+                        val tabAlpha by androidx.compose.animation.core.animateFloatAsState(
+                            targetValue = if (isActiveTab) 1f else 0f,
+                            animationSpec = qualityTween(graphicsQuality, 200),
+                            label = "tab_fade_$tab"
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .zIndex(if (isActiveTab) 1f else 0f)
+                                .graphicsLayer { alpha = tabAlpha }
+                        ) {
                         when (tab) {
                             GalleryTab.BILDER -> {
                                 val allItems = (uiState as? GalleryUiState.Success)?.items ?: emptyList()
@@ -369,8 +382,10 @@ fun GalleryApp(viewModel: GalleryViewModel) {
                             }
 
                             GalleryTab.MENU -> {
-                                val internalStorage = remember(selectedTab) { viewModel.getInternalStorageSpace() }
-                                val sdCardStorage = remember(selectedTab) { viewModel.getSdCardStorageSpace() }
+                                // Keyed on becoming the active tab (not on every selectedTab change) since
+                                // this Box now stays permanently composed alongside the other two tabs.
+                                val internalStorage = remember(isActiveTab) { viewModel.getInternalStorageSpace() }
+                                val sdCardStorage = remember(isActiveTab) { viewModel.getSdCardStorageSpace() }
                                 MenuScreen(
                                     favoriteCount = favoriteMedia.size,
                                     trashedCount = trashedMedia.size,
@@ -385,6 +400,7 @@ fun GalleryApp(viewModel: GalleryViewModel) {
                                     onOpenTrash = { viewModel.openTrash() }
                                 )
                             }
+                        }
                         }
                     }
                 }

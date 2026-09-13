@@ -3,6 +3,7 @@ package com.example.amoledgallery.data
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
+import com.example.amoledgallery.PerformanceProfile
 import coil3.ImageLoader
 import coil3.asImage
 import coil3.decode.DataSource
@@ -52,13 +53,21 @@ class MediaThumbnailFetcher(
     override suspend fun fetch(): FetchResult = withContext(Dispatchers.IO) {
         val thumbnailManager = ThumbnailManager.getInstance(context)
 
-        // HARDWARE bitmaps decode directly into GPU-resident memory, skipping the
-        // CPU->GPU texture upload that a software (RGB_565/ARGB_8888) bitmap needs on every
-        // draw - this is the standard fix for jank in scrolling image grids. This is the
-        // "repeat view" hot path (a thumbnail that already scrolled into view once before),
-        // so it is by far the most frequently hit branch during fast scrolling.
+        // HARDWARE bitmaps decode directly into GPU-resident memory, skipping the CPU->GPU
+        // texture upload that a software (RGB_565/ARGB_8888) bitmap needs on every draw - but
+        // that upload-avoidance only pays off on devices with a mature hardware-bitmap
+        // compositing path; on weaker/older GPUs, promoting every single clipped (rounded-
+        // corner) grid tile to a hardware layer can cost MORE than it saves. So this follows
+        // the same tier philosophy as the rest of the app: only HIGH/ULTRA (stronger, newer
+        // devices) get HARDWARE bitmaps here; LOW/MEDIUM decode straight to cheap RGB_565.
+        val quality = com.example.amoledgallery.AmoledGalleryApp.performanceProfile
+        val useHardwareBitmap = quality == PerformanceProfile.HIGH || quality == PerformanceProfile.ULTRA
         val decodeOptions = BitmapFactory.Options().apply {
-            inPreferredConfig = android.graphics.Bitmap.Config.HARDWARE
+            inPreferredConfig = if (useHardwareBitmap) {
+                android.graphics.Bitmap.Config.HARDWARE
+            } else {
+                android.graphics.Bitmap.Config.RGB_565
+            }
         }
 
         // 1. Fast path: Check existing cache file on internal UFS storage
