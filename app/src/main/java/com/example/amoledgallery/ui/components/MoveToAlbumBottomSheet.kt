@@ -8,11 +8,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,21 +18,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.SdCard
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,18 +38,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.example.amoledgallery.model.AlbumItem
-import com.example.amoledgallery.ui.theme.AmoledBlack
-import com.example.amoledgallery.ui.theme.OneUiCardBorder
-import com.example.amoledgallery.ui.theme.PureWhite
-import com.example.amoledgallery.ui.theme.SurfaceDark
-import com.example.amoledgallery.ui.theme.SurfaceVariantDark
-import com.example.amoledgallery.ui.theme.TextMuted
+import com.example.amoledgallery.ui.design.ExpressiveCookieShape
+import com.example.amoledgallery.ui.design.ThemedSheet
+import com.example.amoledgallery.ui.theme.DesignLanguage
+import com.example.amoledgallery.ui.theme.LocalAppTheme
+import com.example.amoledgallery.ui.theme.onAccent
 
 /**
- * Samsung OneUI style modal bottom sheet allowing users to move selected media
- * items to any existing album (internal storage or MicroSD) or create a new target album.
+ * Sheet for moving the current selection into an album (or a new one), drawn as the active design
+ * language's own sheet.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MoveToAlbumBottomSheet(
     albums: List<AlbumItem>,
@@ -62,171 +55,108 @@ fun MoveToAlbumBottomSheet(
     onSelectAlbum: (AlbumItem) -> Unit,
     onCreateNewAlbum: () -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = SurfaceDark,
-        contentColor = PureWhite,
-        scrimColor = Color.Black.copy(alpha = 0.65f),
-        shape = RoundedCornerShape(
-            topStart = com.example.amoledgallery.ui.theme.LocalAppTheme.current.shapes.dialogCornerRadius,
-            topEnd = com.example.amoledgallery.ui.theme.LocalAppTheme.current.shapes.dialogCornerRadius
-        ),
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(top = 10.dp, bottom = 8.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.25f))
-            )
-        }
-    ) {
-        com.example.amoledgallery.ui.WindowBackgroundBlur()
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
+    ThemedSheet(onDismissRequest = onDismiss, title = "In Album verschieben") {
+        LazyColumn(
+            modifier = Modifier.weight(1f, fill = false),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            Text(
-                text = "In Album verschieben",
-                color = PureWhite,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-            )
-
-            HorizontalDivider(
-                color = OneUiCardBorder,
-                thickness = 0.5.dp,
-                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
-            )
-
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                // Option 1: Create New Album
-                item(key = "create_new_album_option") {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .clickable {
-                                onDismiss()
-                                onCreateNewAlbum()
-                            }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(46.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(SurfaceVariantDark),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Add,
-                                contentDescription = "Neues Album erstellen",
-                                tint = PureWhite,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(14.dp))
-
-                        Column {
-                            Text(
-                                text = "Neues Album erstellen",
-                                color = PureWhite,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Zielordner anlegen und verschieben",
-                                color = TextMuted,
-                                fontSize = 12.sp
-                            )
-                        }
+            item(key = "create_new_album_option") {
+                MoveTargetRow(
+                    title = "Neues Album erstellen",
+                    subtitle = "Zielordner anlegen und verschieben",
+                    cover = null,
+                    icon = Icons.Rounded.Add,
+                    highlighted = true,
+                    isSdCard = false,
+                    onClick = {
+                        onDismiss()
+                        onCreateNewAlbum()
                     }
-                }
+                )
+            }
+            items(albums, key = { it.bucketId }) { album ->
+                MoveTargetRow(
+                    title = album.name,
+                    subtitle = "${if (album.isSdCard) "SD-Karte" else "Intern"} · ${album.count} Elemente",
+                    cover = album.coverThumbnail,
+                    icon = Icons.Rounded.Folder,
+                    highlighted = false,
+                    isSdCard = album.isSdCard,
+                    onClick = { onSelectAlbum(album) }
+                )
+            }
+        }
+    }
+}
 
-                // List of destination albums
-                items(albums, key = { it.bucketId }) { album ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .clickable { onSelectAlbum(album) }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(46.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(SurfaceVariantDark),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (album.coverThumbnail != null) {
-                                AsyncImage(
-                                    model = album.coverThumbnail,
-                                    contentDescription = album.name,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Rounded.Folder,
-                                    contentDescription = null,
-                                    tint = TextMuted,
-                                    modifier = Modifier.size(26.dp)
-                                )
-                            }
-
-                            if (album.isSdCard) {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(2.dp)
-                                        .size(14.dp)
-                                        .clip(CircleShape)
-                                        .background(AmoledBlack.copy(alpha = 0.8f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.SdCard,
-                                        contentDescription = "SD-Karte",
-                                        tint = PureWhite,
-                                        modifier = Modifier.size(10.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(14.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = album.name,
-                                color = PureWhite,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            val locationText = if (album.isSdCard) "SD-Karte" else "Intern"
-                            Text(
-                                text = "$locationText • ${album.count} Elemente",
-                                color = TextMuted,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
+@Composable
+private fun MoveTargetRow(
+    title: String,
+    subtitle: String,
+    cover: Any?,
+    icon: ImageVector,
+    highlighted: Boolean,
+    isSdCard: Boolean,
+    onClick: () -> Unit
+) {
+    val theme = LocalAppTheme.current
+    val palette = theme.palette
+    val language = theme.language
+    val coverShape: Shape = when (language) {
+        DesignLanguage.GOOGLE_EXPRESSIVE -> if (highlighted) ExpressiveCookieShape else RoundedCornerShape(16.dp)
+        DesignLanguage.IOS_LIQUID_GLASS -> RoundedCornerShape(10.dp)
+        DesignLanguage.SAMSUNG_ONEUI -> RoundedCornerShape(14.dp)
+        DesignLanguage.XIAOMI_HYPEROS -> RoundedCornerShape(12.dp)
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(coverShape)
+                .background(if (highlighted) palette.accent else palette.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            if (cover != null) {
+                AsyncImage(model = cover, contentDescription = title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            } else {
+                Icon(icon, null, tint = if (highlighted) palette.onAccent else palette.textMuted, modifier = Modifier.size(26.dp))
+            }
+            if (isSdCard) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(3.dp)
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Rounded.SdCard, "SD-Karte", tint = Color.White, modifier = Modifier.size(10.dp))
                 }
             }
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = if (highlighted && language != DesignLanguage.SAMSUNG_ONEUI) palette.accent else palette.onBackground,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(text = subtitle, color = palette.textMuted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (language == DesignLanguage.IOS_LIQUID_GLASS || language == DesignLanguage.XIAOMI_HYPEROS) {
+            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = palette.textMuted.copy(alpha = 0.6f), modifier = Modifier.size(22.dp))
         }
     }
 }

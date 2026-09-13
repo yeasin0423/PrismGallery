@@ -1,12 +1,7 @@
 package com.example.amoledgallery.ui.screens
 
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,34 +14,30 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.amoledgallery.R
-import com.example.amoledgallery.ui.theme.AmoledBlack
-import com.example.amoledgallery.ui.theme.SurfaceVariantDark
-import com.example.amoledgallery.ui.theme.TextMuted
+import com.example.amoledgallery.ui.design.ExpressiveCookieShape
+import com.example.amoledgallery.ui.design.ThemedButton
+import com.example.amoledgallery.ui.design.ThemedCard
+import com.example.amoledgallery.ui.theme.DesignLanguage
+import com.example.amoledgallery.ui.theme.LocalAppTheme
+import com.example.amoledgallery.ui.theme.destructive
 
 /**
- * Centered OneUI style permission prompt. Only shown when something is actually missing after the
- * system dialogs have been answered - it names each missing permission and warns what breaks
- * without it, rather than being an unconditional extra tap on the way into the app.
+ * Centered permission prompt, only shown when something is actually missing after the system dialogs
+ * have been answered - it names each missing permission and warns what breaks without it.
  */
 @Composable
 fun PermissionScreen(
@@ -56,22 +47,13 @@ fun PermissionScreen(
     missingNotifications: Boolean = false,
     onOpenSettings: () -> Unit = {}
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val buttonScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.95f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "btn_scale"
-    )
+    val theme = LocalAppTheme.current
+    val palette = theme.palette
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(AmoledBlack)
-            .padding(horizontal = 32.dp),
+            .padding(horizontal = 28.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -79,55 +61,43 @@ fun PermissionScreen(
             verticalArrangement = Arrangement.Center,
             modifier = Modifier.fillMaxWidth()
         ) {
-            // Rounded icon container
             Box(
                 modifier = Modifier
-                    .size(88.dp)
-                    .clip(CircleShape)
-                    .background(SurfaceVariantDark),
+                    .size(92.dp)
+                    .clip(if (theme.language == DesignLanguage.GOOGLE_EXPRESSIVE) ExpressiveCookieShape else CircleShape)
+                    .background(palette.accent.copy(alpha = 0.18f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.PhotoLibrary,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(44.dp)
-                )
+                Icon(Icons.Rounded.PhotoLibrary, null, tint = palette.accent, modifier = Modifier.size(44.dp))
             }
 
             Spacer(modifier = Modifier.height(28.dp))
 
             Text(
                 text = stringResource(R.string.permission_title),
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color.White,
+                color = palette.onBackground,
+                fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                lineHeight = 32.sp
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
                 text = stringResource(R.string.permission_description),
-                style = MaterialTheme.typography.bodyLarge,
-                color = TextMuted,
+                color = palette.textMuted,
+                fontSize = 16.sp,
                 textAlign = TextAlign.Center,
                 lineHeight = 22.sp
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Warning card naming exactly what is still missing.
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(SurfaceVariantDark)
-                    .padding(horizontal = 18.dp, vertical = 16.dp)
-            ) {
+            ThemedCard {
                 Text(
                     text = stringResource(R.string.permission_warning),
-                    color = Color(0xFFFFB4AB),
+                    color = palette.destructive,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     lineHeight = 19.sp
@@ -144,68 +114,41 @@ fun PermissionScreen(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // OneUI style pill button with tactile scale animation
-            Box(
-                modifier = Modifier
-                    .graphicsLayer {
-                        scaleX = buttonScale
-                        scaleY = buttonScale
-                    }
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color.White)
-                    .clickable(
-                        interactionSource = interactionSource,
-                        indication = null
-                    ) {
-                        onRequestPermission()
-                    }
-                    .padding(horizontal = 32.dp, vertical = 14.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = stringResource(R.string.permission_grant_button),
-                    color = Color.Black,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp
-                )
-            }
+            ThemedButton(
+                text = stringResource(R.string.permission_grant_button),
+                onClick = onRequestPermission,
+                modifier = Modifier.fillMaxWidth()
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             // Fallback for a permanently denied permission, where the system dialog no longer appears.
-            Box(
+            Text(
+                text = stringResource(R.string.permission_open_settings),
+                color = palette.textMuted,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(24.dp))
+                    .clip(CircleShape)
                     .clickable { onOpenSettings() }
                     .padding(horizontal = 20.dp, vertical = 12.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.permission_open_settings),
-                    color = TextMuted,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 14.sp
-                )
-            }
+            )
         }
     }
 }
 
 @Composable
 private fun MissingPermissionRow(text: String) {
+    val palette = LocalAppTheme.current.palette
     Row(verticalAlignment = Alignment.Top) {
         Box(
             modifier = Modifier
                 .padding(top = 6.dp)
                 .size(6.dp)
                 .clip(CircleShape)
-                .background(Color(0xFFFFB4AB))
+                .background(palette.destructive)
         )
         Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = text,
-            color = Color.White,
-            fontSize = 13.sp,
-            lineHeight = 18.sp
-        )
+        Text(text = text, color = palette.onBackground, fontSize = 13.sp, lineHeight = 18.sp)
     }
 }

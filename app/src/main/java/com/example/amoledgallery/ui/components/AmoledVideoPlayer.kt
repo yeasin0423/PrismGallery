@@ -82,7 +82,7 @@ fun AmoledVideoPlayer(
         Box(
             modifier = modifier
                 .fillMaxSize()
-                .background(AmoledBlack),
+                .background(androidx.compose.ui.graphics.Color.Black),
             contentAlignment = Alignment.Center
         ) {
             AsyncImage(
@@ -171,7 +171,7 @@ private fun ActiveVideoPlayer(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(AmoledBlack)
+            .background(androidx.compose.ui.graphics.Color.Black)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = {

@@ -5,20 +5,19 @@ import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AspectRatio
@@ -28,16 +27,10 @@ import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Movie
-import androidx.compose.material.icons.rounded.SdStorage
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,22 +40,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import com.example.amoledgallery.ui.theme.LocalAppTheme
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.exifinterface.media.ExifInterface
 import com.example.amoledgallery.model.MediaItem
-import com.example.amoledgallery.ui.theme.OneUiBlue
-import com.example.amoledgallery.ui.theme.OneUiCardBorder
-import com.example.amoledgallery.ui.theme.PureWhite
-import com.example.amoledgallery.ui.theme.SurfaceDark
-import com.example.amoledgallery.ui.theme.SurfaceVariantDark
-import com.example.amoledgallery.ui.theme.TextMuted
+import com.example.amoledgallery.ui.design.ThemedCard
+import com.example.amoledgallery.ui.design.ThemedSheet
+import com.example.amoledgallery.ui.theme.LocalAppTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -98,10 +86,9 @@ data class MediaMetadata(
 )
 
 /**
- * Samsung OneUI style Details & Metadata bottom sheet for fullscreen media viewer.
- * Slides up when scrolling down / swiping up on media detail screen.
+ * Details & metadata sheet for the fullscreen viewer, drawn as the active design language's sheet.
+ * Slides up when swiping up on the media detail screen.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MediaInfoBottomSheet(
     item: MediaItem,
@@ -109,7 +96,7 @@ fun MediaInfoBottomSheet(
 ) {
     val context = LocalContext.current
     var metadata by remember(item.id) { mutableStateOf<MediaMetadata?>(null) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val palette = LocalAppTheme.current.palette
 
     LaunchedEffect(item.id, item.uri) {
         withContext(Dispatchers.IO) {
@@ -117,42 +104,14 @@ fun MediaInfoBottomSheet(
         }
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = SurfaceDark,
-        contentColor = PureWhite,
-        scrimColor = Color.Black.copy(alpha = 0.65f),
-        shape = RoundedCornerShape(
-            topStart = LocalAppTheme.current.shapes.dialogCornerRadius,
-            topEnd = LocalAppTheme.current.shapes.dialogCornerRadius
-        ),
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(top = 10.dp, bottom = 8.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.25f))
-            )
-        }
-    ) {
-        com.example.amoledgallery.ui.WindowBackgroundBlur()
+    ThemedSheet(onDismissRequest = onDismiss, title = "Details") {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
+                .weight(1f, fill = false)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 6.dp)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 20.dp)
         ) {
-            Text(
-                text = "Details",
-                color = PureWhite,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-
             val meta = metadata
             if (meta == null) {
                 Box(
@@ -161,27 +120,16 @@ fun MediaInfoBottomSheet(
                         .height(120.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "Metadaten werden geladen...", color = TextMuted, fontSize = 14.sp)
+                    Text(text = "Metadaten werden geladen…", color = palette.textMuted, fontSize = 14.sp)
                 }
             } else {
-                // Section 1: Date and Time
                 MetadataCard {
-                    MetadataRow(
-                        icon = Icons.Rounded.CalendarToday,
-                        title = "Datum & Uhrzeit",
-                        value = meta.formattedDate
-                    )
-                    HorizontalDivider(color = OneUiCardBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 8.dp))
-                    MetadataRow(
-                        icon = Icons.Rounded.Description,
-                        title = "Dateiname",
-                        value = meta.fileName
-                    )
+                    MetadataRow(Icons.Rounded.CalendarToday, "Datum & Uhrzeit", meta.formattedDate)
+                    MetadataRow(Icons.Rounded.Description, "Dateiname", meta.fileName)
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Section 2: Technical Details (Resolution, Size, MIME)
                 MetadataCard {
                     if (meta.resolutionFormatted.isNotBlank()) {
                         val resSubtitle = if (meta.megapixelsFormatted.isNotBlank()) {
@@ -189,80 +137,41 @@ fun MediaInfoBottomSheet(
                         } else {
                             meta.resolutionFormatted
                         }
-                        MetadataRow(
-                            icon = Icons.Rounded.AspectRatio,
-                            title = "Auflösung",
-                            value = resSubtitle
-                        )
-                        HorizontalDivider(color = OneUiCardBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 8.dp))
+                        MetadataRow(Icons.Rounded.AspectRatio, "Auflösung", resSubtitle)
                     }
-
                     if (meta.fileSizeFormatted.isNotBlank()) {
-                        MetadataRow(
-                            icon = Icons.Rounded.Storage,
-                            title = "Dateigröße",
-                            value = meta.fileSizeFormatted
-                        )
-                        HorizontalDivider(color = OneUiCardBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 8.dp))
+                        MetadataRow(Icons.Rounded.Storage, "Dateigröße", meta.fileSizeFormatted)
                     }
-
                     if (meta.durationFormatted != null) {
-                        MetadataRow(
-                            icon = Icons.Rounded.Movie,
-                            title = "Videodauer",
-                            value = meta.durationFormatted
-                        )
-                        HorizontalDivider(color = OneUiCardBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 8.dp))
+                        MetadataRow(Icons.Rounded.Movie, "Videodauer", meta.durationFormatted)
                     }
-
                     if (meta.bitrateFormatted != null) {
-                        MetadataRow(
-                            icon = Icons.Rounded.Tune,
-                            title = "Bitrate",
-                            value = meta.bitrateFormatted
-                        )
-                        HorizontalDivider(color = OneUiCardBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 8.dp))
+                        MetadataRow(Icons.Rounded.Tune, "Bitrate", meta.bitrateFormatted)
                     }
-
                     MetadataRow(
-                        icon = Icons.Rounded.Folder,
-                        title = "Dateipfad",
-                        value = meta.storagePath.ifBlank { "Pictures/${meta.albumName}/${meta.fileName}" }
+                        Icons.Rounded.Folder,
+                        "Dateipfad",
+                        meta.storagePath.ifBlank { "Pictures/${meta.albumName}/${meta.fileName}" }
                     )
                 }
 
-                // Section 3: Camera EXIF (if available)
                 if (meta.cameraDevice != null || meta.cameraSettings != null) {
                     Spacer(modifier = Modifier.height(12.dp))
                     MetadataCard {
                         if (meta.cameraDevice != null) {
-                            MetadataRow(
-                                icon = Icons.Rounded.CameraAlt,
-                                title = "Kameramodell",
-                                value = meta.cameraDevice
-                            )
-                            if (meta.cameraSettings != null) {
-                                HorizontalDivider(color = OneUiCardBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 8.dp))
-                            }
+                            MetadataRow(Icons.Rounded.CameraAlt, "Kameramodell", meta.cameraDevice)
                         }
-
                         if (meta.cameraSettings != null) {
-                            MetadataRow(
-                                icon = Icons.Rounded.Tune,
-                                title = "Aufnahmeparameter",
-                                value = meta.cameraSettings
-                            )
+                            MetadataRow(Icons.Rounded.Tune, "Aufnahmeparameter", meta.cameraSettings)
                         }
                     }
                 }
 
-                // Section 4: Geolocation / GPS (if available)
                 if (meta.latitude != null && meta.longitude != null) {
                     Spacer(modifier = Modifier.height(12.dp))
                     MetadataCard {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             MetadataRow(
@@ -271,42 +180,33 @@ fun MediaInfoBottomSheet(
                                 value = "${String.format(Locale.US, "%.5f", meta.latitude)}, ${String.format(Locale.US, "%.5f", meta.longitude)}",
                                 modifier = Modifier.weight(1f)
                             )
-
-                            TextButton(
-                                onClick = {
-                                    val geoUri = Uri.parse("geo:${meta.latitude},${meta.longitude}?q=${meta.latitude},${meta.longitude}(${Uri.encode(meta.fileName)})")
-                                    val mapIntent = Intent(Intent.ACTION_VIEW, geoUri)
-                                    try {
-                                        context.startActivity(mapIntent)
-                                    } catch (_: Exception) {}
-                                }
-                            ) {
-                                Text(text = "Karte öffnen", color = OneUiBlue, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            }
+                            Text(
+                                text = "Karte",
+                                color = palette.accent,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val geoUri = Uri.parse("geo:${meta.latitude},${meta.longitude}?q=${meta.latitude},${meta.longitude}(${Uri.encode(meta.fileName)})")
+                                        try {
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, geoUri))
+                                        } catch (_: Exception) {
+                                        }
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            )
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
 }
 
 @Composable
-private fun MetadataCard(
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(SurfaceVariantDark)
-            .padding(14.dp)
-    ) {
-        content()
-    }
+private fun MetadataCard(content: @Composable ColumnScope.() -> Unit) {
+    ThemedCard(inSheet = true, content = content)
 }
 
 @Composable
@@ -316,37 +216,30 @@ private fun MetadataRow(
     value: String,
     modifier: Modifier = Modifier
 ) {
+    val palette = LocalAppTheme.current.palette
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(SurfaceDark),
+                .background(palette.accent.copy(alpha = 0.14f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = PureWhite,
-                modifier = Modifier.size(18.dp)
-            )
+            Icon(imageVector = icon, contentDescription = null, tint = palette.accent, modifier = Modifier.size(18.dp))
         }
 
         Spacer(modifier = Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                color = TextMuted,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Normal
-            )
+            Text(text = title, color = palette.textMuted, fontSize = 12.sp)
             Text(
                 text = value,
-                color = PureWhite,
+                color = palette.onBackground,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 2,

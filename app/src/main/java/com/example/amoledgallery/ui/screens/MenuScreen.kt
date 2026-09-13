@@ -3,6 +3,7 @@ package com.example.amoledgallery.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,55 +20,79 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.PhoneAndroid
-import androidx.compose.material.icons.rounded.SdCard
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.amoledgallery.PerformanceProfile
-import com.example.amoledgallery.ui.components.OneUiHeader
-import com.example.amoledgallery.ui.theme.AmoledBlack
+import com.example.amoledgallery.ui.components.HsvColorPicker
+import com.example.amoledgallery.ui.components.LargeHeader
+import com.example.amoledgallery.ui.design.DialogButton
+import com.example.amoledgallery.ui.design.DialogButtonStyle
+import com.example.amoledgallery.ui.design.ExpressiveCookieShape
+import com.example.amoledgallery.ui.design.ListRow
+import com.example.amoledgallery.ui.design.ThemedCard
+import com.example.amoledgallery.ui.design.ThemedDialog
+import com.example.amoledgallery.ui.design.ThemedListSection
+import com.example.amoledgallery.ui.design.ThemedProgressBar
+import com.example.amoledgallery.ui.design.ThemedRadioIndicator
+import com.example.amoledgallery.ui.design.ThemedSectionHeader
+import com.example.amoledgallery.ui.design.ThemedSegmentedControl
+import com.example.amoledgallery.ui.design.ThemedSheet
+import com.example.amoledgallery.ui.design.bottomBarContentPadding
+import com.example.amoledgallery.ui.design.pressScale
 import com.example.amoledgallery.ui.theme.AppColorPalette
 import com.example.amoledgallery.ui.theme.CUSTOM_PALETTE_ID
 import com.example.amoledgallery.ui.theme.DesignLanguage
 import com.example.amoledgallery.ui.theme.LocalAppTheme
-import com.example.amoledgallery.ui.theme.OneUiBlue
-import com.example.amoledgallery.ui.theme.OneUiCardBorder
-import com.example.amoledgallery.ui.theme.PureWhite
-import com.example.amoledgallery.ui.theme.SurfaceDark
-import com.example.amoledgallery.ui.theme.SurfaceVariantDark
-import com.example.amoledgallery.ui.theme.TextMuted
 import com.example.amoledgallery.ui.theme.ThemeState
+import com.example.amoledgallery.ui.theme.isLight
+import com.example.amoledgallery.ui.theme.onAccent
 import com.example.amoledgallery.ui.theme.presetsFor
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlin.math.roundToInt
+
+/** Sections of the settings sheet; every menu entry opens the sheet scrolled to its own section. */
+enum class SettingsSection { DESIGN, SETTINGS, STORAGE, INFO }
 
 /**
- * Clean Samsung OneUI style "Menü" tab in pure AMOLED black:
- * - Favorites shortcut showing favorite count
- * - Trash shortcut showing trashed media count
- * - Settings & info modal with manual Graphics Quality picker (Low/Medium/High/Ultra)
+ * The "Menü" tab, built the way each OS would build it:
+ * - One UI: huge centred title, two big shortcut tiles, a list card with blue value summaries.
+ * - Material 3 Expressive: a tonal storage card with the wavy progress indicator, segmented lists with
+ *   cookie-shaped icons.
+ * - iOS: Settings-style inset grouped lists with colored icon squares and trailing values.
+ * - HyperOS: light cards - shortcut cards with pastel icon circles, a storage card, a chevron list.
+ *
+ * Design, Einstellungen, Speicher and Info all live in one settings sheet, and each entry opens it
+ * scrolled to that section.
  */
 @Composable
 fun MenuScreen(
@@ -84,105 +109,158 @@ fun MenuScreen(
     onOpenTrash: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showSettingsDialog by remember { mutableStateOf(false) }
+    var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
+    val theme = LocalAppTheme.current
+    val palette = theme.palette
+    val language = theme.language
+
+    val favoritesText = if (favoriteCount == 1) "1 Element" else "$favoriteCount Elemente"
+    val trashText = if (trashedCount == 1) "1 Element" else "$trashedCount Elemente"
+    val storageText = if (internalTotalBytes > 0) {
+        "${formatBytes(internalFreeBytes)} frei von ${formatBytes(internalTotalBytes)}"
+    } else {
+        "Unbekannt"
+    }
+    val usedFraction = if (internalTotalBytes > 0) {
+        (1f - internalFreeBytes.toFloat() / internalTotalBytes.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val openDesign = { settingsSection = SettingsSection.DESIGN }
+    val openSettings = { settingsSection = SettingsSection.SETTINGS }
+    val openStorage = { settingsSection = SettingsSection.STORAGE }
+    val openInfo = { settingsSection = SettingsSection.INFO }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(AmoledBlack)
+            .verticalScroll(rememberScrollState())
     ) {
-        OneUiHeader(
-            mediaCount = 0,
-            title = "Menü",
-            modifier = Modifier.fillMaxWidth()
-        )
+        LargeHeader(title = "Menü")
 
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .fillMaxWidth()
+                .padding(horizontal = if (language == DesignLanguage.GOOGLE_EXPRESSIVE || language == DesignLanguage.XIAOMI_HYPEROS) 12.dp else 16.dp)
+                .padding(bottom = bottomBarContentPadding(24.dp)),
+            verticalArrangement = Arrangement.spacedBy(if (language == DesignLanguage.IOS_LIQUID_GLASS) 26.dp else 16.dp)
         ) {
-            // Section: Bibliothek
-            Text(
-                text = "BIBLIOTHEK",
-                color = TextMuted,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-                modifier = Modifier.padding(start = 12.dp, top = 8.dp)
-            )
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(LocalAppTheme.current.shapes.cardCornerRadius),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (LocalAppTheme.current.shapes.useBlur) SurfaceDark.copy(alpha = 0.75f) else SurfaceDark
-                ),
-                border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(OneUiCardBorder))
-            ) {
-                Column {
-                    MenuRowItem(
-                        icon = Icons.Rounded.Favorite,
-                        iconTint = PureWhite,
-                        iconBg = Color(0xFF2C161C),
-                        title = "Favoriten",
-                        subtitle = if (favoriteCount == 1) "1 Element" else "$favoriteCount Elemente",
-                        onClick = onOpenFavorites
-                    )
-
-                    HorizontalDivider(
-                        color = Color(0xFF1F1F1F),
-                        thickness = 0.5.dp,
-                        modifier = Modifier.padding(start = 64.dp)
-                    )
-
-                    MenuRowItem(
-                        icon = Icons.Rounded.Delete,
-                        iconTint = PureWhite,
-                        iconBg = Color(0xFF28201A),
-                        title = "Papierkorb",
-                        subtitle = if (trashedCount == 1) "1 Element" else "$trashedCount Elemente",
-                        onClick = onOpenTrash
+            when (language) {
+                DesignLanguage.SAMSUNG_ONEUI -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OneUiShortcutTile(Icons.Rounded.Favorite, Color(0xFFFF5A7A), "Favoriten", favoritesText, Modifier.weight(1f), onOpenFavorites)
+                        OneUiShortcutTile(Icons.Rounded.Delete, Color(0xFFFFA24C), "Papierkorb", trashText, Modifier.weight(1f), onOpenTrash)
+                    }
+                    ThemedListSection(
+                        rows = listOf(
+                            ListRow("Design", subtitle = "${ThemeState.designLanguage.displayName} · ${ThemeState.palette.label}", icon = Icons.Rounded.Palette, iconColor = Color(0xFFB39DFF), onClick = openDesign),
+                            ListRow("Einstellungen", subtitle = "Grafikqualität", icon = Icons.Rounded.Settings, iconColor = palette.onBackground, onClick = openSettings),
+                            ListRow("Speicher", subtitle = storageText, icon = Icons.Rounded.Storage, iconColor = Color(0xFF4FC3F7), onClick = openStorage),
+                            ListRow("Info", subtitle = "Version ${appVersionName.ifBlank { "unbekannt" }}", icon = Icons.Rounded.Info, iconColor = palette.textMuted, onClick = openInfo)
+                        )
                     )
                 }
-            }
 
-            // Section: Einstellungen & System
-            Text(
-                text = "SYSTEM & EINSTELLUNGEN",
-                color = TextMuted,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp,
-                modifier = Modifier.padding(start = 12.dp, top = 8.dp)
-            )
+                DesignLanguage.GOOGLE_EXPRESSIVE -> {
+                    val interaction = remember { MutableInteractionSource() }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pressScale(interaction, 0.98f)
+                            .clip(RoundedCornerShape(30.dp))
+                            .background(lerp(palette.surfaceVariant, palette.accent, 0.14f))
+                            .clickable(interactionSource = interaction, indication = null, onClick = openStorage)
+                            .padding(22.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(ExpressiveCookieShape)
+                                    .background(palette.accent),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Rounded.Storage, null, tint = palette.onAccent, modifier = Modifier.size(26.dp))
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text("Gerätespeicher", color = palette.onBackground, fontSize = 20.sp, fontWeight = FontWeight.Medium)
+                                Text(storageText, color = palette.textMuted, fontSize = 14.sp)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
+                        ThemedProgressBar(progress = usedFraction)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "${(usedFraction * 100).roundToInt()} % belegt",
+                            color = palette.textMuted,
+                            fontSize = 13.sp
+                        )
+                    }
+                    ThemedListSection(
+                        header = "Bibliothek",
+                        rows = listOf(
+                            ListRow("Favoriten", subtitle = favoritesText, icon = Icons.Rounded.Favorite, iconColor = Color(0xFFFF8AB3), onClick = onOpenFavorites),
+                            ListRow("Papierkorb", subtitle = trashText, icon = Icons.Rounded.Delete, iconColor = Color(0xFFFFB870), onClick = onOpenTrash)
+                        )
+                    )
+                    ThemedListSection(
+                        header = "App",
+                        rows = listOf(
+                            ListRow("Design & Farben", subtitle = ThemeState.designLanguage.displayName, icon = Icons.Rounded.Palette, iconColor = Color(0xFFB39DFF), onClick = openDesign),
+                            ListRow("Einstellungen", subtitle = "Grafikqualität", icon = Icons.Rounded.Settings, iconColor = palette.accent, onClick = openSettings),
+                            ListRow("Info", subtitle = "Version ${appVersionName.ifBlank { "unbekannt" }}", icon = Icons.Rounded.Info, iconColor = Color(0xFF90CAF9), onClick = openInfo)
+                        )
+                    )
+                }
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(LocalAppTheme.current.shapes.cardCornerRadius),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (LocalAppTheme.current.shapes.useBlur) SurfaceDark.copy(alpha = 0.75f) else SurfaceDark
-                ),
-                border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(OneUiCardBorder))
-            ) {
-                Column {
-                    MenuRowItem(
-                        icon = Icons.Rounded.Settings,
-                        iconTint = PureWhite,
-                        iconBg = Color(0xFF1A2230),
-                        title = "Einstellungen & Info",
-                        subtitle = "Speicher, Performance & Systemstatus",
-                        onClick = { showSettingsDialog = true }
+                DesignLanguage.IOS_LIQUID_GLASS -> {
+                    ThemedListSection(
+                        header = "Mediathek",
+                        rows = listOf(
+                            ListRow("Favoriten", icon = Icons.Rounded.Favorite, iconColor = Color(0xFFFF375F), value = "$favoriteCount", onClick = onOpenFavorites),
+                            ListRow("Zuletzt gelöscht", icon = Icons.Rounded.Delete, iconColor = Color(0xFF8E8E93), value = "$trashedCount", onClick = onOpenTrash)
+                        )
+                    )
+                    ThemedListSection(
+                        header = "Allgemein",
+                        rows = listOf(
+                            ListRow("Darstellung", icon = Icons.Rounded.Palette, iconColor = Color(0xFF0A84FF), onClick = openDesign),
+                            ListRow("Einstellungen", icon = Icons.Rounded.Settings, iconColor = Color(0xFF8E8E93), onClick = openSettings),
+                            ListRow("Speicher", icon = Icons.Rounded.Storage, iconColor = Color(0xFF34C759), value = if (internalTotalBytes > 0) "${formatBytes(internalFreeBytes)} frei" else null, onClick = openStorage),
+                            ListRow("Info", icon = Icons.Rounded.Info, iconColor = Color(0xFF5E5CE6), value = appVersionName.ifBlank { null }, onClick = openInfo)
+                        )
+                    )
+                }
+
+                DesignLanguage.XIAOMI_HYPEROS -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HyperOsShortcutCard(Icons.Rounded.Favorite, Color(0xFFFF5C7A), "Favoriten", favoritesText, Modifier.weight(1f), onOpenFavorites)
+                        HyperOsShortcutCard(Icons.Rounded.Delete, Color(0xFF3482FF), "Papierkorb", trashText, Modifier.weight(1f), onOpenTrash)
+                    }
+                    ThemedCard(modifier = Modifier.clickable(onClick = openStorage)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Speicher", color = palette.onBackground, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            Text(storageText, color = palette.textMuted, fontSize = 13.sp)
+                        }
+                        Spacer(modifier = Modifier.height(14.dp))
+                        ThemedProgressBar(progress = usedFraction)
+                    }
+                    ThemedListSection(
+                        rows = listOf(
+                            ListRow("Design", subtitle = ThemeState.designLanguage.displayName, icon = Icons.Rounded.Palette, iconColor = Color(0xFFFF9F0A), onClick = openDesign),
+                            ListRow("Einstellungen", subtitle = "Grafikqualität", icon = Icons.Rounded.Settings, iconColor = Color(0xFF8A8A8E), onClick = openSettings),
+                            ListRow("Über Gallery", icon = Icons.Rounded.Info, iconColor = Color(0xFF34C759), value = appVersionName.ifBlank { null }, onClick = openInfo)
+                        )
                     )
                 }
             }
         }
     }
 
-    if (showSettingsDialog) {
-        SettingsInfoDialog(
+    settingsSection?.let { section ->
+        SettingsSheet(
+            initialSection = section,
             internalFreeBytes = internalFreeBytes,
             internalTotalBytes = internalTotalBytes,
             sdCardFreeBytes = sdCardFreeBytes,
@@ -190,71 +268,71 @@ fun MenuScreen(
             appVersionName = appVersionName,
             graphicsQuality = graphicsQuality,
             onSetGraphicsQuality = onSetGraphicsQuality,
-            onDismiss = { showSettingsDialog = false }
+            onDismiss = { settingsSection = null }
         )
     }
 }
 
 @Composable
-private fun MenuRowItem(
+private fun OneUiShortcutTile(
     icon: ImageVector,
-    iconTint: Color,
-    iconBg: Color,
+    iconColor: Color,
     title: String,
     subtitle: String,
+    modifier: Modifier,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
+    val palette = LocalAppTheme.current.palette
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(26.dp))
+            .background(palette.surface)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(20.dp)
+    ) {
+        Icon(icon, null, tint = iconColor, modifier = Modifier.size(30.dp))
+        Spacer(modifier = Modifier.height(26.dp))
+        Text(title, color = palette.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(subtitle, color = palette.accent, fontSize = 14.sp)
+    }
+}
+
+@Composable
+private fun HyperOsShortcutCard(
+    icon: ImageVector,
+    iconColor: Color,
+    title: String,
+    subtitle: String,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    val palette = LocalAppTheme.current.palette
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(palette.surface)
+            .clickable(onClick = onClick)
+            .padding(16.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(40.dp)
+                .size(44.dp)
                 .clip(CircleShape)
-                .background(iconBg),
+                .background(iconColor.copy(alpha = 0.13f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(22.dp)
-            )
+            Icon(icon, null, tint = iconColor, modifier = Modifier.size(23.dp))
         }
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                color = PureWhite,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = subtitle,
-                color = TextMuted,
-                fontSize = 13.sp
-            )
-        }
-
-        Icon(
-            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-            contentDescription = null,
-            tint = TextMuted,
-            modifier = Modifier.size(20.dp)
-        )
+        Spacer(modifier = Modifier.height(14.dp))
+        Text(title, color = palette.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Text(subtitle, color = palette.textMuted, fontSize = 12.sp)
     }
 }
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingsInfoDialog(
+private fun SettingsSheet(
+    initialSection: SettingsSection,
     internalFreeBytes: Long,
     internalTotalBytes: Long,
     sdCardFreeBytes: Long?,
@@ -264,153 +342,147 @@ private fun SettingsInfoDialog(
     onSetGraphicsQuality: (PerformanceProfile) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var designLanguage by remember { mutableStateOf(ThemeState.designLanguage) }
+    val context = LocalContext.current
     var showCustomEditor by remember { mutableStateOf(false) }
-    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val currentLanguage = ThemeState.designLanguage
+    val currentPalette = ThemeState.palette
+    val lightMode = currentPalette.isLight
+    val palette = LocalAppTheme.current.palette
 
-    androidx.compose.material3.ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = SurfaceVariantDark,
-        contentColor = PureWhite,
-        shape = RoundedCornerShape(
-            topStart = LocalAppTheme.current.shapes.dialogCornerRadius,
-            topEnd = LocalAppTheme.current.shapes.dialogCornerRadius
-        )
-    ) {
-        com.example.amoledgallery.ui.WindowBackgroundBlur()
+    val scrollState = rememberScrollState()
+    val sectionOffsets = remember { mutableStateMapOf<SettingsSection, Int>() }
+    fun Modifier.sectionAnchor(section: SettingsSection) = onGloballyPositioned {
+        sectionOffsets[section] = it.positionInParent().y.roundToInt()
+    }
+
+    fun switchBrightness(light: Boolean) {
+        if (currentPalette.isLight == light) return
+        val target = presetsFor(currentLanguage, light)
+        val next = if (currentPalette.id == CUSTOM_PALETTE_ID) {
+            target.first().copy(id = CUSTOM_PALETTE_ID, label = "Eigene Palette", accent = currentPalette.accent)
+        } else {
+            // Keep the same accent slot (blue stays blue) when switching between light and dark.
+            val slot = presetsFor(currentLanguage, currentPalette.isLight).indexOfFirst { it.id == currentPalette.id }
+            target.getOrElse(slot) { target.first() }
+        }
+        ThemeState.apply(currentLanguage, next, context = context)
+    }
+
+    ThemedSheet(onDismissRequest = onDismiss, title = "Einstellungen") {
+        LaunchedEffect(initialSection) {
+            if (initialSection != SettingsSection.DESIGN) {
+                val offset = snapshotFlow { sectionOffsets[initialSection] }.filterNotNull().first()
+                delay(150)
+                scrollState.animateScrollTo(offset)
+            }
+        }
+
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .weight(1f, fill = false)
+                .verticalScroll(scrollState)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Rounded.Info,
-                    contentDescription = null,
-                    tint = PureWhite,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = "AmoledGallery Info",
-                    color = PureWhite,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
+            Column(modifier = Modifier.sectionAnchor(SettingsSection.DESIGN)) {
+                ThemedSectionHeader("Design")
+                ThemedCard(inSheet = true) {
+                    DesignLanguage.entries.forEachIndexed { index, language ->
+                        if (index > 0) Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable {
+                                    // Keep the current light/dark mode when switching design language.
+                                    val preset = presetsFor(language, lightMode).firstOrNull() ?: presetsFor(language).first()
+                                    ThemeState.apply(language, preset, context = context)
+                                }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(language.displayName, color = palette.onBackground, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(language.shortDescription, color = palette.textMuted, fontSize = 13.sp, lineHeight = 17.sp)
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            ThemedRadioIndicator(selected = language == currentLanguage)
+                        }
+                    }
+                }
             }
 
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                InfoBadgeRow(
-                    icon = Icons.Rounded.Info,
-                    label = "App-Version",
-                    value = appVersionName.ifBlank { "Unbekannt" }
-                )
-                StorageSpaceRow(
-                    icon = Icons.Rounded.PhoneAndroid,
-                    label = "Interner Speicher",
-                    freeBytes = internalFreeBytes,
-                    totalBytes = internalTotalBytes,
-                    notAvailableText = null
-                )
-                StorageSpaceRow(
-                    icon = Icons.Rounded.SdCard,
-                    label = "SD-Karte",
-                    freeBytes = sdCardFreeBytes,
-                    totalBytes = sdCardTotalBytes,
-                    notAvailableText = "Nicht vorhanden"
-                )
-
-                HorizontalDivider(
-                    color = Color(0xFF2A2A2A),
-                    thickness = 0.5.dp,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
-
-                Column {
-                    Text(
-                        text = "Design",
-                        color = PureWhite,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
+            Column {
+                ThemedSectionHeader("Farben")
+                ThemedCard(inSheet = true) {
+                    ThemedSegmentedControl(
+                        options = listOf(true, false),
+                        selected = lightMode,
+                        label = { light -> if (light) "Hell" else "Dunkel" },
+                        onSelect = { light -> switchBrightness(light) }
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    DesignLanguageSelector(
-                        selected = designLanguage,
-                        onSelect = { language ->
-                            designLanguage = language
-                            val preset = presetsFor(language).first()
-                            ThemeState.apply(language, preset, context = context)
-                        }
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = designLanguage.shortDescription,
-                        color = TextMuted,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     PaletteRow(
-                        language = designLanguage,
-                        currentPaletteId = ThemeState.palette.id,
-                        onSelectPreset = { preset -> ThemeState.apply(designLanguage, preset, context = context) },
+                        presets = presetsFor(currentLanguage, lightMode),
+                        currentPaletteId = currentPalette.id,
+                        onSelectPreset = { preset -> ThemeState.apply(currentLanguage, preset, context = context) },
                         onOpenCustomEditor = { showCustomEditor = true }
                     )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(currentPalette.label, color = palette.textMuted, fontSize = 13.sp)
                 }
+            }
 
-                HorizontalDivider(
-                    color = Color(0xFF2A2A2A),
-                    thickness = 0.5.dp,
-                    modifier = Modifier.padding(vertical = 4.dp)
+            Column(modifier = Modifier.sectionAnchor(SettingsSection.SETTINGS)) {
+                ThemedSectionHeader("Grafikqualität")
+                ThemedSegmentedControl(
+                    options = PerformanceProfile.entries,
+                    selected = graphicsQuality,
+                    label = { graphicsQualityLabel(it) },
+                    onSelect = onSetGraphicsQuality
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = graphicsQualityDescription(graphicsQuality),
+                    color = palette.textMuted,
+                    fontSize = 13.sp,
+                    lineHeight = 17.sp,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                )
+            }
 
-                Column {
-                    Text(
-                        text = "Grafikqualität",
-                        color = PureWhite,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    GraphicsQualitySelector(
-                        selected = graphicsQuality,
-                        onSelect = onSetGraphicsQuality
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = graphicsQualityDescription(graphicsQuality),
-                        color = TextMuted,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp
-                    )
+            Column(modifier = Modifier.sectionAnchor(SettingsSection.STORAGE)) {
+                ThemedSectionHeader("Speicher")
+                ThemedCard(inSheet = true) {
+                    StorageBlock("Interner Speicher", internalFreeBytes, internalTotalBytes, null)
+                    Spacer(modifier = Modifier.height(18.dp))
+                    StorageBlock("SD-Karte", sdCardFreeBytes, sdCardTotalBytes, "Nicht vorhanden")
                 }
             }
 
-            TextButton(
-                onClick = onDismiss,
-                modifier = Modifier.align(Alignment.End)
-            ) {
-                Text("Schließen", color = OneUiBlue, fontWeight = FontWeight.SemiBold)
-            }
+            ThemedListSection(
+                header = "Info",
+                inSheet = true,
+                modifier = Modifier.sectionAnchor(SettingsSection.INFO),
+                rows = listOf(
+                    ListRow("App-Version", icon = Icons.Rounded.Info, iconColor = Color(0xFF8E8E93), value = appVersionName.ifBlank { "Unbekannt" }, showChevron = false)
+                )
+            )
         }
     }
 
     if (showCustomEditor) {
-        CustomPaletteEditorDialog(
-            language = designLanguage,
-            initialAccent = if (ThemeState.palette.id == CUSTOM_PALETTE_ID) ThemeState.palette.accent else presetsFor(designLanguage).first().accent,
+        CustomAccentDialog(
+            language = currentLanguage,
+            lightMode = lightMode,
+            initialAccent = currentPalette.accent,
             onConfirm = { accent ->
-                val base = presetsFor(designLanguage).first()
+                // The custom palette keeps the active mode's base colors - light stays light.
+                val base = presetsFor(currentLanguage, lightMode).first()
                 val custom = base.copy(id = CUSTOM_PALETTE_ID, label = "Eigene Palette", accent = accent)
-                ThemeState.apply(designLanguage, custom, context = context)
+                ThemeState.apply(currentLanguage, custom, context = context)
                 showCustomEditor = false
             },
             onDismiss = { showCustomEditor = false }
@@ -418,181 +490,109 @@ private fun SettingsInfoDialog(
     }
 }
 
-/** 4 design-language chips, always visible together so the switch is a single tap. */
 @Composable
-private fun DesignLanguageSelector(
-    selected: DesignLanguage,
-    onSelect: (DesignLanguage) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        DesignLanguage.entries.forEach { language ->
-            val isSelected = language == selected
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(if (isSelected) OneUiBlue.copy(alpha = 0.18f) else SurfaceDark)
-                    .clickable { onSelect(language) }
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(14.dp)
-                        .clip(CircleShape)
-                        .background(if (isSelected) OneUiBlue else Color.Transparent)
-                        .border(1.5.dp, if (isSelected) OneUiBlue else TextMuted, CircleShape)
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = language.displayName,
-                    color = if (isSelected) PureWhite else TextMuted,
-                    fontSize = 14.sp,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                )
-            }
-        }
+private fun StorageBlock(label: String, freeBytes: Long?, totalBytes: Long?, notAvailableText: String?) {
+    val palette = LocalAppTheme.current.palette
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = palette.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+        Text(
+            text = if (freeBytes != null && totalBytes != null && totalBytes > 0) {
+                "${formatBytes(freeBytes)} frei von ${formatBytes(totalBytes)}"
+            } else {
+                notAvailableText ?: "Unbekannt"
+            },
+            color = palette.textMuted,
+            fontSize = 13.sp
+        )
+    }
+    if (freeBytes != null && totalBytes != null && totalBytes > 0) {
+        Spacer(modifier = Modifier.height(10.dp))
+        ThemedProgressBar(progress = (1f - freeBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f))
     }
 }
 
-/** Preset color swatches for the active design language, plus a trailing "custom" swatch. */
+/** Accent swatches for the active mode, plus a trailing "custom" swatch. */
 @Composable
 private fun PaletteRow(
-    language: DesignLanguage,
+    presets: List<AppColorPalette>,
     currentPaletteId: String,
     onSelectPreset: (AppColorPalette) -> Unit,
     onOpenCustomEditor: () -> Unit
 ) {
+    val theme = LocalAppTheme.current
+    val palette = theme.palette
+    val swatchShape = if (theme.language == DesignLanguage.GOOGLE_EXPRESSIVE) ExpressiveCookieShape else CircleShape
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        presetsFor(language).forEach { preset ->
+        presets.forEach { preset ->
             val isSelected = preset.id == currentPaletteId
+            // Each swatch shows the preset's own background with its accent inside.
             Box(
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(preset.accent)
+                    .size(44.dp)
+                    .clip(swatchShape)
+                    .background(preset.background)
                     .border(
                         width = if (isSelected) 2.5.dp else 1.dp,
-                        color = if (isSelected) PureWhite else Color.White.copy(alpha = 0.2f),
-                        shape = CircleShape
+                        color = if (isSelected) palette.accent else palette.onBackground.copy(alpha = 0.15f),
+                        shape = swatchShape
                     )
-                    .clickable { onSelectPreset(preset) }
-            )
+                    .clickable { onSelectPreset(preset) },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(preset.accent)
+                )
+            }
         }
-        // Custom palette swatch: shows the current custom accent (or a placeholder ring)
         val isCustomSelected = currentPaletteId == CUSTOM_PALETTE_ID
         Box(
             modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(if (isCustomSelected) ThemeState.accent else SurfaceDark)
+                .size(44.dp)
+                .clip(swatchShape)
+                .background(if (isCustomSelected) ThemeState.accent else palette.surface)
                 .border(
                     width = if (isCustomSelected) 2.5.dp else 1.dp,
-                    color = if (isCustomSelected) PureWhite else TextMuted,
-                    shape = CircleShape
+                    color = if (isCustomSelected) palette.onBackground else palette.textMuted,
+                    shape = swatchShape
                 )
                 .clickable { onOpenCustomEditor() },
             contentAlignment = Alignment.Center
         ) {
             if (!isCustomSelected) {
-                Icon(
-                    imageVector = Icons.Rounded.Add,
-                    contentDescription = "Eigene Farbe",
-                    tint = TextMuted,
-                    modifier = Modifier.size(18.dp)
-                )
+                Icon(Icons.Rounded.Add, "Eigene Farbe", tint = palette.textMuted, modifier = Modifier.size(20.dp))
             }
         }
     }
 }
 
 @Composable
-private fun CustomPaletteEditorDialog(
+private fun CustomAccentDialog(
     language: DesignLanguage,
+    lightMode: Boolean,
     initialAccent: Color,
     onConfirm: (Color) -> Unit,
     onDismiss: () -> Unit
 ) {
     var pickedColor by remember { mutableStateOf(initialAccent) }
-
-    AlertDialog(
+    ThemedDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = "Eigene Akzentfarbe",
-                color = PureWhite,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-        },
-        text = {
-            Column {
-                Text(
-                    text = "Der Hintergrund bleibt reines AMOLED-Schwarz - wähle deine persönliche Akzentfarbe für ${language.displayName}.",
-                    color = TextMuted,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                com.example.amoledgallery.ui.components.HsvColorPicker(
-                    initialColor = initialAccent,
-                    onColorChanged = { pickedColor = it }
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(pickedColor) }) {
-                Text("Übernehmen", color = OneUiBlue, fontWeight = FontWeight.SemiBold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Abbrechen", color = TextMuted)
-            }
-        },
-        containerColor = SurfaceVariantDark,
-        shape = RoundedCornerShape(LocalAppTheme.current.shapes.dialogCornerRadius)
-    )
-}
-
-/**
- * Game-style 4-tier segmented picker for the manual graphics quality setting.
- */
-@Composable
-private fun GraphicsQualitySelector(
-    selected: PerformanceProfile,
-    onSelect: (PerformanceProfile) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(SurfaceDark)
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp)
+        title = "Eigene Akzentfarbe",
+        message = "Die ${if (lightMode) "hellen" else "dunklen"} Grundfarben von ${language.displayName} bleiben erhalten - nur der Akzent ändert sich.",
+        buttons = listOf(
+            DialogButton("Abbrechen", DialogButtonStyle.Cancel, onClick = onDismiss),
+            DialogButton("Übernehmen", DialogButtonStyle.Primary) { onConfirm(pickedColor) }
+        )
     ) {
-        PerformanceProfile.entries.forEach { tier ->
-            val isSelected = tier == selected
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(if (isSelected) OneUiBlue else Color.Transparent)
-                    .clickable { onSelect(tier) }
-                    .padding(vertical = 10.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = graphicsQualityLabel(tier),
-                    color = if (isSelected) PureWhite else TextMuted,
-                    fontSize = 13.sp,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                )
-            }
-        }
+        HsvColorPicker(
+            initialColor = initialAccent,
+            onColorChanged = { pickedColor = it }
+        )
     }
 }
 
@@ -604,108 +604,10 @@ private fun graphicsQualityLabel(tier: PerformanceProfile): String = when (tier)
 }
 
 private fun graphicsQualityDescription(tier: PerformanceProfile): String = when (tier) {
-    PerformanceProfile.LOW -> "Nur das Nötigste: keine Animationen, kleinere Vorschaubilder, geringster Speicher- & Akkuverbrauch. Für ältere oder langsame Geräte."
-    PerformanceProfile.MEDIUM -> "Ausgewogen: reduzierte Animationen, gute Bildqualität. Empfohlen für die meisten Mittelklasse-Geräte."
-    PerformanceProfile.HIGH -> "Flüssige Animationen und Überblendungen, hohe Bildqualität. Für aktuelle Geräte."
-    PerformanceProfile.ULTRA -> "Alle Animationseffekte, höchste Bildqualität und größte Caches – für sehr starke Geräte."
-}
-
-@Composable
-private fun InfoBadgeRow(
-    icon: ImageVector,
-    label: String,
-    value: String
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = TextMuted,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Column {
-            Text(
-                text = label,
-                color = TextMuted,
-                fontSize = 12.sp
-            )
-            Text(
-                text = value,
-                color = PureWhite,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
-    }
-}
-
-/**
- * Clean, simple free/total storage readout with a thin usage bar, for internal storage
- * (always available) and the SD card (shows [notAvailableText] instead when null).
- */
-@Composable
-private fun StorageSpaceRow(
-    icon: ImageVector,
-    label: String,
-    freeBytes: Long?,
-    totalBytes: Long?,
-    notAvailableText: String?
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = TextMuted,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                color = TextMuted,
-                fontSize = 12.sp
-            )
-            if (freeBytes != null && totalBytes != null && totalBytes > 0) {
-                Text(
-                    text = "${formatBytes(freeBytes)} frei von ${formatBytes(totalBytes)}",
-                    color = PureWhite,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                val usedFraction = (1f - (freeBytes.toFloat() / totalBytes.toFloat())).coerceIn(0f, 1f)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(SurfaceDark)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(usedFraction)
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(OneUiBlue)
-                    )
-                }
-            } else {
-                Text(
-                    text = notAvailableText ?: "Unbekannt",
-                    color = PureWhite,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-    }
+    PerformanceProfile.LOW -> "Nur das Nötigste: keine Animationen, kein Glas, kleinere Vorschaubilder, geringster Speicher- & Akkuverbrauch."
+    PerformanceProfile.MEDIUM -> "Ausgewogen: reduzierte Animationen, undurchsichtige statt gläserne Leisten, gute Bildqualität."
+    PerformanceProfile.HIGH -> "Echtes Glas mit Hintergrundunschärfe, flüssige Animationen, hohe Bildqualität."
+    PerformanceProfile.ULTRA -> "Die volle Effektpalette: Glas, bewegte Wellen, längste Animationen, höchste Bildqualität und größte Caches."
 }
 
 private fun formatBytes(bytes: Long): String {

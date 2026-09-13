@@ -76,6 +76,10 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-video:3.0.4")
     implementation("io.coil-kt.coil3:coil-gif:3.0.4")
 
+    // Real backdrop blur for the glass bars, sheets and dialogs (iOS Liquid Glass, One UI and
+    // HyperOS frosted surfaces). 1.1.x is the last line built against Compose 1.7 / Kotlin 2.0.
+    implementation("dev.chrisbanes.haze:haze-android:1.1.1")
+
     // Media3 ExoPlayer for native video playback
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")

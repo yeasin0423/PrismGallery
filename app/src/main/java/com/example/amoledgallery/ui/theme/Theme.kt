@@ -3,9 +3,11 @@ package com.example.amoledgallery.ui.theme
 import android.app.Activity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -16,34 +18,50 @@ fun AmoledGalleryTheme(
 ) {
     val theme = ThemeState.currentTheme()
     val palette = theme.palette
+    val light = palette.isLight
 
-    val colorScheme = darkColorScheme(
-        primary = palette.onBackground,
-        onPrimary = palette.background,
-        secondary = palette.surfaceVariant,
-        onSecondary = palette.onBackground,
-        tertiary = palette.accent,
-        background = palette.background,
-        onBackground = palette.onBackground,
-        surface = palette.background,
-        onSurface = palette.onBackground,
-        surfaceVariant = palette.surfaceVariant,
-        onSurfaceVariant = palette.textMuted
-    )
+    val colorScheme = if (light) {
+        lightColorScheme(
+            primary = palette.accent,
+            onPrimary = palette.onAccent,
+            secondary = palette.surfaceVariant,
+            onSecondary = palette.onBackground,
+            tertiary = palette.accent,
+            background = palette.background,
+            onBackground = palette.onBackground,
+            surface = palette.surface,
+            onSurface = palette.onBackground,
+            surfaceVariant = palette.surfaceVariant,
+            onSurfaceVariant = palette.textMuted
+        )
+    } else {
+        darkColorScheme(
+            primary = palette.accent,
+            onPrimary = palette.onAccent,
+            secondary = palette.surfaceVariant,
+            onSecondary = palette.onBackground,
+            tertiary = palette.accent,
+            background = palette.background,
+            onBackground = palette.onBackground,
+            surface = palette.background,
+            onSurface = palette.onBackground,
+            surfaceVariant = palette.surfaceVariant,
+            onSurfaceVariant = palette.textMuted
+        )
+    }
 
     val view = LocalView.current
-    val statusBarColorArgb = palette.background.toArgb()
-
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as? Activity)?.window
             if (window != null) {
-                window.statusBarColor = statusBarColorArgb
-                window.navigationBarColor = statusBarColorArgb
+                // Content is drawn edge-to-edge underneath both system bars (the glass bars blur it),
+                // so the bars themselves stay transparent and only their icon color follows the theme.
+                window.statusBarColor = Color.Transparent.toArgb()
+                window.navigationBarColor = Color.Transparent.toArgb()
                 val insetsController = WindowCompat.getInsetsController(window, view)
-                // False means icons/text on status and navigation bars are white (for black bars)
-                insetsController.isAppearanceLightStatusBars = false
-                insetsController.isAppearanceLightNavigationBars = false
+                insetsController.isAppearanceLightStatusBars = light
+                insetsController.isAppearanceLightNavigationBars = light
             }
         }
     }

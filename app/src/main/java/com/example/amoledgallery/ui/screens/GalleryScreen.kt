@@ -6,41 +6,45 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
+import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.ZoomIn
+import androidx.compose.material.icons.rounded.ZoomOut
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -49,60 +53,80 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.amoledgallery.R
 import com.example.amoledgallery.data.ThumbnailManager
-import com.example.amoledgallery.ui.qualityTween
 import com.example.amoledgallery.model.MediaDateSection
 import com.example.amoledgallery.model.MediaItem
-import com.example.amoledgallery.ui.components.CircularIconButton
 import com.example.amoledgallery.ui.components.DateHeader
+import com.example.amoledgallery.ui.components.ExpressiveHeroCard
 import com.example.amoledgallery.ui.components.FastScroller
 import com.example.amoledgallery.ui.components.FilterChips
+import com.example.amoledgallery.ui.components.LargeHeader
 import com.example.amoledgallery.ui.components.MediaGridItem
-import com.example.amoledgallery.ui.components.OneUiHeader
 import com.example.amoledgallery.ui.components.detectPinchToZoomGrid
-import com.example.amoledgallery.ui.theme.AmoledBlack
+import com.example.amoledgallery.ui.components.SelectionTopBar
+import com.example.amoledgallery.ui.components.detectDragSelect
+import com.example.amoledgallery.ui.design.GlassRim
+import com.example.amoledgallery.ui.design.GlassSpec
+import com.example.amoledgallery.ui.design.LocalContentHaze
+import com.example.amoledgallery.ui.design.MenuEntry
+import com.example.amoledgallery.ui.design.ThemedIconButton
+import com.example.amoledgallery.ui.design.ThemedPopupMenu
+import com.example.amoledgallery.ui.design.ThemedTopBar
+import com.example.amoledgallery.ui.design.bottomBarContentPadding
+import com.example.amoledgallery.ui.design.glass
+import com.example.amoledgallery.ui.design.pressScale
+import com.example.amoledgallery.ui.qualityTween
+import com.example.amoledgallery.ui.theme.DesignLanguage
 import com.example.amoledgallery.ui.theme.LocalAppTheme
-import com.example.amoledgallery.ui.theme.PureWhite
-import com.example.amoledgallery.ui.theme.SurfaceDark
-import com.example.amoledgallery.ui.theme.TextMuted
+import com.example.amoledgallery.ui.theme.isLight
+import com.example.amoledgallery.ui.theme.onAccent
 import com.example.amoledgallery.ui.viewmodel.MediaFilter
 import com.example.amoledgallery.util.DateUtils
+import dev.chrisbanes.haze.HazeState
+import com.example.amoledgallery.ui.design.HazeSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 
 /**
- * High-performance Samsung OneUI AMOLED Gallery media grid screen:
- * - Permanent internal fast thumbnail cache integration eliminating MicroSD latency
- * - Fixed 1:1 aspect ratio with clipToBounds and contentType = "media_tile" for optimal 120fps scrolling
- * - Decoupled Fullscreen-Overlay viewer via AnimatedVisibility keeping LazyGridState intact
- * - OneUI Selection Mode (long-press activation, animated circular checkbox, selection top bar)
- * - Draggable FastScroller with generous 36.dp touch hitbox
- * - Reactive media type filter chips and dynamic Pinch-to-Zoom column scaling (2 to 5)
+ * The "Bilder" media grid, laid out per design language:
+ * - One UI: Samsung Gallery's expanded app bar (big centred title in the upper third), a frosted
+ *   pinned bar once scrolled, filters in the ⋮ popup, and One UI 9's floating frosted selection card.
+ * - Material 3 Expressive: headline, a hero card with the newest photo, filter chips, rounded tiles.
+ * - iOS: photos run edge-to-edge under a progressive glass title overlay, the filter floats as a
+ *   glass segmented control above the tab bar.
+ * - HyperOS: light layout, text-tab filters, compact frosted bars.
+ *
+ * Grid behaviour (pinch zoom, long-press drag selection, fast scroller, detail overlay that keeps the
+ * LazyGridState intact) is shared by all of them.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -114,7 +138,7 @@ fun GalleryScreen(
     onZoomOut: () -> Unit,
     onItemClick: (MediaItem, Int) -> Unit,
     modifier: Modifier = Modifier,
-    title: String = stringResource(R.string.header_media),
+    title: String = stringResource(R.string.tab_pictures),
     selectedFilter: MediaFilter = MediaFilter.ALL,
     onFilterSelected: ((MediaFilter) -> Unit)? = null,
     onBackClick: (() -> Unit)? = null,
@@ -137,6 +161,7 @@ fun GalleryScreen(
     onSelectAll: () -> Unit = {},
     onDeselectAll: () -> Unit = {},
     onClearSelection: () -> Unit = {},
+    // Move / delete for a selection live in the SelectionActionBar that replaces the tab bar.
     onMoveClick: () -> Unit = {},
     onDeleteSelected: () -> Unit = {},
     graphicsQuality: com.example.amoledgallery.PerformanceProfile = com.example.amoledgallery.PerformanceProfile.MEDIUM
@@ -148,56 +173,34 @@ fun GalleryScreen(
         }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(AmoledBlack)
-    ) {
+    val theme = LocalAppTheme.current
+    val palette = theme.palette
+    val language = theme.language
+    val countText = if (items.size == 1) "1 Element" else "${items.size} Elemente"
+
+    Box(modifier = modifier.fillMaxSize()) {
         if (isLoading) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = PureWhite)
+                CircularProgressIndicator(color = palette.accent)
             }
         } else if (items.isEmpty()) {
-            Column(
-                modifier = Modifier.fillMaxSize()
-            ) {
+            Column(modifier = Modifier.fillMaxSize()) {
                 if (onBackClick != null) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .statusBarsPadding()
-                            .padding(horizontal = 8.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularIconButton(
-                            onClick = onBackClick,
-                            contentDescription = "Zurück",
-                            icon = Icons.AutoMirrored.Rounded.ArrowBack
-                        )
-                        Text(
-                            text = title,
-                            color = PureWhite,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(start = 8.dp)
-                        )
-                    }
+                    ThemedTopBar(title = title, onBack = onBackClick)
                 } else {
-                    OneUiHeader(
-                        mediaCount = 0,
-                        title = title,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    LargeHeader(title = title)
                 }
 
                 if (onFilterSelected != null) {
                     FilterChips(
                         selectedFilter = selectedFilter,
                         onFilterSelected = onFilterSelected,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = if (language == DesignLanguage.IOS_LIQUID_GLASS) 20.dp else 0.dp)
                     )
                 }
 
@@ -209,7 +212,7 @@ fun GalleryScreen(
                 ) {
                     Text(
                         text = stringResource(R.string.empty_gallery),
-                        color = TextMuted,
+                        color = palette.textMuted,
                         fontSize = 16.sp
                     )
                 }
@@ -220,23 +223,28 @@ fun GalleryScreen(
                 DateUtils.groupMediaByDate(items, columnCount)
             }
 
-            val gridSpacing = LocalAppTheme.current.shapes.gridSpacing
+            val gridSpacing = theme.shapes.gridSpacing
+            val gridPadding = theme.shapes.gridHorizontalPadding
 
             // Preserved in memory permanently because GalleryScreen stays composed!
             val gridState = rememberLazyGridState()
             val coroutineScope = rememberCoroutineScope()
+            val density = LocalDensity.current
 
-            // Calculate OneUI header collapse fraction (0f = expanded Large Title, 1f = compact Top Bar)
-            val headerCollapseFraction by remember {
+            // 0f = expanded large header, 1f = scrolled far enough that the compact bar takes over.
+            val collapseDistancePx = with(density) {
+                (if (language == DesignLanguage.SAMSUNG_ONEUI) 220.dp else 110.dp).toPx()
+            }
+            val headerCollapseFraction by remember(collapseDistancePx) {
                 derivedStateOf {
                     if (gridState.firstVisibleItemIndex > 0) {
                         1f
                     } else {
-                        val scrollOffsetPx = gridState.firstVisibleItemScrollOffset.toFloat()
-                        (scrollOffsetPx / 140f).coerceIn(0f, 1f)
+                        (gridState.firstVisibleItemScrollOffset / collapseDistancePx).coerceIn(0f, 1f)
                     }
                 }
             }
+            val showPinnedBar by remember { derivedStateOf { headerCollapseFraction > 0.25f } }
 
             val firstVisibleIndex by remember { derivedStateOf { gridState.firstVisibleItemIndex } }
             val totalGridItems by remember { derivedStateOf { gridState.layoutInfo.totalItemsCount } }
@@ -249,6 +257,17 @@ fun GalleryScreen(
             var scrubberDateText by remember { mutableStateOf("") }
             val haptic = LocalHapticFeedback.current
             val context = LocalContext.current
+
+            // Backdrop for this screen's own top bars and floating filter (they sit inside the tab
+            // content, so they can't blur the tab-level backdrop they are part of).
+            val gridHaze = remember { HazeState() }
+            var viewMenuOpen by remember { mutableStateOf(false) }
+            var viewMenuAnchor by remember { mutableStateOf<Rect?>(null) }
+
+            val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            val iosHeaderHeight = statusBarTop + 96.dp
+            val showFloatingFilter = language == DesignLanguage.IOS_LIQUID_GLASS && onFilterSelected != null
+            val bottomPadding = bottomBarContentPadding(extra = if (showFloatingFilter) 62.dp else 12.dp)
 
             // Compose's low-level long-press-drag detector (used for selection) and each tile's
             // plain `clickable` both observe the same raw touch stream. A press-then-release with
@@ -272,262 +291,217 @@ fun GalleryScreen(
                 }
             }
 
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(columnCount),
-                state = gridState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .detectPinchToZoomGrid(
-                        onZoomIn = onZoomIn,
-                        onZoomOut = onZoomOut
-                    )
-                    .detectDragSelect(
-                        items = items,
-                        gridState = gridState,
-                        isSelectionMode = { isSelectionMode },
-                        onStartSelection = onStartSelection,
-                        onSetSelection = onSetSelection,
-                        onUpdateSelectedIds = onUpdateSelectedIds,
-                        selectedIds = { selectedIds },
-                        haptic = haptic,
-                        coroutineScope = coroutineScope,
-                        onLongPressRecognized = { id ->
-                            lastLongPressId = id
-                            isLongPressGestureActive = true
+            val openViewMenu: (Rect?) -> Unit = { anchor ->
+                viewMenuAnchor = anchor
+                viewMenuOpen = true
+            }
+
+            HazeSource(gridHaze, Modifier.fillMaxSize()) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columnCount),
+                    state = gridState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .detectPinchToZoomGrid(
+                            onZoomIn = onZoomIn,
+                            onZoomOut = onZoomOut
+                        )
+                        .detectDragSelect(
+                            items = items,
+                            gridState = gridState,
+                            isSelectionMode = { isSelectionMode },
+                            onStartSelection = onStartSelection,
+                            onSetSelection = onSetSelection,
+                            onUpdateSelectedIds = onUpdateSelectedIds,
+                            selectedIds = { selectedIds },
+                            haptic = haptic,
+                            coroutineScope = coroutineScope,
+                            onLongPressRecognized = { id ->
+                                lastLongPressId = id
+                                isLongPressGestureActive = true
+                            },
+                            onLongPressEnded = {
+                                lastLongPressTime = System.currentTimeMillis()
+                                isLongPressGestureActive = false
+                            }
+                        ),
+                    contentPadding = PaddingValues(
+                        start = gridPadding,
+                        end = gridPadding,
+                        top = when {
+                            onBackClick != null -> statusBarTop + 64.dp
+                            language == DesignLanguage.IOS_LIQUID_GLASS -> iosHeaderHeight
+                            else -> 0.dp
                         },
-                        onLongPressEnded = {
-                            lastLongPressTime = System.currentTimeMillis()
-                            isLongPressGestureActive = false
-                        }
+                        bottom = bottomPadding
                     ),
-                contentPadding = PaddingValues(
-                    start = gridSpacing,
-                    end = if (items.size > 20) 14.dp else gridSpacing,
-                    top = if (onBackClick != null) 60.dp else 0.dp,
-                    bottom = 80.dp
-                ),
-                horizontalArrangement = Arrangement.spacedBy(gridSpacing),
-                verticalArrangement = Arrangement.spacedBy(gridSpacing)
-            ) {
-                // Top Header: Generous OneUI Large Title + Filter Chips
-                item(
-                    span = { GridItemSpan(maxLineSpan) },
-                    key = "grid_top_header",
-                    contentType = "header"
+                    horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                    verticalArrangement = Arrangement.spacedBy(gridSpacing)
                 ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        if (onBackClick == null) {
-                            OneUiHeader(
-                                mediaCount = items.size,
-                                title = title,
-                                heroThumbnail = items.firstOrNull()?.uri,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-
-                        // Horizontal row of filter chips ("Alle" | "Bilder" | "Videos" | "GIFs")
-                        if (onFilterSelected != null) {
-                            FilterChips(
-                                selectedFilter = selectedFilter,
-                                onFilterSelected = onFilterSelected,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-                }
-
-                // Date sections with full-span headers and optimized media tiles
-                dateSections.forEach { section ->
+                    // Index 0 is always this header item - getGridItemIndexForMedia relies on it.
                     item(
                         span = { GridItemSpan(maxLineSpan) },
-                        key = "header_${section.title}_$columnCount",
-                        contentType = "date_header"
+                        key = "grid_top_header",
+                        contentType = "header"
                     ) {
-                        DateHeader(
-                            title = section.title
-                        )
+                        if (onBackClick == null) {
+                            GalleryHeader(
+                                title = title,
+                                countText = countText,
+                                items = items,
+                                language = language,
+                                collapseFraction = { headerCollapseFraction },
+                                selectedFilter = selectedFilter,
+                                onFilterSelected = onFilterSelected,
+                                onOpenViewMenu = openViewMenu,
+                                onHeroClick = { onItemClick(items.first(), 0) },
+                                hazeState = gridHaze
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.height(0.dp))
+                        }
                     }
 
-                    // Keyed items with fixed dimensions, contentType="media_tile", and clipToBounds for zero-lag recycling
-                    items(
-                        items = section.items,
-                        key = { it.id },
-                        contentType = { "media_tile" }
-                    ) { item ->
-                        MediaGridItem(
-                            item = item,
-                            isSelectionMode = isSelectionMode,
-                            isSelected = selectedIds.contains(item.id),
-                            isFavorite = isFavorite(item.id),
-                            onClick = {
-                                // Suppressed for the entire duration of an active long-press-drag on
-                                // this same item (covers holds of any length), plus a short grace
-                                // period after it ends as a backstop in case the child's tap and the
-                                // parent's onDragEnd/onDragCancel resolve in the opposite order.
-                                val isTrailingClickFromLongPress = item.id == lastLongPressId &&
-                                    (isLongPressGestureActive || (System.currentTimeMillis() - lastLongPressTime) < 600)
-                                if (isTrailingClickFromLongPress) {
-                                    // Same press-release the long-press gesture already handled -
-                                    // ignore it instead of letting the tile's own tap detector
-                                    // immediately toggle the selection it just made back off.
-                                } else if (isSelectionMode) {
-                                    onToggleSelection(item.id)
-                                } else {
-                                    val index = items.indexOf(item)
-                                    onItemClick(item, index)
-                                }
-                            },
-                            modifier = Modifier.clipToBounds()
-                        )
+                    // Date sections with full-span headers and optimized media tiles
+                    dateSections.forEach { section ->
+                        item(
+                            span = { GridItemSpan(maxLineSpan) },
+                            key = "header_${section.title}_$columnCount",
+                            contentType = "date_header"
+                        ) {
+                            DateHeader(title = section.title)
+                        }
+
+                        // Keyed items with fixed dimensions, contentType="media_tile", and clipToBounds for zero-lag recycling
+                        items(
+                            items = section.items,
+                            key = { it.id },
+                            contentType = { "media_tile" }
+                        ) { item ->
+                            MediaGridItem(
+                                item = item,
+                                isSelectionMode = isSelectionMode,
+                                isSelected = selectedIds.contains(item.id),
+                                isFavorite = isFavorite(item.id),
+                                onClick = {
+                                    // Suppressed for the entire duration of an active long-press-drag on
+                                    // this same item (covers holds of any length), plus a short grace
+                                    // period after it ends as a backstop in case the child's tap and the
+                                    // parent's onDragEnd/onDragCancel resolve in the opposite order.
+                                    val isTrailingClickFromLongPress = item.id == lastLongPressId &&
+                                        (isLongPressGestureActive || (System.currentTimeMillis() - lastLongPressTime) < 600)
+                                    if (isTrailingClickFromLongPress) {
+                                        // Same press-release the long-press gesture already handled -
+                                        // ignore it instead of letting the tile's own tap detector
+                                        // immediately toggle the selection it just made back off.
+                                    } else if (isSelectionMode) {
+                                        onToggleSelection(item.id)
+                                    } else {
+                                        val index = items.indexOf(item)
+                                        onItemClick(item, index)
+                                    }
+                                },
+                                modifier = Modifier.clipToBounds()
+                            )
+                        }
                     }
                 }
             }
 
-            // Normal OneUI Pinned Top-Bar (Visible when not in selection mode)
-            if (!isSelectionMode) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.TopCenter)
-                        .drawBehind {
-                            val alpha = if (onBackClick != null) 1f else headerCollapseFraction
-                            drawRect(AmoledBlack.copy(alpha = alpha))
-                        }
-                        .statusBarsPadding()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (onBackClick != null) {
-                            CircularIconButton(
-                                onClick = onBackClick,
-                                contentDescription = "Zurück",
-                                icon = Icons.AutoMirrored.Rounded.ArrowBack,
-                                modifier = Modifier.padding(start = 4.dp)
-                            )
-                        }
+            val allSelected = selectedIds.size == items.size
+            val toggleSelectAll = { if (allSelected) onDeselectAll() else onSelectAll() }
 
-                        // Compact title fading in smoothly as large title shrinks/scrolls
-                        Row(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(start = if (onBackClick != null) 4.dp else 12.dp)
-                                .graphicsLayer {
-                                    alpha = if (onBackClick != null) 1f else (headerCollapseFraction - 0.2f).coerceAtLeast(0f) / 0.8f
-                                },
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = title,
-                                color = PureWhite,
-                                fontSize = 19.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1
-                            )
-                            if (items.isNotEmpty()) {
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "(${items.size})",
-                                    color = TextMuted,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Normal
-                                )
-                            }
-                        }
+            if (!isSelectionMode) {
+                when {
+                    onBackClick != null -> ThemedTopBar(
+                        title = title,
+                        subtitle = countText,
+                        onBack = onBackClick,
+                        hazeState = gridHaze,
+                        modifier = Modifier.align(Alignment.TopCenter)
+                    )
+
+                    language == DesignLanguage.IOS_LIQUID_GLASS -> IosTitleOverlay(
+                        title = title,
+                        subtitle = countText,
+                        height = iosHeaderHeight,
+                        hazeState = gridHaze,
+                        modifier = Modifier.align(Alignment.TopCenter)
+                    ) {
+                        var anchor by remember { mutableStateOf<Rect?>(null) }
+                        ThemedIconButton(
+                            icon = Icons.Rounded.MoreHoriz,
+                            contentDescription = "Optionen",
+                            onClick = { openViewMenu(anchor) },
+                            hazeState = gridHaze,
+                            modifier = Modifier.onGloballyPositioned { anchor = it.boundsInRoot() }
+                        )
                     }
 
-                    // Subtle OneUI divider hairline fading in when collapsed
-                    HorizontalDivider(
+                    showPinnedBar -> ThemedTopBar(
+                        title = title,
+                        hazeState = gridHaze,
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .graphicsLayer {
-                                alpha = if (onBackClick != null) 1f else headerCollapseFraction
-                            },
-                        thickness = 0.5.dp,
-                        color = Color(0xFF1E1E1E)
-                    )
+                            .align(Alignment.TopCenter)
+                            .graphicsLayer { alpha = ((headerCollapseFraction - 0.25f) / 0.75f).coerceIn(0f, 1f) }
+                    ) {
+                        var anchor by remember { mutableStateOf<Rect?>(null) }
+                        ThemedIconButton(
+                            icon = Icons.Rounded.MoreVert,
+                            contentDescription = "Optionen",
+                            onClick = { openViewMenu(anchor) },
+                            hazeState = gridHaze,
+                            modifier = Modifier.onGloballyPositioned { anchor = it.boundsInRoot() }
+                        )
+                    }
                 }
             } else {
-                // OneUI Selection Mode Top Bar: Count, Select All, and Move to Album
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.TopCenter)
-                        .statusBarsPadding(),
-                    color = AmoledBlack,
-                    shadowElevation = 4.dp
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp)
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularIconButton(
-                            onClick = onClearSelection,
-                            contentDescription = "Auswahl beenden",
-                            icon = Icons.Rounded.Close
+                SelectionTopBar(
+                    selectedCount = selectedIds.size,
+                    totalCount = items.size,
+                    onToggleSelectAll = toggleSelectAll,
+                    onClose = onClearSelection,
+                    hazeState = gridHaze,
+                    modifier = Modifier.align(Alignment.TopCenter)
+                )
+            }
+
+            // iOS: the filter is a glass segmented control floating above the tab bar.
+            AnimatedVisibility(
+                visible = showFloatingFilter && !isSelectionMode,
+                enter = fadeIn(qualityTween(graphicsQuality, 200)),
+                exit = fadeOut(qualityTween(graphicsQuality, 150)),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = bottomBarContentPadding(extra = 6.dp))
+                    .padding(horizontal = 44.dp)
+                    .widthIn(max = 360.dp)
+            ) {
+                if (onFilterSelected != null) {
+                    CompositionLocalProvider(LocalContentHaze provides gridHaze) {
+                        FilterChips(
+                            selectedFilter = selectedFilter,
+                            onFilterSelected = onFilterSelected,
+                            floatingGlass = true
                         )
-
-                        Text(
-                            text = if (selectedIds.isEmpty()) "Elemente auswählen" else "${selectedIds.size} ausgewählt",
-                            color = PureWhite,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(start = 8.dp)
-                        )
-
-                        // Select all / deselect all
-                        TextButton(
-                            onClick = {
-                                if (selectedIds.size == items.size) {
-                                    onDeselectAll()
-                                } else {
-                                    onSelectAll()
-                                }
-                            }
-                        ) {
-                            Text(
-                                text = if (selectedIds.size == items.size) "Keine" else "Alle",
-                                color = PureWhite,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
-                            )
-                        }
-
-                        // Move to album button
-                        IconButton(
-                            onClick = onMoveClick,
-                            enabled = selectedIds.isNotEmpty()
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.DriveFileMove,
-                                contentDescription = "In Album verschieben",
-                                tint = if (selectedIds.isNotEmpty()) PureWhite else TextMuted
-                            )
-                        }
-
-                        // Batch delete button
-                        IconButton(
-                            onClick = onDeleteSelected,
-                            enabled = selectedIds.isNotEmpty()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Delete,
-                                contentDescription = "In Papierkorb verschieben",
-                                tint = if (selectedIds.isNotEmpty()) PureWhite else TextMuted
-                            )
-                        }
                     }
                 }
             }
+
+            ThemedPopupMenu(
+                expanded = viewMenuOpen,
+                onDismissRequest = { viewMenuOpen = false },
+                anchorBounds = viewMenuAnchor,
+                entries = buildList {
+                    if (onFilterSelected != null && language == DesignLanguage.SAMSUNG_ONEUI) {
+                        MediaFilter.entries.forEach { filter ->
+                            add(MenuEntry(filter.label, checked = filter == selectedFilter) { onFilterSelected(filter) })
+                        }
+                    }
+                    add(MenuEntry("Größere Vorschaubilder", icon = Icons.Rounded.ZoomIn) { onZoomIn() })
+                    add(MenuEntry("Kleinere Vorschaubilder", icon = Icons.Rounded.ZoomOut) { onZoomOut() })
+                }
+            )
 
             // Draggable Fast-Scroll Scrubber with Month & Year pill
             if (items.size > 20 && !isSelectionMode) {
@@ -544,7 +518,7 @@ fun GalleryScreen(
                     },
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .padding(top = 90.dp, bottom = 80.dp)
+                        .padding(top = statusBarTop + 80.dp, bottom = bottomPadding)
                 )
             }
         }
@@ -573,6 +547,177 @@ fun GalleryScreen(
     }
 }
 
+/** The scrolling header at the top of the grid (index 0), per design language. */
+@Composable
+private fun GalleryHeader(
+    title: String,
+    countText: String,
+    items: List<MediaItem>,
+    language: DesignLanguage,
+    collapseFraction: () -> Float,
+    selectedFilter: MediaFilter,
+    onFilterSelected: ((MediaFilter) -> Unit)?,
+    onOpenViewMenu: (Rect?) -> Unit,
+    onHeroClick: () -> Unit,
+    hazeState: HazeState
+) {
+    var anchor by remember { mutableStateOf<Rect?>(null) }
+    val menuButton: @Composable RowScope.() -> Unit = {
+        ThemedIconButton(
+            icon = Icons.Rounded.MoreVert,
+            contentDescription = "Optionen",
+            onClick = { onOpenViewMenu(anchor) },
+            hazeState = hazeState,
+            modifier = Modifier.onGloballyPositioned { anchor = it.boundsInRoot() }
+        )
+    }
+
+    when (language) {
+        DesignLanguage.SAMSUNG_ONEUI -> LargeHeader(
+            title = title,
+            collapseFraction = collapseFraction,
+            actions = menuButton
+        )
+
+        DesignLanguage.GOOGLE_EXPRESSIVE -> Column(modifier = Modifier.fillMaxWidth()) {
+            LargeHeader(title = title, subtitle = countText, actions = menuButton)
+            ExpressiveHeroCard(
+                imageModel = items.firstOrNull()?.uri,
+                title = DateUtils.formatMonthYear(items.first().dateAdded),
+                caption = "Neueste Aufnahme",
+                onClick = onHeroClick
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            if (onFilterSelected != null) {
+                FilterChips(selectedFilter = selectedFilter, onFilterSelected = onFilterSelected)
+            }
+        }
+
+        DesignLanguage.XIAOMI_HYPEROS -> Column(modifier = Modifier.fillMaxWidth()) {
+            LargeHeader(title = title, subtitle = countText, actions = menuButton)
+            if (onFilterSelected != null) {
+                FilterChips(selectedFilter = selectedFilter, onFilterSelected = onFilterSelected)
+            }
+        }
+
+        // iOS draws its title as a fixed glass overlay instead (IosTitleOverlay).
+        DesignLanguage.IOS_LIQUID_GLASS -> Spacer(modifier = Modifier.height(0.dp))
+    }
+}
+
+/**
+ * iOS 26 Photos title: pinned over the photos, which scroll underneath a progressive glass blur that
+ * is fully frosted at the top and fades out towards the grid, plus a legibility gradient.
+ */
+@Composable
+private fun IosTitleOverlay(
+    title: String,
+    subtitle: String,
+    height: Dp,
+    hazeState: HazeState,
+    modifier: Modifier = Modifier,
+    actions: @Composable RowScope.() -> Unit
+) {
+    val palette = LocalAppTheme.current.palette
+    val light = palette.isLight
+    val shade = if (light) Color.White else Color.Black
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height + 28.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .glass(
+                    RectangleShape,
+                    GlassSpec(shade.copy(alpha = 0.22f), Color.Transparent, 14.dp, GlassRim.None),
+                    hazeState,
+                    mask = Brush.verticalGradient(0f to Color.Black, 0.6f to Color.Black, 1f to Color.Transparent)
+                )
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to shade.copy(alpha = if (light) 0.80f else 0.62f),
+                        0.65f to shade.copy(alpha = if (light) 0.35f else 0.25f),
+                        1f to Color.Transparent
+                    )
+                )
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 20.dp, end = 150.dp, bottom = 34.dp)
+        ) {
+            Text(
+                text = title,
+                color = palette.onBackground,
+                fontSize = 34.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+            Text(
+                text = subtitle,
+                color = palette.onBackground.copy(alpha = 0.72f),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 40.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            content = actions
+        )
+    }
+}
+
+@Composable
+private fun GlassTextButton(text: String, hazeState: HazeState, prominent: Boolean, onClick: () -> Unit) {
+    val palette = LocalAppTheme.current.palette
+    val interaction = remember { MutableInteractionSource() }
+    val shape = CircleShape
+    Box(
+        modifier = Modifier
+            .pressScale(interaction, 0.92f)
+            .height(44.dp)
+            .then(
+                if (prominent) Modifier.clip(shape).background(palette.accent) else Modifier.glass(shape, state = hazeState)
+            )
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 18.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = if (prominent) palette.onAccent else palette.onBackground,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun SelectionTextAction(text: String, onClick: () -> Unit) {
+    val theme = LocalAppTheme.current
+    val palette = theme.palette
+    Text(
+        text = text,
+        color = if (theme.language == DesignLanguage.SAMSUNG_ONEUI) palette.onBackground else palette.accent,
+        fontSize = 16.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .clip(CircleShape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    )
+}
+
 /**
  * Calculates the exact index in LazyVerticalGrid for a given media index,
  * accounting for the main header and all preceding date headers.
@@ -592,188 +737,5 @@ private fun getGridItemIndexForMedia(
         gridIndex += 1 + section.items.size
     }
     return gridIndex.coerceAtLeast(0)
-}
-
-/**
- * Detects Samsung Gallery style continuous block drag-to-select:
- * - Starts immediately upon long-pressing an initial media tile.
- * - Continuous index range selection: dragging from item A to item B selects all items between A and B
- *   (the entire row and everything in between, matching standard Samsung Gallery / Google Photos behavior).
- * - Dragging backwards automatically deselects items back to the current position.
- * - Automatically scrolls smoothly when dragging near top/bottom margins.
- */
-private fun Modifier.detectDragSelect(
-    items: List<MediaItem>,
-    gridState: LazyGridState,
-    isSelectionMode: () -> Boolean,
-    onStartSelection: (Long) -> Unit,
-    onSetSelection: (Long, Boolean) -> Unit,
-    onUpdateSelectedIds: (Set<Long>) -> Unit,
-    selectedIds: () -> Set<Long>,
-    haptic: HapticFeedback,
-    coroutineScope: CoroutineScope,
-    onLongPressRecognized: (Long) -> Unit,
-    onLongPressEnded: () -> Unit
-): Modifier = pointerInput(gridState, items) {
-    var dragSelectMode = true
-    var autoScrollJob: Job? = null
-    var currentTouch = Offset.Zero
-    var dragStartIndex: Int? = null
-    var initialSelectedIds = emptySet<Long>()
-    var lastProcessedRange: IntRange? = null
-    var idToIndex = emptyMap<Long, Int>()
-    var dragStartPosition = Offset.Zero
-
-    fun findMediaIndexAt(pos: Offset): Int? {
-        val x = pos.x.toInt()
-        val y = pos.y.toInt()
-        val visible = gridState.layoutInfo.visibleItemsInfo
-        if (visible.isEmpty()) return null
-
-        // 1. Exact item hit test
-        val exactHit = visible.find { info ->
-            info.key is Long &&
-            x >= info.offset.x && x <= (info.offset.x + info.size.width) &&
-            y >= info.offset.y && y <= (info.offset.y + info.size.height)
-        }
-        if (exactHit?.key is Long) {
-            val idx = idToIndex[exactHit.key as Long]
-            if (idx != null) return idx
-        }
-
-        // 2. Closest visible media tile center test
-        var closestIdx: Int? = null
-        var minDistanceSq = Float.MAX_VALUE
-        for (info in visible) {
-            if (info.key !is Long) continue
-            val centerX = info.offset.x + info.size.width / 2f
-            val centerY = info.offset.y + info.size.height / 2f
-            val dx = pos.x - centerX
-            val dy = pos.y - centerY
-            val distSq = dx * dx + dy * dy
-            if (distSq < minDistanceSq) {
-                minDistanceSq = distSq
-                closestIdx = idToIndex[info.key as Long]
-            }
-        }
-        return closestIdx
-    }
-
-    fun updateRangeSelection(currentIdx: Int) {
-        val startIdx = dragStartIndex ?: return
-        val minIdx = minOf(startIdx, currentIdx).coerceIn(0, items.size - 1)
-        val maxIdx = maxOf(startIdx, currentIdx).coerceIn(0, items.size - 1)
-        val currentRange = minIdx..maxIdx
-
-        if (currentRange != lastProcessedRange) {
-            lastProcessedRange = currentRange
-            val rangeIds = (minIdx..maxIdx).map { items[it].id }.toSet()
-            val newSelection = if (dragSelectMode) {
-                initialSelectedIds + rangeIds
-            } else {
-                initialSelectedIds - rangeIds
-            }
-            onUpdateSelectedIds(newSelection)
-            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        }
-    }
-
-    detectDragGesturesAfterLongPress(
-        onDragStart = { offset ->
-            idToIndex = items.mapIndexed { idx, item -> item.id to idx }.toMap()
-            currentTouch = offset
-            initialSelectedIds = selectedIds().toSet()
-            lastProcessedRange = null
-
-            val startIdx = findMediaIndexAt(offset)
-            if (startIdx != null && startIdx in items.indices) {
-                dragStartIndex = startIdx
-                val startItem = items[startIdx]
-                val alreadySelected = initialSelectedIds.contains(startItem.id)
-                dragSelectMode = if (isSelectionMode()) !alreadySelected else true
-
-                if (!isSelectionMode()) {
-                    onStartSelection(startItem.id)
-                    initialSelectedIds = setOf(startItem.id)
-                } else {
-                    onSetSelection(startItem.id, dragSelectMode)
-                    initialSelectedIds = if (dragSelectMode) initialSelectedIds + startItem.id else initialSelectedIds - startItem.id
-                }
-                lastProcessedRange = startIdx..startIdx
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                onLongPressRecognized(startItem.id)
-            } else {
-                dragStartIndex = null
-            }
-            dragStartPosition = offset
-            // Auto-scroll and range re-evaluation are intentionally NOT started here: onDragStart
-            // fires purely from a long-press with zero finger movement. Starting the timer-driven
-            // auto-scroll loop immediately meant that simply holding still on a tile sitting inside
-            // the top/bottom scroll margin could re-evaluate the range selection on every tick with
-            // no drag at all, occasionally toggling the very first selected item back off. Both are
-            // gated on real net displacement from the long-press origin in onDrag instead - NOT on
-            // "onDrag fired at all", and NOT on a running sum of per-tick deltas: some input sources
-            // (and a real finger's sensor noise, given enough time) report many tiny non-zero moves
-            // while effectively held still, and a running sum keeps growing the longer you hold even
-            // though the finger never actually travels anywhere - comparing against the fixed start
-            // position instead stays near-zero for as long as the hold is genuinely stationary.
-        },
-        onDrag = { change, _ ->
-            change.consume()
-            currentTouch = change.position
-
-            // Ignore everything until the finger has actually moved away from where the long-press
-            // started (beyond a tiny touch-slop threshold).
-            if ((currentTouch - dragStartPosition).getDistance() > 8f) {
-                val curIdx = findMediaIndexAt(currentTouch)
-                if (curIdx != null) {
-                    updateRangeSelection(curIdx)
-                }
-
-                if (autoScrollJob == null) {
-                    autoScrollJob = coroutineScope.launch {
-                        val scrollMarginPx = 100.dp.toPx()
-                        while (isActive) {
-                            val viewportH = gridState.layoutInfo.viewportSize.height.toFloat()
-                            if (viewportH > 0 && dragStartIndex != null) {
-                                val scrollAmount = when {
-                                    currentTouch.y < scrollMarginPx -> {
-                                        -((scrollMarginPx - currentTouch.y) / scrollMarginPx).coerceIn(0f, 1f) * 24f
-                                    }
-                                    currentTouch.y > viewportH - scrollMarginPx -> {
-                                        ((currentTouch.y - (viewportH - scrollMarginPx)) / scrollMarginPx).coerceIn(0f, 1f) * 24f
-                                    }
-                                    else -> 0f
-                                }
-
-                                if (scrollAmount != 0f) {
-                                    gridState.scrollBy(scrollAmount)
-                                    val scrolledIdx = findMediaIndexAt(currentTouch)
-                                    if (scrolledIdx != null) {
-                                        updateRangeSelection(scrolledIdx)
-                                    }
-                                }
-                            }
-                            delay(16)
-                        }
-                    }
-                }
-            }
-        },
-        onDragEnd = {
-            autoScrollJob?.cancel()
-            autoScrollJob = null
-            dragStartIndex = null
-            lastProcessedRange = null
-            onLongPressEnded()
-        },
-        onDragCancel = {
-            autoScrollJob?.cancel()
-            autoScrollJob = null
-            dragStartIndex = null
-            lastProcessedRange = null
-            onLongPressEnded()
-        }
-    )
 }
 

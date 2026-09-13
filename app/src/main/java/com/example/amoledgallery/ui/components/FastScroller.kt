@@ -115,7 +115,7 @@ fun FastScroller(
                     .padding(end = 2.dp)
                     .size(width = 4.dp, height = thumbHeightDp)
                     .clip(CircleShape)
-                    .background(if (isDragging) PureWhite else Color.White.copy(alpha = 0.35f))
+                    .background(if (isDragging) PureWhite else PureWhite.copy(alpha = 0.35f))
             )
         }
 
