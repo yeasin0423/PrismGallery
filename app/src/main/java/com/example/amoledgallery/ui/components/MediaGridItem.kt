@@ -1,6 +1,5 @@
 package com.example.amoledgallery.ui.components
 
-import android.graphics.Bitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
-import coil3.request.bitmapConfig
 import coil3.request.crossfade
 import coil3.size.Precision
 import com.example.amoledgallery.data.ThumbnailManager
@@ -61,14 +59,16 @@ fun MediaGridItem(
 ) {
     val context = LocalContext.current
 
-    // Zero Main-Thread I/O: item.thumbnail is resolved directly by Coil's MediaThumbnailFetcher on Dispatchers.IO
+    // Zero Main-Thread I/O: item.thumbnail is resolved directly by Coil's MediaThumbnailFetcher on
+    // Dispatchers.IO. Note: bitmapConfig() is NOT set here - MediaThumbnailFetcher decodes the
+    // bitmap itself (bypassing Coil's own decoder) and always requests a GPU-resident HARDWARE
+    // bitmap for smooth scrolling, so a request-level override here would have no effect anyway.
     val imageRequest = remember(item.id, item.dateModified, context) {
         val px = ThumbnailManager.getInstance(context).thumbnailPx
         ImageRequest.Builder(context)
             .data(item.thumbnail)
             .size(coil3.size.Size(px, px))
             .precision(Precision.EXACT)
-            .bitmapConfig(Bitmap.Config.RGB_565)
             .crossfade(false)
             .build()
     }

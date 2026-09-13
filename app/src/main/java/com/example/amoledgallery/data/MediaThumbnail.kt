@@ -52,8 +52,13 @@ class MediaThumbnailFetcher(
     override suspend fun fetch(): FetchResult = withContext(Dispatchers.IO) {
         val thumbnailManager = ThumbnailManager.getInstance(context)
 
+        // HARDWARE bitmaps decode directly into GPU-resident memory, skipping the
+        // CPU->GPU texture upload that a software (RGB_565/ARGB_8888) bitmap needs on every
+        // draw - this is the standard fix for jank in scrolling image grids. This is the
+        // "repeat view" hot path (a thumbnail that already scrolled into view once before),
+        // so it is by far the most frequently hit branch during fast scrolling.
         val decodeOptions = BitmapFactory.Options().apply {
-            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+            inPreferredConfig = android.graphics.Bitmap.Config.HARDWARE
         }
 
         // 1. Fast path: Check existing cache file on internal UFS storage
