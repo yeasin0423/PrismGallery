@@ -62,6 +62,7 @@ import com.example.amoledgallery.ui.theme.SurfaceVariantDark
 import com.example.amoledgallery.ui.theme.TextMuted
 import com.example.amoledgallery.ui.theme.ThemeState
 import com.example.amoledgallery.ui.theme.presetsFor
+import com.example.amoledgallery.ui.themedBackgroundBlur
 
 /**
  * Clean Samsung OneUI style "Menü" tab in pure AMOLED black:
@@ -115,9 +116,13 @@ fun MenuScreen(
             )
 
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .themedBackgroundBlur(radiusDp = 20f),
                 shape = RoundedCornerShape(LocalAppTheme.current.shapes.cardCornerRadius),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (LocalAppTheme.current.shapes.useBlur) SurfaceDark.copy(alpha = 0.75f) else SurfaceDark
+                ),
                 border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(OneUiCardBorder))
             ) {
                 Column {
@@ -158,9 +163,13 @@ fun MenuScreen(
             )
 
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .themedBackgroundBlur(radiusDp = 20f),
                 shape = RoundedCornerShape(LocalAppTheme.current.shapes.cardCornerRadius),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (LocalAppTheme.current.shapes.useBlur) SurfaceDark.copy(alpha = 0.75f) else SurfaceDark
+                ),
                 border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(OneUiCardBorder))
             ) {
                 Column {
