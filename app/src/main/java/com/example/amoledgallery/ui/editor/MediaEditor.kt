@@ -146,7 +146,11 @@ object MediaEditor {
 
         val volume = runCatching { MediaStore.getVolumeName(item.uri) }.getOrDefault(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         val collection = MediaStore.Images.Media.getContentUri(volume)
-        val uri = insertPending(context, collection, editedName(item, extension), outMime, item.relativePath, Environment.DIRECTORY_PICTURES)
+        val uri = insertPending(
+            context, collection, editedName(item, extension), outMime, item.relativePath,
+            allowedDirectories = listOf(Environment.DIRECTORY_DCIM, Environment.DIRECTORY_PICTURES),
+            fallbackDirectory = Environment.DIRECTORY_PICTURES
+        )
         try {
             context.contentResolver.openOutputStream(uri)?.use { stream ->
                 if (!result.compress(format, 95, stream)) error("compress failed")
@@ -221,7 +225,11 @@ object MediaEditor {
             return withContext(Dispatchers.IO) {
                 val volume = runCatching { MediaStore.getVolumeName(item.uri) }.getOrDefault(MediaStore.VOLUME_EXTERNAL_PRIMARY)
                 val collection = MediaStore.Video.Media.getContentUri(volume)
-                val uri = insertPending(context, collection, editedName(item, "mp4"), "video/mp4", item.relativePath, Environment.DIRECTORY_MOVIES)
+                val uri = insertPending(
+                    context, collection, editedName(item, "mp4"), "video/mp4", item.relativePath,
+                    allowedDirectories = listOf(Environment.DIRECTORY_DCIM, Environment.DIRECTORY_MOVIES, Environment.DIRECTORY_PICTURES),
+                    fallbackDirectory = Environment.DIRECTORY_MOVIES
+                )
                 try {
                     context.contentResolver.openOutputStream(uri)?.use { out ->
                         output.inputStream().use { it.copyTo(out) }
@@ -249,12 +257,23 @@ object MediaEditor {
         displayName: String,
         mimeType: String,
         relativePath: String,
+        allowedDirectories: List<String>,
         fallbackDirectory: String
     ): Uri {
+        // MediaStore only accepts certain top-level folders per media type (images: DCIM/Pictures,
+        // videos: DCIM/Movies/Pictures). Originals elsewhere - the storage root, Download, app
+        // folders - get their copy in the default folder instead.
+        val cleanPath = relativePath.trim('/')
+        val topDirectory = cleanPath.substringBefore('/')
+        val targetPath = if (cleanPath.isNotEmpty() && allowedDirectories.any { it.equals(topDirectory, ignoreCase = true) }) {
+            "$cleanPath/"
+        } else {
+            "$fallbackDirectory/"
+        }
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
             put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath.ifBlank { "$fallbackDirectory/" })
+            put(MediaStore.MediaColumns.RELATIVE_PATH, targetPath)
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         return context.contentResolver.insert(collection, values) ?: error("MediaStore insert failed")

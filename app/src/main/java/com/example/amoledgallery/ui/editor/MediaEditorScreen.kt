@@ -72,7 +72,6 @@ import com.example.amoledgallery.ui.design.ThemedProgressBar
 import com.example.amoledgallery.ui.design.blockTouchesBelow
 import com.example.amoledgallery.ui.design.glass
 import com.example.amoledgallery.ui.design.pressScale
-import com.example.amoledgallery.ui.design.sparkleTap
 import com.example.amoledgallery.ui.i18n.strings
 import com.example.amoledgallery.ui.theme.DesignLanguage
 import com.example.amoledgallery.ui.theme.LocalAppTheme
@@ -481,9 +480,7 @@ private fun EditorTool(
     Column(
         modifier = Modifier
             .pressScale(interaction, 0.88f)
-            .clip(RoundedCornerShape(16.dp))
-            .sparkleTap()
-            .clickable(interactionSource = interaction, indication = ripple(), enabled = enabled, onClick = onClick)
+            .clip(RoundedCornerShape(16.dp))            .clickable(interactionSource = interaction, indication = ripple(), enabled = enabled, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

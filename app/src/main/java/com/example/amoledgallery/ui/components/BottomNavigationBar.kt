@@ -80,7 +80,6 @@ import com.example.amoledgallery.ui.design.glassRim
 import com.example.amoledgallery.ui.design.pressScale
 import com.example.amoledgallery.ui.design.selectionPop
 import com.example.amoledgallery.ui.design.SamsungGalleryIcons
-import com.example.amoledgallery.ui.design.sparkleTap
 import androidx.compose.animation.core.snap
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -261,9 +260,7 @@ fun BottomNavigationBar(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .then(reportCenter(index))
-                                .sparkleTap()
-                                .clip(pill)
+                                .then(reportCenter(index))                                .clip(pill)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = ripple(color = palette.onBackground)
@@ -331,9 +328,7 @@ fun BottomNavigationBar(
                     Row(
                         modifier = Modifier
                             .then(reportCenter(index))
-                            .height(52.dp)
-                            .sparkleTap(if (selected) palette.onAccent else palette.accent)
-                            .clip(pill)
+                            .height(52.dp)                            .clip(pill)
                             .background(container)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },

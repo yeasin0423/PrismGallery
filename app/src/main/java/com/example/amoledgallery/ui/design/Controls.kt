@@ -270,9 +270,7 @@ fun <T> ThemedSegmentedControl(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(46.dp)
-                        .sparkleTap(if (isSelected) palette.onAccent else palette.accent)
-                        .clip(shape)
+                        .height(46.dp)                        .clip(shape)
                         .background(container)
                         .clickable { onSelect(option) },
                     contentAlignment = Alignment.Center
@@ -333,7 +331,6 @@ fun <T> ThemedSegmentedControl(
             .fillMaxWidth()
             .height(trackHeight)
             .then(trackModifier)
-            .sparkleTap()
             // The slide gesture lives on the track itself, the parent of the segments, so it sees every
             // touch. Once it becomes a slide it consumes the moves, which cancels the segment taps.
             .pointerInput(trackPaddingPx) {
@@ -441,8 +438,7 @@ fun <T> ThemedSegmentedControl(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight()
-                        .clip(thumbShape)
+                        .fillMaxHeight()                        .clip(thumbShape)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
@@ -600,7 +596,7 @@ private fun ListRowContent(row: ListRow) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (row.onClick != null) Modifier.sparkleTap().clickable(onClick = row.onClick) else Modifier)
+            .then(if (row.onClick != null) Modifier.clickable(onClick = row.onClick) else Modifier)
             .heightIn(min = if (language == DesignLanguage.IOS_LIQUID_GLASS) 52.dp else 60.dp)
             .padding(
                 start = if (language == DesignLanguage.IOS_LIQUID_GLASS) 16.dp else if (language == DesignLanguage.SAMSUNG_ONEUI) 22.dp else 18.dp,
@@ -1006,9 +1002,7 @@ fun ThemedIconButton(
             modifier = modifier
                 .then(pulseModifier)
                 .pressScale(interaction, 0.9f)
-                .size(44.dp)
-                .sparkleTap()
-                .glass(CircleShape, barGlass(), hazeState)
+                .size(44.dp)                .glass(CircleShape, barGlass(), hazeState)
                 .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = pulsingClick),
             contentAlignment = Alignment.Center
         ) {
@@ -1018,9 +1012,7 @@ fun ThemedIconButton(
         else -> Box(
             modifier = modifier
                 .then(pulseModifier)
-                .size(if (theme.language == DesignLanguage.SAMSUNG_ONEUI) 48.dp else 44.dp)
-                .sparkleTap()
-                .clip(CircleShape)
+                .size(if (theme.language == DesignLanguage.SAMSUNG_ONEUI) 48.dp else 44.dp)                .clip(CircleShape)
                 .clickable(interactionSource = interaction, indication = ripple(), enabled = enabled, onClick = pulsingClick),
             contentAlignment = Alignment.Center
         ) {

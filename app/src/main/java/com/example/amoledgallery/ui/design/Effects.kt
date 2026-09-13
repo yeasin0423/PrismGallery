@@ -1,13 +1,8 @@
 package com.example.amoledgallery.ui.design
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -16,140 +11,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
-import com.example.amoledgallery.PerformanceProfile
-import com.example.amoledgallery.ui.theme.DesignLanguage
 import com.example.amoledgallery.ui.theme.LocalAppTheme
-import kotlinx.coroutines.launch
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.random.Random
-
-// ---------------------------------------------------------------------------------------------
-// Sparkle tap (One UI, Material Expressive)
-// ---------------------------------------------------------------------------------------------
-
-private const val SPARKLE_MAX_TAP_MS = 240L
-
-private class SparkleBurst(val center: Offset, val seed: Int) {
-    val progress = Animatable(0f)
-}
-
-/**
- * A small sparkling ripple at the touch point: a soft glowing ring plus a few star-like sparks that
- * fly outwards and fade. Only for One UI and Material Expressive, and only for a clean tap - a gesture
- * that turns into a slide or drag (which consumes the pointer) never triggers it, so sliding across
- * tabs costs nothing. Disabled on LOW graphics quality.
- */
-@Composable
-fun Modifier.sparkleTap(color: Color = Color.Unspecified): Modifier {
-    val theme = LocalAppTheme.current
-    val quality = LocalGraphicsQuality.current
-    if (quality == PerformanceProfile.LOW) return this
-    if (theme.language != DesignLanguage.SAMSUNG_ONEUI && theme.language != DesignLanguage.GOOGLE_EXPRESSIVE) return this
-
-    val sparkColor = if (color != Color.Unspecified) {
-        color
-    } else if (theme.language == DesignLanguage.GOOGLE_EXPRESSIVE) {
-        theme.palette.accent
-    } else {
-        theme.palette.onBackground
-    }
-    val bursts = remember { mutableStateListOf<SparkleBurst>() }
-    val scope = rememberCoroutineScope()
-
-    return this
-        .pointerInput(Unit) {
-            // Observed on the Initial pass without consuming anything, so the element's own click and
-            // slide handling is untouched. A gesture counts as a tap only if the finger neither moved
-            // past touch slop nor stayed down long enough to start a hold-slide.
-            awaitEachGesture {
-                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                var isTap = true
-                while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop ||
-                        change.uptimeMillis - down.uptimeMillis > SPARKLE_MAX_TAP_MS
-                    ) {
-                        isTap = false
-                    }
-                    if (!change.pressed) break
-                }
-                if (isTap) {
-                    val burst = SparkleBurst(down.position, Random.nextInt())
-                    bursts.add(burst)
-                    scope.launch {
-                        burst.progress.animateTo(1f, tween(560, easing = FastOutSlowInEasing))
-                        bursts.remove(burst)
-                    }
-                }
-            }
-        }
-        .drawWithContent {
-            drawContent()
-            for (burst in bursts) drawSparkle(burst, sparkColor)
-        }
-}
-
-private fun DrawScope.drawSparkle(burst: SparkleBurst, color: Color) {
-    val p = burst.progress.value
-    val fade = 1f - p
-    val center = burst.center
-
-    // Soft ripple: a glow that expands and a thin ring on its edge.
-    val ringRadius = 6.dp.toPx() + 40.dp.toPx() * p
-    drawCircle(
-        brush = Brush.radialGradient(
-            listOf(color.copy(alpha = 0.20f * fade), color.copy(alpha = 0.06f * fade), Color.Transparent),
-            center = center,
-            radius = ringRadius
-        ),
-        radius = ringRadius,
-        center = center
-    )
-    drawCircle(
-        color = color.copy(alpha = 0.40f * fade),
-        radius = ringRadius,
-        center = center,
-        style = Stroke(width = 1.4.dp.toPx() * fade + 0.2f)
-    )
-
-    // Sparks: short four-point stars flying outwards on slightly randomized angles and distances.
-    val random = Random(burst.seed)
-    val sparks = 9
-    val eased = 1f - (1f - p) * (1f - p)
-    for (i in 0 until sparks) {
-        val angle = (i.toFloat() / sparks) * 2f * PI.toFloat() + random.nextFloat() * 0.5f
-        val distance = 4.dp.toPx() + (22.dp.toPx() + random.nextFloat() * 20.dp.toPx()) * eased
-        val sparkCenter = Offset(center.x + cos(angle) * distance, center.y + sin(angle) * distance)
-        val size = (2.6.dp.toPx() + random.nextFloat() * 1.6.dp.toPx()) * (1f - p * 0.7f)
-        val alpha = (fade * (0.6f + random.nextFloat() * 0.4f)).coerceIn(0f, 1f)
-        val stroke = 1.1.dp.toPx()
-        drawLine(color.copy(alpha = alpha), Offset(sparkCenter.x - size, sparkCenter.y), Offset(sparkCenter.x + size, sparkCenter.y), stroke, StrokeCap.Round)
-        drawLine(color.copy(alpha = alpha), Offset(sparkCenter.x, sparkCenter.y - size), Offset(sparkCenter.x, sparkCenter.y + size), stroke, StrokeCap.Round)
-        drawCircle(color.copy(alpha = alpha), radius = stroke * 0.9f, center = sparkCenter)
-    }
-}
 
 // ---------------------------------------------------------------------------------------------
 // Bottom edge fade
