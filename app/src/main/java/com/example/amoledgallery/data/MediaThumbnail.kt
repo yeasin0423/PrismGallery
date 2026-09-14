@@ -90,9 +90,15 @@ class MediaThumbnailFetcher(
         }
 
         // 2. Direct native decoding via ContentResolver.loadThumbnail (Zero WebP compression lag)
+        if (data.id != 0L && thumbnailManager.hasThumbnailFailed(data.id, data.dateModified)) {
+            throw IllegalStateException("Thumbnail previously failed for ${data.uri}")
+        }
         val px = thumbnailManager.thumbnailPx
         val bitmap = thumbnailManager.loadThumbnailBitmap(data.uri, data.isVideo, px, px)
-            ?: throw IllegalStateException("Unable to decode thumbnail for ${data.uri}")
+        if (bitmap == null) {
+            if (data.id != 0L) thumbnailManager.markThumbnailFailed(data.id, data.dateModified)
+            throw IllegalStateException("Unable to decode thumbnail for ${data.uri}")
+        }
 
         // Asynchronously cache on internal fast storage so all future scrolls read directly from disk
         if (data.id != 0L) {

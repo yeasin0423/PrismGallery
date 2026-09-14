@@ -32,41 +32,32 @@ object DateUtils {
 
         if (items.isEmpty()) return emptyList()
 
-        val groupedMap = LinkedHashMap<String, MutableList<MediaItem>>()
-        val titleMap = HashMap<String, String>()
+        val groupedMap = LinkedHashMap<Int, MutableList<MediaItem>>()
+        val titleMap = HashMap<Int, String>()
+        // One reused calendar and an Int key: this runs over the whole library whenever the list or the
+        // zoom level changes, and a Calendar plus key string per item added up on large libraries.
+        val calendar = Calendar.getInstance()
 
         for (item in items) {
-            val key = getGroupKey(item.dateAdded, columnCount)
-            if (!groupedMap.containsKey(key)) {
-                groupedMap[key] = ArrayList()
-                titleMap[key] = formatSectionHeader(item.dateAdded, columnCount)
+            calendar.timeInMillis = item.date * 1000L
+            val year = calendar.get(Calendar.YEAR)
+            val key = if (columnCount >= 4) {
+                year * 100 + calendar.get(Calendar.MONTH)
+            } else {
+                year * 1000 + calendar.get(Calendar.DAY_OF_YEAR)
             }
-            groupedMap[key]!!.add(item)
+            val group = groupedMap.getOrPut(key) {
+                titleMap[key] = formatSectionHeader(item.date, columnCount)
+                ArrayList()
+            }
+            group.add(item)
         }
 
         return groupedMap.map { (key, groupItems) ->
             MediaDateSection(
-                title = titleMap[key] ?: key,
+                title = titleMap[key] ?: key.toString(),
                 items = groupItems
             )
-        }
-    }
-
-    /**
-     * Generates a unique grouping key for the given date.
-     */
-    private fun getGroupKey(timestampSeconds: Long, columnCount: Int): String {
-        val calendar = Calendar.getInstance().apply {
-            timeInMillis = timestampSeconds * 1000L
-        }
-        val year = calendar.get(Calendar.YEAR)
-        val month = calendar.get(Calendar.MONTH)
-
-        return if (columnCount >= 4) {
-            "M_${year}_$month"
-        } else {
-            val day = calendar.get(Calendar.DAY_OF_YEAR)
-            "D_${year}_$day"
         }
     }
 

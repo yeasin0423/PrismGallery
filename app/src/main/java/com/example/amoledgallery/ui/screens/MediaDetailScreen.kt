@@ -119,7 +119,8 @@ fun MediaDetailScreen(
     modifier: Modifier = Modifier
 ) {
     if (mediaList.isEmpty()) {
-        onBack()
+        // Closing changes state, which must not happen in the middle of composition.
+        androidx.compose.runtime.LaunchedEffect(Unit) { onBack() }
         return
     }
 
@@ -188,7 +189,7 @@ fun MediaDetailScreen(
         label = "viewer_background"
     )
 
-    val dateMillis = if (currentItem.dateModified > 0) currentItem.dateModified * 1000L else currentItem.dateAdded * 1000L
+    val dateMillis = currentItem.date * 1000L
     val dateTitle = remember(dateMillis, LanguageState.language) { SimpleDateFormat(strings.longDatePattern, LanguageState.locale).format(Date(dateMillis)) }
     val timeText = remember(dateMillis, LanguageState.language) { strings.timeLabel(SimpleDateFormat("HH:mm", LanguageState.locale).format(Date(dateMillis))) }
 

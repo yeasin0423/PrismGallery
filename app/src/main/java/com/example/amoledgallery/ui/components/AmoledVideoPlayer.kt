@@ -153,6 +153,17 @@ private fun ActiveVideoPlayer(
         }
     }
 
+    // Pause when the app goes to the background; the player otherwise kept playing (and looping audio)
+    // after leaving the app until the viewer was closed.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, exoPlayer) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) exoPlayer.pause()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     // Continuous progress tracking while playing
     LaunchedEffect(isPlaying, isScrubbing) {
         while (isActive && isPlaying && !isScrubbing) {

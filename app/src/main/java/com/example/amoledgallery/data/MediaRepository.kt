@@ -29,12 +29,30 @@ sealed interface RenameResult {
     data class Error(val message: String) : RenameResult
 }
 
+/**
+ * Result of renaming an album. When some items belong to other apps, [pendingIntent] asks for write access
+ * to [deniedItems], which then still have to be moved to [relativePath].
+ */
+data class AlbumRenameOutcome(
+    val pendingIntent: PendingIntent?,
+    val deniedItems: List<MediaItem>,
+    val relativePath: String,
+    /** The album's folder before the rename, removed once it has been emptied. */
+    val oldDirectoryPath: String = ""
+)
+
 sealed interface MoveResult {
     data class Success(val count: Int) : MoveResult
+    /**
+     * Some items belong to other apps (e.g. the camera). [pendingIntent] asks for write access to all of
+     * them at once; afterwards [itemsToMove] still have to be moved and [originalsToDelete] (already
+     * copied to the target volume) deleted.
+     */
     data class PermissionRequired(
         val pendingIntent: PendingIntent,
         val targetAlbum: AlbumItem,
-        val itemsToMove: List<MediaItem>
+        val itemsToMove: List<MediaItem>,
+        val originalsToDelete: List<MediaItem> = emptyList()
     ) : MoveResult
     data class Error(val message: String) : MoveResult
 }
@@ -97,7 +115,8 @@ class MediaRepository(private val context: Context) {
             MediaStore.Images.Media.RELATIVE_PATH,
             MediaStore.Images.Media.DATE_MODIFIED,
             MediaStore.Images.Media.MIME_TYPE,
-            MediaStore.Images.Media.DATA
+            MediaStore.Images.Media.DATA,
+            MediaStore.MediaColumns.DATE_TAKEN
         )
 
         val selection = if (bucketId != null) "${MediaStore.Images.Media.BUCKET_ID} = ?" else null
@@ -129,7 +148,8 @@ class MediaRepository(private val context: Context) {
             MediaStore.Video.Media.RELATIVE_PATH,
             MediaStore.Video.Media.DATE_MODIFIED,
             MediaStore.Video.Media.MIME_TYPE,
-            MediaStore.Video.Media.DATA
+            MediaStore.Video.Media.DATA,
+            MediaStore.MediaColumns.DATE_TAKEN
         )
 
         val videoSelection = if (bucketId != null) "${MediaStore.Video.Media.BUCKET_ID} = ?" else null
@@ -157,7 +177,7 @@ class MediaRepository(private val context: Context) {
             }
         }
 
-        mediaList.sortByDescending { it.dateAdded }
+        mediaList.sortByDescending { it.date }
         mediaList
     }
 
@@ -181,6 +201,7 @@ class MediaRepository(private val context: Context) {
         val mimeTypeColumn = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
         val dataColumn = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
         val durationColumn = if (isVideo) cursor.getColumnIndex(MediaStore.Video.Media.DURATION) else -1
+        val dateTakenColumn = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN)
 
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idColumn)
@@ -193,6 +214,8 @@ class MediaRepository(private val context: Context) {
             val mimeType = if (mimeTypeColumn != -1) cursor.getString(mimeTypeColumn) ?: "" else ""
             val dataPath = if (dataColumn != -1) cursor.getString(dataColumn) ?: "" else ""
             val durationMs = if (durationColumn != -1) cursor.getLong(durationColumn) else 0L
+            // DATE_TAKEN is in milliseconds, every other date column in seconds.
+            val dateTaken = if (dateTakenColumn != -1 && !cursor.isNull(dateTakenColumn)) cursor.getLong(dateTakenColumn) / 1000L else 0L
             val contentUri = ContentUris.withAppendedId(baseUri, id)
 
             outList.add(
@@ -209,7 +232,8 @@ class MediaRepository(private val context: Context) {
                     dateModified = dateModified,
                     isTrashed = isTrashed,
                     mimeType = mimeType,
-                    dataPath = dataPath
+                    dataPath = dataPath,
+                    dateTaken = dateTaken
                 )
             )
         }
@@ -243,7 +267,7 @@ class MediaRepository(private val context: Context) {
             if (!includeHidden && bucketId in hiddenBuckets) continue
 
             val firstItem = items.first()
-            val folderName = firstItem.bucketDisplayName.ifBlank { "Unbekannt" }
+            val folderName = firstItem.bucketDisplayName.ifBlank { strings.unknown }
             val dataPath = items.firstOrNull { it.dataPath.isNotBlank() }?.dataPath ?: ""
             val dirFile = if (dataPath.isNotBlank()) File(dataPath).parentFile else null
             val directoryPath = dirFile?.absolutePath ?: ""
@@ -364,6 +388,12 @@ class MediaRepository(private val context: Context) {
     suspend fun moveMediaItems(
         items: List<MediaItem>,
         targetAlbum: AlbumItem,
+        /**
+         * Whether items owned by other apps may be answered with [MoveResult.PermissionRequired]. The
+         * second pass after the user granted access passes false, so a still-failing item can never
+         * loop back into another permission dialog.
+         */
+        requestPermission: Boolean = true,
         onProgress: ((current: Int, total: Int) -> Unit)? = null
     ): MoveResult = withContext(Dispatchers.IO) {
         if (items.isEmpty()) return@withContext MoveResult.Success(0)
@@ -392,7 +422,11 @@ class MediaRepository(private val context: Context) {
         }
 
         var movedCount = 0
-        val securityExceptionItems = mutableListOf<MediaItem>()
+        val canRequestPermission = requestPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        // Items of other apps that could not be moved in place: moved after the user grants access.
+        val needsWriteAccess = mutableListOf<MediaItem>()
+        // Items of other apps already copied to the other volume whose original could not be deleted.
+        val originalsToDelete = mutableListOf<MediaItem>()
         val thumbnailManager = ThumbnailManager.getInstance(context)
 
         for ((index, item) in items.withIndex()) {
@@ -414,6 +448,14 @@ class MediaRepository(private val context: Context) {
                         thumbnailManager.getThumbnailFile(item).delete()
                         onProgress?.invoke(index + 1, items.size)
                         itemMoved = true
+                    }
+                } catch (e: SecurityException) {
+                    // Owned by another app. Copying it instead would leave the original behind (it can't
+                    // be deleted either), so ask for write access and move it in place afterwards.
+                    if (canRequestPermission) {
+                        needsWriteAccess.add(item)
+                        onProgress?.invoke(index + 1, items.size)
+                        continue
                     }
                 } catch (_: Exception) {
                     // Fall back to physical file copy below
@@ -462,6 +504,7 @@ class MediaRepository(private val context: Context) {
                                 contentResolver.update(destUri, values, null, null)
                             }
                         }
+                        if (copied) preserveModifiedTime(destUri, item)
                     }
 
                     if (copied) {
@@ -469,10 +512,10 @@ class MediaRepository(private val context: Context) {
                         try {
                             val deleted = contentResolver.delete(item.uri, null, null)
                             if (deleted == 0) {
-                                securityExceptionItems.add(item)
+                                originalsToDelete.add(item)
                             }
                         } catch (_: SecurityException) {
-                            securityExceptionItems.add(item)
+                            originalsToDelete.add(item)
                         } catch (_: Exception) {}
 
                         thumbnailManager.getThumbnailFile(item).delete()
@@ -485,15 +528,77 @@ class MediaRepository(private val context: Context) {
             }
         }
 
-        if (securityExceptionItems.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        if (canRequestPermission && (needsWriteAccess.isNotEmpty() || originalsToDelete.isNotEmpty())) {
             val pendingIntent = MediaStore.createWriteRequest(
                 contentResolver,
-                securityExceptionItems.map { it.uri }
+                (needsWriteAccess + originalsToDelete).map { it.uri }
             )
-            return@withContext MoveResult.PermissionRequired(pendingIntent, targetAlbum, securityExceptionItems)
+            return@withContext MoveResult.PermissionRequired(pendingIntent, targetAlbum, needsWriteAccess, originalsToDelete)
         }
 
         MoveResult.Success(movedCount)
+    }
+
+    /**
+     * Gives a copied file the original's modification time (a plain copy is "modified" right now) and
+     * rescans it so MediaStore's DATE_MODIFIED follows. Keeps the gallery order of copies that have no
+     * capture date (screenshots, downloads).
+     */
+    private fun preserveModifiedTime(destUri: Uri, original: MediaItem) {
+        if (original.dateModified <= 0L) return
+        try {
+            val path = contentResolver.query(destUri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            } ?: return
+            val file = File(path)
+            if (file.setLastModified(original.dateModified * 1000L)) {
+                MediaScannerConnection.scanFile(context, arrayOf(path), null, null)
+            }
+        } catch (_: Exception) {}
+    }
+
+    /** Deletes [path] if it is a directory without any files left in it (empty sub-folders included). */
+    fun removeDirectoryIfEmpty(path: String) {
+        if (path.isBlank()) return
+        val dir = File(path)
+        try {
+            if (dir.isDirectory && dir.walkBottomUp().all { it.isDirectory }) {
+                dir.walkBottomUp().forEach { it.delete() }
+            }
+        } catch (_: Exception) {}
+    }
+
+    /** Deletes media rows (and files) the app has write access to. Returns how many were deleted. */
+    suspend fun deleteMedia(items: List<MediaItem>): Int = withContext(Dispatchers.IO) {
+        val thumbnailManager = ThumbnailManager.getInstance(context)
+        items.count { item ->
+            val deleted = try {
+                contentResolver.delete(item.uri, null, null) > 0
+            } catch (_: Exception) {
+                false
+            }
+            if (deleted) thumbnailManager.getThumbnailFile(item).delete()
+            deleted
+        }
+    }
+
+    /**
+     * Moves media to [relativePath] in place. Returns the items that could not be moved because they
+     * belong to another app (callers can request write access for those and call this again).
+     */
+    suspend fun moveToRelativePath(items: List<MediaItem>, relativePath: String): List<MediaItem> = withContext(Dispatchers.IO) {
+        val thumbnailManager = ThumbnailManager.getInstance(context)
+        val denied = mutableListOf<MediaItem>()
+        for (item in items) {
+            val values = ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath) }
+            try {
+                contentResolver.update(item.uri, values, null, null)
+            } catch (_: SecurityException) {
+                denied.add(item)
+            } catch (_: Exception) {}
+            thumbnailManager.getThumbnailFile(item).delete()
+        }
+        denied
     }
 
     /**
@@ -781,7 +886,7 @@ class MediaRepository(private val context: Context) {
     /**
      * Renames an album folder physically on disk and updates RELATIVE_PATH in MediaStore.
      */
-    suspend fun renameAlbum(album: AlbumItem, newName: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun renameAlbum(album: AlbumItem, newName: String): Result<AlbumRenameOutcome> = withContext(Dispatchers.IO) {
         try {
             val cleanName = newName.trim()
             if (cleanName.isBlank()) {
@@ -809,19 +914,13 @@ class MediaRepository(private val context: Context) {
                 "Pictures/$cleanName/"
             }
 
-            // Update all media items belonging to this album in MediaStore
+            // Update all media items belonging to this album in MediaStore. Items of other apps (camera
+            // photos) refuse the update; they are handed back so the user can grant write access.
             val items = getAllMedia(album.bucketId, includeHidden = true)
-            val thumbnailManager = ThumbnailManager.getInstance(context)
-            for (item in items) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val values = ContentValues().apply {
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, newRelPath)
-                    }
-                    try {
-                        contentResolver.update(item.uri, values, null, null)
-                    } catch (_: Exception) {}
-                }
-                thumbnailManager.getThumbnailFile(item).delete()
+            val denied = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                moveToRelativePath(items, newRelPath)
+            } else {
+                emptyList()
             }
 
             // Trigger rescan of the renamed folder
@@ -832,7 +931,12 @@ class MediaRepository(private val context: Context) {
                 }
             }
 
-            Result.success(Unit)
+            if (denied.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val pendingIntent = MediaStore.createWriteRequest(contentResolver, denied.map { it.uri })
+                return@withContext Result.success(AlbumRenameOutcome(pendingIntent, denied, newRelPath, album.directoryPath))
+            }
+            removeDirectoryIfEmpty(album.directoryPath)
+            Result.success(AlbumRenameOutcome(null, emptyList(), newRelPath, album.directoryPath))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -857,11 +961,13 @@ class MediaRepository(private val context: Context) {
                 }
             }
 
-            // Remove empty folder on disk
+            // Remove the folder on disk only if nothing but empty folders is left in it. It can still hold
+            // sub-albums, other files MediaStore doesn't index, or media of another volume - a recursive
+            // delete would silently destroy those.
             if (album.directoryPath.isNotBlank()) {
                 val dir = File(album.directoryPath)
-                if (dir.exists()) {
-                    dir.deleteRecursively()
+                if (dir.exists() && dir.walkBottomUp().all { it.isDirectory }) {
+                    dir.walkBottomUp().forEach { it.delete() }
                 }
             }
 
@@ -919,6 +1025,8 @@ class MediaRepository(private val context: Context) {
                 }
 
                 if (copied && destFile.exists() && destFile.length() > 0L) {
+                    // Keep the original's modification time; a plain copy is "modified" right now.
+                    if (item.dateModified > 0L) destFile.setLastModified(item.dateModified * 1000L)
                     MediaScannerConnection.scanFile(
                         context,
                         arrayOf(destFile.absolutePath),

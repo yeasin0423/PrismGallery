@@ -70,6 +70,21 @@ class ThumbnailManager private constructor(private val context: Context) {
     private var isPreindexingPaused: Boolean = false
 
     /**
+     * Items whose thumbnail could not be decoded (broken or unsupported files). Remembered for the
+     * process lifetime so neither scrolling nor the pre-indexer keeps retrying an expensive
+     * MediaMetadataRetriever / decoder setup for them every time they come into view.
+     */
+    private val failedThumbnails = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    private fun failureKey(id: Long, dateModified: Long) = "${id}_$dateModified"
+
+    fun hasThumbnailFailed(id: Long, dateModified: Long): Boolean = failureKey(id, dateModified) in failedThumbnails
+
+    fun markThumbnailFailed(id: Long, dateModified: Long) {
+        failedThumbnails.add(failureKey(id, dateModified))
+    }
+
+    /**
      * Resolves the internal cache file location for a given [MediaItem].
      */
     fun getThumbnailFile(item: MediaItem): File {
@@ -128,8 +143,13 @@ class ThumbnailManager private constructor(private val context: Context) {
         if (targetFile.exists() && targetFile.length() > 0L) {
             return@withContext targetFile
         }
+        if (hasThumbnailFailed(id, dateModified)) return@withContext null
 
-        val bitmap = loadThumbnailBitmap(uri, isVideo, thumbnailPx, thumbnailPx) ?: return@withContext null
+        val bitmap = loadThumbnailBitmap(uri, isVideo, thumbnailPx, thumbnailPx)
+        if (bitmap == null) {
+            markThumbnailFailed(id, dateModified)
+            return@withContext null
+        }
         if (saveBitmapToCache(bitmap, targetFile)) {
             cleanupOutdatedThumbnails(id, targetFile.name)
             targetFile
@@ -299,19 +319,28 @@ class ThumbnailManager private constructor(private val context: Context) {
         preindexJob?.cancel()
         isPreindexingPaused = false
         preindexJob = preindexScope.launch {
+            // One directory listing instead of two stat calls per item: with thousands of items that are
+            // almost all cached already, the old walk spent tens of seconds just delaying between hits.
+            val px = thumbnailPx
+            val cachedNames = cacheDir.list()?.toHashSet() ?: hashSetOf()
             for (item in items) {
                 if (!isActive) return@launch
                 while (isPreindexingPaused) {
                     if (!isActive) return@launch
                     delay(200)
                 }
-                if (!isCached(item)) {
-                    getOrCreateThumbnailFile(item)
-                }
+                val base = "${item.id}_${item.dateModified}_$px"
+                if ("$base.jpg" in cachedNames || "$base.webp" in cachedNames) continue
+                getOrCreateThumbnailFile(item)
                 delay(batchDelayMs)
             }
+            completedItems = items
         }
     }
+
+    /** The list the last pre-indexing pass fully completed for, so an idle grid doesn't restart it. */
+    @Volatile
+    private var completedItems: List<MediaItem>? = null
 
     /** Pauses the background pre-indexer without losing its place - e.g. while the user is actively flinging the grid. */
     fun pausePreindexing() {
@@ -321,7 +350,7 @@ class ThumbnailManager private constructor(private val context: Context) {
     /** Resumes a paused pre-indexer, or starts a fresh one if none is running. */
     fun resumePreindexing(items: List<MediaItem>) {
         isPreindexingPaused = false
-        if (preindexJob?.isActive != true) {
+        if (preindexJob?.isActive != true && completedItems !== items) {
             startPreindexing(items)
         }
     }

@@ -135,12 +135,18 @@ fun MenuScreen(
     val openStorage = { settingsSection = SettingsSection.STORAGE }
     val openInfo = { settingsSection = SettingsSection.INFO }
 
+    val menuScroll = rememberScrollState()
+    // One UI's big title fades out while the page scrolls instead of sliding under the status bar.
+    val headerCollapsePx = with(androidx.compose.ui.platform.LocalDensity.current) { 220.dp.toPx() }
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(menuScroll)
     ) {
-        LargeHeader(title = strings.tabMenu)
+        LargeHeader(
+            title = strings.tabMenu,
+            collapseFraction = { (menuScroll.value / headerCollapsePx).coerceIn(0f, 1f) }
+        )
 
         Column(
             modifier = Modifier
@@ -621,5 +627,6 @@ private fun graphicsQualityDescription(tier: PerformanceProfile): String = strin
 
 private fun formatBytes(bytes: Long): String {
     val gb = bytes / (1024.0 * 1024.0 * 1024.0)
-    return java.util.Locale.getDefault().let { locale -> String.format(locale, "%.1f GB", gb) }
+    // App language decides the decimal separator (1,5 GB / 1.5 GB), like every other text.
+    return String.format(LanguageState.locale, "%.1f GB", gb)
 }

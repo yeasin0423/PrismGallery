@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -368,7 +369,15 @@ private class InsetRoundedShape(private val insetY: Float, private val corner: F
  * it when closed, with each language's curve. Falls back to a scale-fade when no tile was tapped.
  */
 @Composable
-fun MediaZoomTransition(visible: Boolean, content: @Composable () -> Unit) {
+fun MediaZoomTransition(
+    visible: Boolean,
+    /**
+     * Reports whether the viewer fully covers the screen, so the caller can stop drawing the grid
+     * underneath (it was otherwise rendered behind the opaque viewer on every frame).
+     */
+    onCoveringChange: ((Boolean) -> Unit)? = null,
+    content: @Composable () -> Unit
+) {
     val theme = LocalAppTheme.current
     val origin = LocalMediaOpenOrigin.current
     val progress = animateFloatAsState(
@@ -377,6 +386,11 @@ fun MediaZoomTransition(visible: Boolean, content: @Composable () -> Unit) {
         label = "media_zoom"
     )
     val stillAnimating by remember { derivedStateOf { progress.value > 0.001f } }
+    val fullyOpen by remember { derivedStateOf { progress.value >= 0.999f } }
+    if (onCoveringChange != null) {
+        val covering = visible && fullyOpen
+        SideEffect { onCoveringChange(covering) }
+    }
 
     // Capture the tile once per open; closing shrinks back into the same tile.
     val boundsHolder = remember { arrayOfNulls<Rect>(1) }

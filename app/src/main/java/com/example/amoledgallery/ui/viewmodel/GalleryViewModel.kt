@@ -7,7 +7,9 @@ import android.app.PendingIntent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.amoledgallery.data.AlbumRenameOutcome
 import com.example.amoledgallery.data.MediaRepository
+import kotlinx.coroutines.Job
 import com.example.amoledgallery.data.MoveResult
 import com.example.amoledgallery.data.RenameResult
 import com.example.amoledgallery.data.ThumbnailManager
@@ -69,7 +71,9 @@ data class PendingRenameData(
 
 data class PendingMoveData(
     val itemsToMove: List<MediaItem>,
-    val targetAlbum: AlbumItem
+    val targetAlbum: AlbumItem,
+    /** Already copied to the target; only the originals still have to be deleted once access is granted. */
+    val originalsToDelete: List<MediaItem> = emptyList()
 )
 
 class GalleryViewModel(application: Application) : AndroidViewModel(application) {
@@ -183,11 +187,15 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     // Temporary storage for pending move action awaiting write permission
     private var pendingMove: PendingMoveData? = null
 
+    // Album rename whose items of other apps await write permission
+    private var pendingAlbumRename: AlbumRenameOutcome? = null
+
+    // The running media reload; a newer reload request replaces it instead of scanning in parallel.
+    private var loadJob: Job? = null
+
     // Move Progress state
     data class MoveProgress(val isMoving: Boolean = false, val current: Int = 0, val total: Int = 0)
     val moveProgress = MutableStateFlow(MoveProgress())
-    private val _isMoveProgressVisible = MutableStateFlow(false)
-    val isMoveProgressVisible: StateFlow<Boolean> = _isMoveProgressVisible.asStateFlow()
 
     // MicroSD Card detection
     val isSdCardAvailable: Boolean get() = repository.isSdCardAvailable()
@@ -195,10 +203,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     // Storage free/total space, queried fresh each time the settings dialog reads them
     fun getInternalStorageSpace() = repository.getInternalStorageSpace()
     fun getSdCardStorageSpace() = repository.getSdCardStorageSpace()
-
-    fun dismissMoveProgress() {
-        _isMoveProgressVisible.value = false
-    }
 
     // Manual Graphics Quality tier (Low/Medium/High/Ultra), like a game's video settings
     private val _graphicsQuality = MutableStateFlow(com.example.amoledgallery.AmoledGalleryApp.performanceProfile)
@@ -226,7 +230,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 val intent = progress.permissionRequiredIntent
                 val targetAlbum = progress.pendingTargetAlbum
                 if (intent != null && targetAlbum != null) {
-                    pendingMove = PendingMoveData(progress.pendingItemsToMove, targetAlbum)
+                    pendingMove = PendingMoveData(progress.pendingItemsToMove, targetAlbum, progress.pendingOriginalsToDelete)
                     _pendingIntentSender.emit(intent)
                 }
             }
@@ -247,10 +251,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _userMessage.emit(if (isNowFav) strings.favoriteAdded else strings.favoriteRemoved)
         }
-    }
-
-    fun isFavorite(id: Long): Boolean {
-        return _favoriteIds.value.contains(id)
     }
 
     fun updatePermissionState(hasPermission: Boolean) {
@@ -294,28 +294,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             MediaFilter.VIDEOS -> items.filter { it.isVideo }
             MediaFilter.GIFS -> items.filter { it.isGif }
         }
-    }
-
-    /**
-     * Calculates proportional scroll target index for the fast-scroll scrubber.
-     */
-    fun calculateScrolledIndex(dragFraction: Float, totalCount: Int): Int {
-        if (totalCount <= 0) return 0
-        val target = (dragFraction.coerceIn(0f, 1f) * (totalCount - 1)).roundToInt()
-        return target.coerceIn(0, totalCount - 1)
-    }
-
-    /**
-     * Formats German Month & Year ("August 2024") for scrubber indicator pill.
-     */
-    fun getMonthYearForIndex(items: List<MediaItem>, index: Int): String {
-        if (items.isEmpty()) return ""
-        val safeIndex = index.coerceIn(0, items.size - 1)
-        val item = items[safeIndex]
-        val millis = item.dateAdded * 1000L
-        val sdf = SimpleDateFormat("MMMM yyyy", LanguageState.locale)
-        val text = sdf.format(Date(millis))
-        return text.replaceFirstChar { if (it.isLowerCase()) it.titlecase(LanguageState.locale) else it.toString() }
     }
 
     // --- Multi-Selection Mode ---
@@ -363,10 +341,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     fun setSelectedIds(ids: Set<Long>) {
         _selectedIds.value = ids
-    }
-
-    fun isIdSelected(id: Long): Boolean {
-        return _selectedIds.value.contains(id)
     }
 
     /**
@@ -481,28 +455,29 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
             moveProgress.value = moveProgress.value.copy(isMoving = false)
 
+            when (result) {
+                is MoveResult.Success -> _userMessage.emit(strings.movedItems(result.count, targetAlbum.name))
+                // Items of other apps: ask once for write access, onIntentSenderSuccess finishes the move.
+                is MoveResult.PermissionRequired -> {
+                    pendingMove = PendingMoveData(result.itemsToMove, targetAlbum, result.originalsToDelete)
+                    _pendingIntentSender.emit(result.pendingIntent)
+                }
+                is MoveResult.Error -> _userMessage.emit(strings.error(result.message))
+            }
+
             loadMedia()
-            loadAlbums()
             _selectedAlbum.value?.let { loadAlbumContents(it) }
-            _userMessage.emit(strings.movedItems(itemsToMove.size, targetAlbum.name))
         }
     }
 
     // --- Hidden Albums ---
 
-    fun loadHiddenAlbums() {
-        viewModelScope.launch {
-            _hiddenAlbums.value = withContext(Dispatchers.IO) { repository.getHiddenAlbums() }
-        }
-    }
-
     fun hideAlbum(album: AlbumItem) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { repository.setAlbumHidden(album.bucketId, true) }
             _userMessage.emit(strings.albumHidden(album.name))
+            // loadMedia also rebuilds the visible and the hidden album lists.
             loadMedia()
-            loadAlbums()
-            loadHiddenAlbums()
         }
     }
 
@@ -511,8 +486,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             withContext(Dispatchers.IO) { repository.setAlbumHidden(bucketId, false) }
             _userMessage.emit(strings.albumUnhidden)
             loadMedia()
-            loadAlbums()
-            loadHiddenAlbums()
         }
     }
 
@@ -568,7 +541,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     /** An edited copy was saved: refresh the grid, the albums and the open album's contents. */
     fun refreshAfterEdit() {
         loadMedia()
-        loadAlbums()
         _selectedAlbum.value?.let { loadAlbumContents(it) }
     }
 
@@ -597,10 +569,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         _isTrashOpen.value = false
     }
 
-    fun setColumnCount(count: Int) {
-        _columnCount.value = count.coerceIn(2, 5)
-    }
-
     fun zoomIn() {
         // Pinching out -> fewer columns (larger tiles)
         if (_columnCount.value > 2) {
@@ -616,7 +584,10 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun loadMedia() {
-        viewModelScope.launch {
+        // A full MediaStore scan takes a while on large libraries. Callers often ask for several
+        // refreshes at once (media + albums after a move), so a new request replaces a running one.
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             // Only blank the screen out for the very first load. Every later refresh (after a
             // delete/move, or simply on app resume) keeps the current list on screen until the new
             // one is ready - otherwise the list momentarily becomes empty, which flashes the grid
@@ -658,16 +629,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun loadAlbums() {
-        viewModelScope.launch {
-            val albums = withContext(Dispatchers.IO) { repository.getAlbums() }
-            _albumsState.value = albums
-            val active = _selectedAlbum.value
-            if (active != null) {
-                _currentSubAlbums.value = withContext(Dispatchers.IO) { repository.getSubAlbums(active, albums) }
-            }
-        }
-    }
+    /** Albums are derived from the same scan as the media feed, so this is a full [loadMedia]. */
+    fun loadAlbums() = loadMedia()
 
     fun loadTrash() {
         viewModelScope.launch {
@@ -789,7 +752,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 is RenameResult.Success -> {
                     _userMessage.emit(strings.fileRenamed(result.newName))
                     loadMedia()
-                    _selectedAlbum.value?.let { openAlbum(it) }
+                    // Reload in place: openAlbum would push the album onto the breadcrumbs a second time.
+                    _selectedAlbum.value?.let { loadAlbumContents(it) }
                 }
                 is RenameResult.PermissionRequired -> {
                     pendingRename = PendingRenameData(item.uri, item.displayName, result.targetName)
@@ -809,8 +773,17 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val rename = pendingRename
             val move = pendingMove
+            val albumRename = pendingAlbumRename
 
-            if (rename != null) {
+            if (albumRename != null) {
+                pendingAlbumRename = null
+                val stillDenied = repository.moveToRelativePath(albumRename.deniedItems, albumRename.relativePath)
+                if (stillDenied.isNotEmpty()) {
+                    _userMessage.emit(strings.error(strings.permissionDenied))
+                } else {
+                    withContext(Dispatchers.IO) { repository.removeDirectoryIfEmpty(albumRename.oldDirectoryPath) }
+                }
+            } else if (rename != null) {
                 pendingRename = null
                 when (val result = withContext(Dispatchers.IO) { repository.renameMedia(rename.uri, rename.oldName, rename.targetName) }) {
                     is RenameResult.Success -> {
@@ -823,22 +796,28 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 }
             } else if (move != null) {
                 pendingMove = null
-                _isMoveProgressVisible.value = true
-                MoveMediaService.start(
-                    context = getApplication(),
-                    items = move.itemsToMove,
-                    targetAlbum = move.targetAlbum,
-                    onCompletion = {
-                        loadMedia()
-                        loadAlbums()
-                        _selectedAlbum.value?.let { loadAlbumContents(it) }
-                        viewModelScope.launch {
-                            _userMessage.emit(strings.movedItems(move.itemsToMove.size, move.targetAlbum.name))
-                            kotlinx.coroutines.delay(2500)
-                            dismissMoveProgress()
+                // Originals that were already copied to the other volume only need to be deleted now.
+                val deletedOriginals = if (move.originalsToDelete.isNotEmpty()) {
+                    repository.deleteMedia(move.originalsToDelete)
+                } else {
+                    0
+                }
+                if (move.itemsToMove.isNotEmpty()) {
+                    MoveMediaService.start(
+                        context = getApplication(),
+                        items = move.itemsToMove,
+                        targetAlbum = move.targetAlbum,
+                        onCompletion = {
+                            loadMedia()
+                            _selectedAlbum.value?.let { loadAlbumContents(it) }
+                            viewModelScope.launch {
+                                _userMessage.emit(strings.movedItems(move.itemsToMove.size + deletedOriginals, move.targetAlbum.name))
+                            }
                         }
-                    }
-                )
+                    )
+                } else {
+                    _userMessage.emit(strings.movedItems(deletedOriginals, move.targetAlbum.name))
+                }
                 clearSelection()
             } else {
                 _userMessage.emit(strings.actionSucceeded)
@@ -850,9 +829,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
             clearSelection()
             loadMedia()
-            loadTrash()
-            loadAlbums()
-            _selectedAlbum.value?.let { openAlbum(it) }
+            // Reload in place: openAlbum would push the album onto the breadcrumbs a second time.
+            _selectedAlbum.value?.let { loadAlbumContents(it) }
         }
     }
 
@@ -895,9 +873,15 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     fun renameAlbum(album: AlbumItem, newName: String) {
         viewModelScope.launch {
             val result = repository.renameAlbum(album, newName)
-            result.onSuccess {
+            result.onSuccess { outcome ->
+                val pendingIntent = outcome.pendingIntent
+                if (pendingIntent != null) {
+                    // Photos of other apps can only be moved to the new folder with the user's consent.
+                    pendingAlbumRename = outcome
+                    _pendingIntentSender.emit(pendingIntent)
+                    return@onSuccess
+                }
                 _userMessage.emit(strings.albumRenamed(newName))
-                loadAlbums()
                 loadMedia()
                 if (_selectedAlbum.value?.bucketId == album.bucketId) {
                     val updated = _albumsState.value.firstOrNull { it.name == newName } ?: album.copy(name = newName)

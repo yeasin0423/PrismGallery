@@ -97,7 +97,7 @@ fun ZoomableBox(
     maxScale: Float = 4.0f,
     onSingleTap: () -> Unit = {},
     onZoomChange: (Boolean) -> Unit = {},
-    content: @Composable BoxScope.(scale: Float) -> Unit
+    content: @Composable BoxScope.() -> Unit
 ) {
     val scope = rememberCoroutineScope()
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -105,9 +105,13 @@ fun ZoomableBox(
     val scaleAnim = remember { Animatable(1f) }
     val offsetXAnim = remember { Animatable(0f) }
     val offsetYAnim = remember { Animatable(0f) }
-    
-    androidx.compose.runtime.LaunchedEffect(scaleAnim.value) {
-        onZoomChange(scaleAnim.value > 1.05f)
+
+    // Observed outside composition: reading the scale here directly recomposed the whole viewer page
+    // (image included) on every frame of a pinch or double-tap zoom.
+    val latestOnZoomChange by androidx.compose.runtime.rememberUpdatedState(onZoomChange)
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        androidx.compose.runtime.snapshotFlow { scaleAnim.value > 1.05f }
+            .collect { latestOnZoomChange(it) }
     }
 
     Box(
@@ -178,7 +182,7 @@ fun ZoomableBox(
                 .fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            content(scaleAnim.value)
+            content()
         }
     }
 }

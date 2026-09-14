@@ -256,7 +256,7 @@ private fun MetadataRow(
  */
 private fun extractMediaMetadata(context: Context, item: MediaItem): MediaMetadata {
     // 1. Date formatting
-    val millis = if (item.dateModified > 0) item.dateModified * 1000L else item.dateAdded * 1000L
+    val millis = item.date * 1000L
     val dateStr = if (millis > 0) {
         val sdf = SimpleDateFormat(strings.metadataDatePattern, LanguageState.locale)
         sdf.format(Date(millis))

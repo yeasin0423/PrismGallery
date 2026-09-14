@@ -62,6 +62,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
@@ -243,6 +244,14 @@ fun AlbumsScreen(
     val albumGridState = currentAlbum?.let { album ->
         albumGridStates.getOrPut(album.bucketId) { androidx.compose.foundation.lazy.grid.LazyGridState() }
     } ?: rootGridState
+    // One UI's big title fades out while the list scrolls instead of sliding under the status bar.
+    val headerCollapsePx = with(androidx.compose.ui.platform.LocalDensity.current) { 220.dp.toPx() }
+    val rootHeaderCollapse by remember(rootGridState, headerCollapsePx) {
+        androidx.compose.runtime.derivedStateOf {
+            if (rootGridState.firstVisibleItemIndex > 0) 1f
+            else (rootGridState.firstVisibleItemScrollOffset / headerCollapsePx).coerceIn(0f, 1f)
+        }
+    }
     val haptic = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
     // Same long-press/tap race guard as the Bilder grid: the tap that ends a long-press must not
@@ -250,6 +259,9 @@ fun AlbumsScreen(
     var lastLongPressId by remember { mutableStateOf<Long?>(null) }
     var lastLongPressTime by remember { mutableLongStateOf(0L) }
     var isLongPressGestureActive by remember { mutableStateOf(false) }
+
+    // While the fullscreen viewer covers everything, the grid below it is not drawn at all.
+    var gridCoveredByViewer by remember { mutableStateOf(false) }
 
     val openAlbumActions: (AlbumItem, Rect?) -> Unit = { album, anchor ->
         contextAnchor = anchor
@@ -262,6 +274,7 @@ fun AlbumsScreen(
             Modifier
                 .fillMaxSize()
                 .pushTransition(language, { navProgress.value }, isTop = true, direction = { navDirection[0] })
+                .graphicsLayer { alpha = if (gridCoveredByViewer) 0f else 1f }
         ) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(if (isInsideAlbum) columnCount else rootColumns),
@@ -306,7 +319,8 @@ fun AlbumsScreen(
                     item(span = { GridItemSpan(maxLineSpan) }, key = "albums_header") {
                         LargeHeader(
                             title = strings.tabAlbums,
-                            subtitle = if (language == DesignLanguage.SAMSUNG_ONEUI) null else albumCountText(albums.size)
+                            subtitle = if (language == DesignLanguage.SAMSUNG_ONEUI) null else albumCountText(albums.size),
+                            collapseFraction = { rootHeaderCollapse }
                         ) {
                             ThemedIconButton(
                                 icon = Icons.Rounded.Add,
@@ -452,7 +466,12 @@ fun AlbumsScreen(
 
         if (isInsideAlbum && currentAlbum != null && isSelectionMode) {
             SelectionTopBar(
-                selectedCount = selectedIds.count { id -> albumMedia.any { it.id == id } },
+                // Set lookup: scanning the album for every selected id was quadratic, which froze the
+                // selection bar after "select all" in albums with thousands of items.
+                selectedCount = remember(albumMedia, selectedIds) {
+                    val albumIds = albumMedia.mapTo(HashSet(albumMedia.size)) { it.id }
+                    selectedIds.count { it in albumIds }
+                },
                 totalCount = albumMedia.size,
                 onToggleSelectAll = {
                     if (albumMedia.isNotEmpty() && albumMedia.all { selectedIds.contains(it.id) }) onDeselectAll() else onSelectAll()
@@ -484,7 +503,10 @@ fun AlbumsScreen(
         // Preserves scroll position of album media when returning
         val detailIndexHolder = remember { IntArray(1) }
         selectedDetailIndex?.let { detailIndexHolder[0] = it }
-        MediaZoomTransition(visible = selectedDetailIndex != null) {
+        MediaZoomTransition(
+            visible = selectedDetailIndex != null,
+            onCoveringChange = { gridCoveredByViewer = it }
+        ) {
                 MediaDetailScreen(
                     mediaList = albumMedia,
                     initialIndex = detailIndexHolder[0],

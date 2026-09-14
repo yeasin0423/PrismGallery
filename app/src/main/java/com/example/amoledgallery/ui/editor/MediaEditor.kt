@@ -144,7 +144,7 @@ object MediaEditor {
             else -> Triple(Bitmap.CompressFormat.JPEG, "jpg", "image/jpeg")
         }
 
-        val volume = runCatching { MediaStore.getVolumeName(item.uri) }.getOrDefault(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val volume = volumeNameOf(context, item)
         val collection = MediaStore.Images.Media.getContentUri(volume)
         val uri = insertPending(
             context, collection, editedName(item, extension), outMime, item.relativePath,
@@ -223,7 +223,7 @@ object MediaEditor {
             onProgress(1f)
 
             return withContext(Dispatchers.IO) {
-                val volume = runCatching { MediaStore.getVolumeName(item.uri) }.getOrDefault(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                val volume = volumeNameOf(context, item)
                 val collection = MediaStore.Video.Media.getContentUri(volume)
                 val uri = insertPending(
                     context, collection, editedName(item, "mp4"), "video/mp4", item.relativePath,
@@ -244,6 +244,21 @@ object MediaEditor {
         } finally {
             output.delete()
         }
+    }
+
+    /**
+     * The storage volume the original lives on, so the copy lands next to it. Gallery uris use the
+     * merged "external" volume, which inserts into internal storage - SD card originals then got their
+     * copy in a same-named album on internal storage.
+     */
+    private fun volumeNameOf(context: Context, item: MediaItem): String {
+        val fromRow = runCatching {
+            context.contentResolver.query(item.uri, arrayOf(MediaStore.MediaColumns.VOLUME_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }.getOrNull()
+        return fromRow?.takeIf { it.isNotBlank() && it != MediaStore.VOLUME_EXTERNAL }
+            ?: MediaStore.VOLUME_EXTERNAL_PRIMARY
     }
 
     private fun editedName(item: MediaItem, extension: String): String {

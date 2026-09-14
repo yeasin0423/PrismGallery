@@ -181,6 +181,8 @@ fun GalleryScreen(
     val palette = theme.palette
     val language = theme.language
     val countText = strings.items(items.size)
+    // While the fullscreen viewer covers everything, the grid below it is not drawn at all.
+    var gridCoveredByViewer by remember { mutableStateOf(false) }
 
     Box(modifier = modifier.fillMaxSize()) {
         if (isLoading) {
@@ -300,7 +302,12 @@ fun GalleryScreen(
                 viewMenuOpen = true
             }
 
-            HazeSource(gridHaze, Modifier.fillMaxSize()) {
+            HazeSource(
+                gridHaze,
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = if (gridCoveredByViewer) 0f else 1f }
+            ) {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(columnCount),
                     state = gridState,
@@ -514,7 +521,7 @@ fun GalleryScreen(
                     indicatorText = scrubberDateText,
                     onScrollProgress = { fraction ->
                         val targetIndex = (fraction * (items.size - 1)).roundToInt().coerceIn(0, items.size - 1)
-                        scrubberDateText = DateUtils.formatMonthYear(items[targetIndex].dateAdded)
+                        scrubberDateText = DateUtils.formatMonthYear(items[targetIndex].date)
                         val gridIndex = getGridItemIndexForMedia(dateSections, targetIndex)
                         coroutineScope.launch {
                             gridState.scrollToItem(gridIndex)
@@ -532,7 +539,10 @@ fun GalleryScreen(
         // Preserves LazyGridState scroll position down to the exact pixel when dismissed!
         val detailIndexHolder = remember { IntArray(1) }
         selectedDetailIndex?.let { detailIndexHolder[0] = it }
-        MediaZoomTransition(visible = selectedDetailIndex != null) {
+        MediaZoomTransition(
+            visible = selectedDetailIndex != null,
+            onCoveringChange = { gridCoveredByViewer = it }
+        ) {
                 MediaDetailScreen(
                     mediaList = items,
                     initialIndex = detailIndexHolder[0],
@@ -583,7 +593,7 @@ private fun GalleryHeader(
             LargeHeader(title = title, subtitle = countText, actions = menuButton)
             ExpressiveHeroCard(
                 imageModel = items.firstOrNull()?.uri,
-                title = DateUtils.formatMonthYear(items.first().dateAdded),
+                title = DateUtils.formatMonthYear(items.first().date),
                 caption = strings.latestShot,
                 onClick = onHeroClick
             )

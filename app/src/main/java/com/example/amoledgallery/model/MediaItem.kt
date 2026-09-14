@@ -37,8 +37,22 @@ data class MediaItem(
     val dateModified: Long = 0L,
     val isTrashed: Boolean = false,
     val mimeType: String = "",
-    val dataPath: String = ""
+    val dataPath: String = "",
+    /** When the photo/video was captured (seconds), from EXIF / container metadata; 0 if unknown. */
+    val dateTaken: Long = 0L
 ) {
+    /**
+     * The date the gallery sorts and groups by (seconds): when it was taken, else when the file was
+     * last modified. DATE_ADDED is only a fallback - moving a file to the other storage volume creates
+     * a new MediaStore row "added" right now, which pushed years-old photos to the top.
+     */
+    val date: Long
+        get() = when {
+            dateTaken > 0L -> dateTaken
+            dateModified > 0L -> dateModified
+            else -> dateAdded
+        }
+
     val isGif: Boolean
         get() = mimeType.equals("image/gif", ignoreCase = true) ||
                 displayName.endsWith(".gif", ignoreCase = true)

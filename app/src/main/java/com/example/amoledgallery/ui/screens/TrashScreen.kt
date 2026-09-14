@@ -46,6 +46,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.example.amoledgallery.model.MediaItem
+import com.example.amoledgallery.ui.components.MediaGridItem
+import androidx.compose.ui.draw.clipToBounds
 import com.example.amoledgallery.ui.design.DialogButton
 import com.example.amoledgallery.ui.design.DialogButtonStyle
 import com.example.amoledgallery.ui.design.ThemedButton
@@ -114,21 +116,16 @@ fun TrashScreen(
                         )
                     }
 
-                    items(trashedItems, key = { it.id }) { item ->
-                        Box(
+                    // The regular media tile: the small cached thumbnail (the full image used to be decoded
+                    // for every tile), cropped to a square, with the video badge.
+                    items(trashedItems, key = { it.id }, contentType = { "media_tile" }) { item ->
+                        MediaGridItem(
+                            item = item,
+                            onClick = { selectedItem = item },
                             modifier = Modifier
                                 .aspectRatio(1f)
-                                .clip(RoundedCornerShape(theme.shapes.gridItemCornerRadius))
-                                .background(palette.surfaceVariant)
-                                .clickable { selectedItem = item }
-                        ) {
-                            AsyncImage(
-                                model = item.uri,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
+                                .clipToBounds()
+                        )
                     }
                 }
             }

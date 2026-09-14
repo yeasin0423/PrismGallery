@@ -33,7 +33,8 @@ data class MoveProgress(
     val error: String? = null,
     val permissionRequiredIntent: PendingIntent? = null,
     val pendingTargetAlbum: AlbumItem? = null,
-    val pendingItemsToMove: List<MediaItem> = emptyList()
+    val pendingItemsToMove: List<MediaItem> = emptyList(),
+    val pendingOriginalsToDelete: List<MediaItem> = emptyList()
 ) {
     val fraction: Float get() = if (total > 0) (current.toFloat() / total).coerceIn(0f, 1f) else 0f
     val percentage: Int get() = (fraction * 100).toInt()
@@ -68,12 +69,13 @@ object MoveProgressHolder {
         onCompletionCallback?.invoke()
     }
 
-    fun permissionRequired(pendingIntent: PendingIntent, targetAlbum: AlbumItem, itemsToMove: List<MediaItem>) {
+    fun permissionRequired(result: MoveResult.PermissionRequired) {
         _progress.value = MoveProgress(
             isRunning = false,
-            permissionRequiredIntent = pendingIntent,
-            pendingTargetAlbum = targetAlbum,
-            pendingItemsToMove = itemsToMove
+            permissionRequiredIntent = result.pendingIntent,
+            pendingTargetAlbum = result.targetAlbum,
+            pendingItemsToMove = result.itemsToMove,
+            pendingOriginalsToDelete = result.originalsToDelete
         )
     }
 
@@ -138,7 +140,8 @@ class MoveMediaService : Service() {
         serviceScope.launch {
             val repository = MediaRepository(applicationContext)
             val result = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                repository.moveMediaItems(items, targetAlbum) { current: Int, totalCount: Int ->
+                // The service runs after the user already granted access, so never ask again from here.
+                repository.moveMediaItems(items, targetAlbum, requestPermission = false) { current: Int, totalCount: Int ->
                     MoveProgressHolder.updateProgress(current, totalCount, targetAlbum.name)
                     notificationManager.notify(NOTIFICATION_ID, buildNotification(current, totalCount, targetAlbum.name))
                 }
@@ -164,7 +167,7 @@ class MoveMediaService : Service() {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                 }
                 is MoveResult.PermissionRequired -> {
-                    MoveProgressHolder.permissionRequired(result.pendingIntent, result.targetAlbum, result.itemsToMove)
+                    MoveProgressHolder.permissionRequired(result)
                     stopForeground(STOP_FOREGROUND_REMOVE)
                 }
             }
@@ -256,7 +259,7 @@ class MoveMediaService : Service() {
             CoroutineScope(Dispatchers.IO).launch {
                 val repository = MediaRepository(context.applicationContext)
                 val result = kotlinx.coroutines.withContext(Dispatchers.IO) {
-                    repository.moveMediaItems(items, targetAlbum) { current, totalCount ->
+                    repository.moveMediaItems(items, targetAlbum, requestPermission = false) { current, totalCount ->
                         MoveProgressHolder.updateProgress(current, totalCount, targetAlbum.name)
                         postFallbackNotification(current)
                     }
@@ -275,7 +278,7 @@ class MoveMediaService : Service() {
                         notificationManager?.notify(NOTIFICATION_ID, doneNotif)
                     }
                     is MoveResult.Error -> MoveProgressHolder.error(result.message)
-                    is MoveResult.PermissionRequired -> MoveProgressHolder.permissionRequired(result.pendingIntent, result.targetAlbum, result.itemsToMove)
+                    is MoveResult.PermissionRequired -> MoveProgressHolder.permissionRequired(result)
                 }
                 onCompletion()
             }

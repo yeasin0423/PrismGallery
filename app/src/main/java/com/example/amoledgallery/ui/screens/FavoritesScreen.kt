@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.example.amoledgallery.model.MediaItem
 import com.example.amoledgallery.ui.components.MediaGridItem
@@ -60,6 +61,8 @@ fun FavoritesScreen(
     val favoritesHaze = remember { HazeState() }
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navigationBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // While the fullscreen viewer covers everything, the grid below it is not drawn at all.
+    var gridCoveredByViewer by remember { mutableStateOf(false) }
 
     BackHandler {
         if (selectedDetailIndex != null) {
@@ -77,7 +80,12 @@ fun FavoritesScreen(
                 message = strings.noFavoritesMessage
             )
         } else {
-            HazeSource(favoritesHaze, Modifier.fillMaxSize()) {
+            HazeSource(
+                favoritesHaze,
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = if (gridCoveredByViewer) 0f else 1f }
+            ) {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(columnCount),
                     state = gridState,
@@ -123,7 +131,10 @@ fun FavoritesScreen(
         // Fullscreen Overlay Detail Viewer
         val detailIndexHolder = remember { IntArray(1) }
         selectedDetailIndex?.let { detailIndexHolder[0] = it }
-        MediaZoomTransition(visible = selectedDetailIndex != null) {
+        MediaZoomTransition(
+            visible = selectedDetailIndex != null,
+            onCoveringChange = { gridCoveredByViewer = it }
+        ) {
                 MediaDetailScreen(
                     mediaList = favoriteItems,
                     initialIndex = detailIndexHolder[0],

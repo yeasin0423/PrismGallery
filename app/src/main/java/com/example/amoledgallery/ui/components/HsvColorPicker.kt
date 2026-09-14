@@ -3,6 +3,7 @@ package com.example.amoledgallery.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -55,6 +56,14 @@ fun HsvColorPicker(
                 .fillMaxWidth()
                 .height(160.dp)
                 .clip(RoundedCornerShape(12.dp))
+                // A plain tap picks the color too, not only a drag.
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        saturation = (offset.x / size.width).coerceIn(0f, 1f)
+                        value = (1f - offset.y / size.height).coerceIn(0f, 1f)
+                        onColorChanged(currentColor())
+                    }
+                }
                 .pointerInput(Unit) {
                     detectDragGestures(
                         onDragStart = { offset ->
@@ -96,6 +105,12 @@ fun HsvColorPicker(
                 .fillMaxWidth()
                 .height(28.dp)
                 .clip(RoundedCornerShape(14.dp))
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        hue = (offset.x / size.width * 360f).coerceIn(0f, 360f)
+                        onColorChanged(currentColor())
+                    }
+                }
                 .pointerInput(Unit) {
                     detectDragGestures(
                         onDragStart = { offset ->
