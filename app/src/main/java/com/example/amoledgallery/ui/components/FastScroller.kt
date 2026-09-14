@@ -66,8 +66,9 @@ fun FastScroller(
         val thumbHeightPx = with(density) { thumbHeightDp.toPx() }
         val maxTravelPx = (trackHeightPx - thumbHeightPx).coerceAtLeast(1f)
 
-        // Current thumb offset: driven by the grid while idle, by the finger while dragging.
-        val thumbOffsetPx = if (isDragging) {
+        // Current thumb offset: driven by the grid while idle, by the finger while dragging. Only read
+        // inside the offset lambdas (layout phase), so scrolling moves the thumb without recomposing.
+        fun thumbOffsetPx(): Float = if (isDragging) {
             dragY.coerceIn(0f, maxTravelPx)
         } else {
             scrollFraction().coerceIn(0f, 1f) * maxTravelPx
@@ -79,7 +80,7 @@ fun FastScroller(
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .offset { IntOffset(x = 0, y = thumbOffsetPx.roundToInt()) }
+                .offset { IntOffset(x = 0, y = thumbOffsetPx().roundToInt()) }
                 .width(36.dp)
                 .height(thumbHeightDp)
                 .pointerInput(maxTravelPx, thumbHeightPx) {
@@ -127,7 +128,7 @@ fun FastScroller(
                     .offset {
                         IntOffset(
                             x = -with(density) { 44.dp.roundToPx() },
-                            y = (thumbOffsetPx - with(density) { 4.dp.toPx() })
+                            y = (thumbOffsetPx() - with(density) { 4.dp.toPx() })
                                 .roundToInt()
                                 .coerceIn(0, (trackHeightPx - with(density) { 48.dp.toPx() }).roundToInt())
                         )

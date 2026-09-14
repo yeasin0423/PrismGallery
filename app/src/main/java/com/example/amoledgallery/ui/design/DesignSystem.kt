@@ -66,8 +66,11 @@ fun HazeSource(
     content: @Composable BoxScope.() -> Unit
 ) {
     val enclosing = LocalEnclosingHazeSources.current
-    Box(modifier = Modifier.haze(state).then(modifier)) {
-        CompositionLocalProvider(LocalEnclosingHazeSources provides enclosing + state) {
+    // Without real blur (LOW/MEDIUM, API < 31) nothing samples the backdrop, so don't record the content
+    // into an extra backdrop layer on every frame at all.
+    val recordBackdrop = glassEnabled()
+    Box(modifier = (if (recordBackdrop) Modifier.haze(state) else Modifier).then(modifier)) {
+        CompositionLocalProvider(LocalEnclosingHazeSources provides if (recordBackdrop) enclosing + state else enclosing) {
             content()
         }
     }

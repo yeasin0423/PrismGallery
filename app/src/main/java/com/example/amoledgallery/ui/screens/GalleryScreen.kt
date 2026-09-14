@@ -288,12 +288,15 @@ fun GalleryScreen(
 
             // Pause background thumbnail pre-indexing while actively flinging so it never competes
             // with visible-tile decode threads, resume it as soon as the grid settles.
-            LaunchedEffect(gridState.isScrollInProgress) {
+            // Observed outside composition, so starting and stopping a fling doesn't recompose the screen.
+            LaunchedEffect(gridState, items) {
                 val thumbnailManager = ThumbnailManager.getInstance(context)
-                if (gridState.isScrollInProgress) {
-                    thumbnailManager.pausePreindexing()
-                } else {
-                    thumbnailManager.resumePreindexing(items)
+                androidx.compose.runtime.snapshotFlow { gridState.isScrollInProgress }.collect { scrolling ->
+                    if (scrolling) {
+                        thumbnailManager.pausePreindexing()
+                    } else {
+                        thumbnailManager.resumePreindexing(items)
+                    }
                 }
             }
 
