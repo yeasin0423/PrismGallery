@@ -1,0 +1,21 @@
+Prism Gallery is a fast, private gallery for your photos and videos. It works entirely offline: the app has no internet permission, no ads, no tracking and no account.
+
+It is made for custom ROMs that ship without a usable gallery, for phones whose only gallery is a cloud photo app, and for anyone who wants a smooth, good-looking gallery.
+
+<b>Features</b>
+<ul>
+<li>Four design styles with their own layouts and animations, inspired by iOS (Liquid Glass), Samsung One UI, Xiaomi HyperOS and Google Gemini</li>
+<li>Photos, videos and GIFs from internal storage and the SD card</li>
+<li>Albums: create, rename, hide, sub-albums, move media between albums, move whole albums between internal storage and SD card</li>
+<li>Favorites and trash</li>
+<li>Deep zoom, readable even on huge photos and very long scroll screenshots</li>
+<li>Editor: crop, rotate and mirror photos and videos (saved as a copy)</li>
+<li>Storage overview for internal storage and SD card</li>
+<li>Open photos and videos from other apps ("Open with")</li>
+<li>English and German</li>
+<li>Adjustable graphics quality for older or low-memory devices</li>
+</ul>
+
+Requires Android 10 or newer.
+
+Prism Gallery is an independent project and is not affiliated with Apple, Samsung, Xiaomi or Google. Their names only describe the visual style each design is inspired by.

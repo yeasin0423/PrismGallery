@@ -1,0 +1,7 @@
+First public release.
+
+• Four design styles inspired by iOS, One UI, HyperOS and Gemini
+• Albums, favorites, trash, editor and storage overview
+• Internal storage and SD card
+• Open photos and videos from other apps
+• Fully offline, no internet permission

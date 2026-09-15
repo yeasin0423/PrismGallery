@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "AmoledGallery"
+rootProject.name = "PrismGallery"
 include(":app")
