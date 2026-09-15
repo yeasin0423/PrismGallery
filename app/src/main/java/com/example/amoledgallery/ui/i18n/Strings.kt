@@ -99,6 +99,22 @@ interface AppStrings {
     val tabPictures: String
     val tabAlbums: String
     val tabMenu: String
+    /** iOS Photos' names for the two content tabs. */
+    val tabLibrary: String
+    val tabCollections: String
+    val select: String
+    /** Item count as iOS Photos words it ("153 Objekte"). */
+    fun objects(count: Int): String
+    /** iOS selection bar: "Objekte auswählen" while nothing is selected, "Auswahl (15) anzeigen" after. */
+    val selectItems: String
+    /** iOS details: "Samstag, 18. April 2026 um 12:10". */
+    val infoDatePattern: String
+    val noCameraInfo: String
+    /** iOS details: "Im Album" followed by the album name. */
+    val inAlbumPrefix: String
+    fun showSelection(count: Int): String
+    val selectAllItems: String
+    val deselectAllItems: String
     val filterAll: String
     val filterImages: String
     val filterVideos: String
@@ -111,6 +127,8 @@ interface AppStrings {
     val latestShot: String
     val largerThumbnails: String
     val smallerThumbnails: String
+    val largerSubAlbums: String
+    val smallerSubAlbums: String
     val emptyGallery: String
     val today: String
     val yesterday: String
@@ -228,13 +246,58 @@ interface AppStrings {
     fun designDescription(language: DesignLanguage): String
     fun paletteLabel(palette: AppColorPalette): String
 
+    // iOS settings pages
+    fun storageUsed(used: String, total: String): String
+    val legendPhotos: String
+    val legendVideos: String
+    val legendOther: String
+    val storageRecommendations: String
+    val recentlyDeletedAlbum: String
+    fun freeUpTrash(size: String): String
+    val emptyShort: String
+    val reviewMedia: String
+    fun reviewMediaMessage(size: String): String
+    val sortBySize: String
+    val storageCalculating: String
+    val designFooterText: String
+    val appearanceModeHeader: String
+    val accentColorHeader: String
+    val accentFooterText: String
+    val languageFooterText: String
+    val appNameLabel: String
+    val colorPaletteLabel: String
+
+    // HyperOS pages
+    val allPhotos: String
+    val organizePhotos: String
+    val storageSpaceTitle: String
+    val storageAvailable: String
+    val emptyTrashAction: String
+    fun hyperStorageSummary(used: String, total: String, free: String): String
+    val detailInfo: String
+    val takenOn: String
+    val fileInfo: String
+    val exifData: String
+    val localPath: String
+    val flashFired: String
+    val moreActions: String
+
+    // One UI
+    val copyToClipboard: String
+    val setAsWallpaper: String
+    val imageInfo: String
+    val recent: String
+    val manageStorage: String
+    val usedWord: String
+    val suggestions: String
+    fun imagesAndVideos(images: Int, videos: Int): String
+
     // Permissions
     val permissionTitle: String
     val permissionDescription: String
     val permissionGrant: String
     val permissionWarning: String
     val permissionMissingMedia: String
-    val permissionMissingNotifications: String
     val permissionOpenSettings: String
 
     // Messages (toasts)
@@ -277,18 +340,8 @@ interface AppStrings {
     val sdCardNotWritable: String
     val folderCreateFailed: String
     val subFolderCreateFailed: String
-
-    // Move notification
-    val moveChannelName: String
-    val moveChannelDescription: String
-    val moveDone: String
-    fun movingTo(albumName: String): String
-    val movingMedia: String
-    fun progressCompleted(current: Int, total: Int): String
-    fun progressProcessed(current: Int, total: Int): String
 }
 
-private fun percentOf(current: Int, total: Int) = if (total > 0) current * 100 / total else 0
 
 object GermanStrings : AppStrings {
     override val back = "Zurück"
@@ -328,6 +381,17 @@ object GermanStrings : AppStrings {
     override val tabPictures = "Bilder"
     override val tabAlbums = "Alben"
     override val tabMenu = "Menü"
+    override val tabLibrary = "Mediathek"
+    override val tabCollections = "Sammlungen"
+    override val select = "Auswählen"
+    override fun objects(count: Int) = if (count == 1) "1 Objekt" else "$count Objekte"
+    override val selectItems = "Objekte auswählen"
+    override val infoDatePattern = "EEEE, d. MMMM yyyy 'um' HH:mm"
+    override val noCameraInfo = "Keine Kamerainformationen"
+    override val inAlbumPrefix = "Im Album"
+    override fun showSelection(count: Int) = "Auswahl ($count) anzeigen"
+    override val selectAllItems = "Alle auswählen"
+    override val deselectAllItems = "Alle abwählen"
     override val filterAll = "Alle"
     override val filterImages = "Bilder"
     override val filterVideos = "Videos"
@@ -340,6 +404,8 @@ object GermanStrings : AppStrings {
     override val latestShot = "Neueste Aufnahme"
     override val largerThumbnails = "Größere Vorschaubilder"
     override val smallerThumbnails = "Kleinere Vorschaubilder"
+    override val largerSubAlbums = "Größere Unteralben"
+    override val smallerSubAlbums = "Kleinere Unteralben"
     override val emptyGallery = "Keine Medien gefunden"
     override val today = "Heute"
     override val yesterday = "Gestern"
@@ -436,10 +502,53 @@ object GermanStrings : AppStrings {
     override val designAndColors = "Design & Farben"
     override val appearance = "Darstellung"
     override val settings = "Einstellungen"
+    override fun storageUsed(used: String, total: String) = "$used von $total verwendet"
+    override val legendPhotos = "Fotos"
+    override val legendVideos = "Videos"
+    override val legendOther = "Andere"
+    override val storageRecommendations = "Empfehlungen"
+    override val recentlyDeletedAlbum = "Album „Zuletzt gelöscht“"
+    override fun freeUpTrash(size: String) = "Gib $size Speicherplatz frei. Alle Fotos und Videos werden im Album „Zuletzt gelöscht“ endgültig gelöscht."
+    override val emptyShort = "Leer"
+    override val reviewMedia = "Fotos und Videos überprüfen"
+    override fun reviewMediaMessage(size: String) = "Fotos und Videos belegen $size. Sieh sie dir in der Mediathek an und lösche sie gegebenenfalls."
+    override val sortBySize = "Größe"
+    override val storageCalculating = "Wird berechnet …"
+    override val designFooterText = "Das Design bestimmt Leisten, Dialoge, Listen und Animationen der gesamten App."
+    override val appearanceModeHeader = "Erscheinungsbild"
+    override val accentColorHeader = "Akzentfarbe"
+    override val accentFooterText = "Die Akzentfarbe wird für Symbole, Auswahlen und hervorgehobene Texte verwendet."
+    override val languageFooterText = "Die Sprache der App, unabhängig von der Systemsprache."
+    override val appNameLabel = "Name"
+    override val colorPaletteLabel = "Farbpalette"
+    override val allPhotos = "Alle Fotos"
+    override val organizePhotos = "Fotos organisieren"
+    override val storageSpaceTitle = "Speicherplatz"
+    override val storageAvailable = "Verfügbar"
+    override val emptyTrashAction = "Papierkorb leeren"
+    override fun hyperStorageSummary(used: String, total: String, free: String) = "$used/$total belegt | $free verfügbar"
+    override val detailInfo = "Detailinfo"
+    override val takenOn = "Aufgenommen:"
+    override val fileInfo = "Datei:"
+    override val exifData = "EXIF-Daten:"
+    override val localPath = "Speicherort:"
+    override val flashFired = "Blitz ausgelöst"
+    override val moreActions = "Mehr"
+    override val copyToClipboard = "In Ablage kopieren"
+    override val setAsWallpaper = "Als Hintergrund festlegen"
+    override val imageInfo = "Bild-Info"
+    override val recent = "Aktuell"
+    override val manageStorage = "Speicher verwalten"
+    override val usedWord = "verwendet"
+    override val suggestions = "Vorschläge"
+    override fun imagesAndVideos(images: Int, videos: Int) = listOfNotNull(
+        if (images > 0 || videos == 0) (if (images == 1) "1 Bild" else "$images Bilder") else null,
+        if (videos > 0) (if (videos == 1) "1 Video" else "$videos Videos") else null
+    ).joinToString(" ")
     override val graphicsQuality = "Grafikqualität"
     override val storage = "Speicher"
     override val info = "Info"
-    override val aboutGallery = "Über Gallery"
+    override val aboutGallery = "Über Prism Gallery"
     override val deviceStorage = "Gerätespeicher"
     override val library = "Bibliothek"
     override val mediaLibrary = "Mediathek"
@@ -462,9 +571,9 @@ object GermanStrings : AppStrings {
     }
     override fun designDescription(language: DesignLanguage) = when (language) {
         DesignLanguage.SAMSUNG_ONEUI -> "AMOLED-Schwarz, riesiger zentrierter Titel und schwebende Milchglas-Leiste wie in der Samsung Galerie"
-        DesignLanguage.GOOGLE_EXPRESSIVE -> "Tonale Farbflächen, große weiche Formen, federnde Animationen und wellenförmige Fortschrittsbalken"
+        DesignLanguage.GOOGLE_EXPRESSIVE -> "Google Fotos im Gemini-Look: tiefschwarz mit farbigem Schimmer, schwebende Pillen-Leiste und leuchtende Glaskarten"
         DesignLanguage.IOS_LIQUID_GLASS -> "Klares Flüssigglas über randlosen Fotos, schwebende Glas-Bedienelemente und zentrierte Dialoge"
-        DesignLanguage.XIAOMI_HYPEROS -> "Helle, luftige Karten, kompakte Milchglas-Leiste und Dialoge am unteren Bildschirmrand"
+        DesignLanguage.XIAOMI_HYPEROS -> "Große dünne Titel, runde Album-Cover, gestapelte Menükarten, volle Tab-Leiste und Dialoge am unteren Rand"
     }
     override fun paletteLabel(palette: AppColorPalette) =
         if (palette.id == CUSTOM_PALETTE_ID) customPalette else palette.label
@@ -474,7 +583,6 @@ object GermanStrings : AppStrings {
     override val permissionGrant = "Berechtigungen erteilen"
     override val permissionWarning = "Die App funktioniert nicht richtig, solange diese Berechtigungen fehlen:"
     override val permissionMissingMedia = "Zugriff auf Fotos und Videos — ohne diesen kann die Galerie nichts anzeigen"
-    override val permissionMissingNotifications = "Benachrichtigungen — für den Fortschritt beim Verschieben von Medien"
     override val permissionOpenSettings = "In den Einstellungen öffnen"
 
     override val favoriteAdded = "Zu Favoriten hinzugefügt"
@@ -519,16 +627,6 @@ object GermanStrings : AppStrings {
     override val sdCardNotWritable = "SD-Karte nicht gefunden oder nicht beschreibbar."
     override val folderCreateFailed = "Ordner konnte nicht erstellt werden."
     override val subFolderCreateFailed = "Unterordner konnte nicht erstellt werden."
-
-    override val moveChannelName = "Medien verschieben"
-    override val moveChannelDescription = "Fortschrittsanzeige beim Verschieben von Medien"
-    override val moveDone = "Verschieben abgeschlossen"
-    override fun movingTo(albumName: String) = "Verschiebe nach '$albumName'..."
-    override val movingMedia = "Medien werden verschoben..."
-    override fun progressCompleted(current: Int, total: Int) =
-        "$current von $total abgeschlossen (${percentOf(current, total)}%)"
-    override fun progressProcessed(current: Int, total: Int) =
-        "$current von $total verarbeitet (${percentOf(current, total)}%)"
 }
 
 object EnglishStrings : AppStrings {
@@ -569,6 +667,17 @@ object EnglishStrings : AppStrings {
     override val tabPictures = "Photos"
     override val tabAlbums = "Albums"
     override val tabMenu = "Menu"
+    override val tabLibrary = "Library"
+    override val tabCollections = "Collections"
+    override val select = "Select"
+    override fun objects(count: Int) = if (count == 1) "1 Item" else "$count Items"
+    override val selectItems = "Select Items"
+    override val infoDatePattern = "EEEE, MMMM d, yyyy 'at' HH:mm"
+    override val noCameraInfo = "No camera information"
+    override val inAlbumPrefix = "In album"
+    override fun showSelection(count: Int) = "Show Selection ($count)"
+    override val selectAllItems = "Select All"
+    override val deselectAllItems = "Deselect All"
     override val filterAll = "All"
     override val filterImages = "Images"
     override val filterVideos = "Videos"
@@ -581,6 +690,8 @@ object EnglishStrings : AppStrings {
     override val latestShot = "Latest capture"
     override val largerThumbnails = "Larger thumbnails"
     override val smallerThumbnails = "Smaller thumbnails"
+    override val largerSubAlbums = "Larger sub-albums"
+    override val smallerSubAlbums = "Smaller sub-albums"
     override val emptyGallery = "No media found"
     override val today = "Today"
     override val yesterday = "Yesterday"
@@ -677,10 +788,53 @@ object EnglishStrings : AppStrings {
     override val designAndColors = "Design & colors"
     override val appearance = "Appearance"
     override val settings = "Settings"
+    override fun storageUsed(used: String, total: String) = "$used of $total used"
+    override val legendPhotos = "Photos"
+    override val legendVideos = "Videos"
+    override val legendOther = "Other"
+    override val storageRecommendations = "Recommendations"
+    override val recentlyDeletedAlbum = "“Recently Deleted” Album"
+    override fun freeUpTrash(size: String) = "Free up $size. All photos and videos in “Recently Deleted” will be permanently deleted."
+    override val emptyShort = "Empty"
+    override val reviewMedia = "Review Photos and Videos"
+    override fun reviewMediaMessage(size: String) = "Photos and videos use $size. Review them in the library and delete the ones you no longer need."
+    override val sortBySize = "Size"
+    override val storageCalculating = "Calculating…"
+    override val designFooterText = "The design shapes the bars, dialogs, lists and animations of the whole app."
+    override val appearanceModeHeader = "Appearance"
+    override val accentColorHeader = "Accent Color"
+    override val accentFooterText = "The accent color is used for icons, selections and highlighted text."
+    override val languageFooterText = "The app's language, independent of the system language."
+    override val appNameLabel = "Name"
+    override val colorPaletteLabel = "Color Palette"
+    override val allPhotos = "All photos"
+    override val organizePhotos = "Organize photos"
+    override val storageSpaceTitle = "Storage space"
+    override val storageAvailable = "Available"
+    override val emptyTrashAction = "Empty trash"
+    override fun hyperStorageSummary(used: String, total: String, free: String) = "$used/$total occupied | $free available"
+    override val detailInfo = "Detail info"
+    override val takenOn = "Taken on:"
+    override val fileInfo = "File info:"
+    override val exifData = "EXIF data:"
+    override val localPath = "Local path:"
+    override val flashFired = "Flash used"
+    override val moreActions = "More"
+    override val copyToClipboard = "Copy to clipboard"
+    override val setAsWallpaper = "Set as wallpaper"
+    override val imageInfo = "Image info"
+    override val recent = "Recent"
+    override val manageStorage = "Manage storage"
+    override val usedWord = "used"
+    override val suggestions = "Suggestions"
+    override fun imagesAndVideos(images: Int, videos: Int) = listOfNotNull(
+        if (images > 0 || videos == 0) (if (images == 1) "1 image" else "$images images") else null,
+        if (videos > 0) (if (videos == 1) "1 video" else "$videos videos") else null
+    ).joinToString(" ")
     override val graphicsQuality = "Graphics quality"
     override val storage = "Storage"
     override val info = "Info"
-    override val aboutGallery = "About Gallery"
+    override val aboutGallery = "About Prism Gallery"
     override val deviceStorage = "Device storage"
     override val library = "Library"
     override val mediaLibrary = "Library"
@@ -703,9 +857,9 @@ object EnglishStrings : AppStrings {
     }
     override fun designDescription(language: DesignLanguage) = when (language) {
         DesignLanguage.SAMSUNG_ONEUI -> "AMOLED black, a huge centered title and a floating frosted bar like the Samsung Gallery"
-        DesignLanguage.GOOGLE_EXPRESSIVE -> "Tonal colors, big soft shapes, springy animations and wavy progress bars"
+        DesignLanguage.GOOGLE_EXPRESSIVE -> "Google Photos with a Gemini feel: deep black with a coloured glow, a floating pill bar and glowing glass cards"
         DesignLanguage.IOS_LIQUID_GLASS -> "Clear liquid glass over edge-to-edge photos, floating glass controls and centered dialogs"
-        DesignLanguage.XIAOMI_HYPEROS -> "Bright, airy cards, a compact frosted bar and dialogs at the bottom of the screen"
+        DesignLanguage.XIAOMI_HYPEROS -> "Big thin titles, rounded album covers, stacked menu cards, a full tab bar and dialogs at the bottom"
     }
     override fun paletteLabel(palette: AppColorPalette) = when (palette.id) {
         CUSTOM_PALETTE_ID -> customPalette
@@ -715,12 +869,12 @@ object EnglishStrings : AppStrings {
         "oneui_light_blue" -> "OneUI Light Blue"
         "oneui_light_lavender" -> "OneUI Light Lavender"
         "oneui_light_green" -> "OneUI Light Green"
-        "expressive_mint" -> "Material Teal"
-        "expressive_violet" -> "Material Violet"
-        "expressive_amber" -> "Material Amber"
-        "expressive_light_mint" -> "Material Light Teal"
-        "expressive_light_violet" -> "Material Light Violet"
-        "expressive_light_amber" -> "Material Light Amber"
+        "expressive_mint" -> "Gemini Blue"
+        "expressive_violet" -> "Gemini Violet"
+        "expressive_amber" -> "Gemini Green"
+        "expressive_light_mint" -> "Gemini Light Blue"
+        "expressive_light_violet" -> "Gemini Light Violet"
+        "expressive_light_amber" -> "Gemini Light Green"
         "glass_blue" -> "Glass Blue"
         "glass_purple" -> "Glass Purple"
         "glass_mint" -> "Glass Mint"
@@ -741,7 +895,6 @@ object EnglishStrings : AppStrings {
     override val permissionGrant = "Grant permissions"
     override val permissionWarning = "The app won't work properly while these permissions are missing:"
     override val permissionMissingMedia = "Access to photos and videos — without it the gallery can't show anything"
-    override val permissionMissingNotifications = "Notifications — to show progress while moving media"
     override val permissionOpenSettings = "Open in settings"
 
     override val favoriteAdded = "Added to favorites"
@@ -786,14 +939,4 @@ object EnglishStrings : AppStrings {
     override val sdCardNotWritable = "SD card not found or not writable."
     override val folderCreateFailed = "The folder could not be created."
     override val subFolderCreateFailed = "The sub-folder could not be created."
-
-    override val moveChannelName = "Moving media"
-    override val moveChannelDescription = "Progress while moving media"
-    override val moveDone = "Move complete"
-    override fun movingTo(albumName: String) = "Moving to '$albumName'..."
-    override val movingMedia = "Moving media..."
-    override fun progressCompleted(current: Int, total: Int) =
-        "$current of $total done (${percentOf(current, total)}%)"
-    override fun progressProcessed(current: Int, total: Int) =
-        "$current of $total processed (${percentOf(current, total)}%)"
 }

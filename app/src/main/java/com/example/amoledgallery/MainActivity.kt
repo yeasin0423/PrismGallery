@@ -18,6 +18,8 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -95,7 +97,17 @@ import kotlin.math.sign
 import dev.chrisbanes.haze.HazeState
 import com.example.amoledgallery.ui.design.HazeSource
 import com.example.amoledgallery.ui.design.BottomEdgeFade
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import com.example.amoledgallery.ui.editor.LocalOnMediaEdited
+import com.example.amoledgallery.ui.screens.ExternalMediaViewer
+import com.example.amoledgallery.ui.screens.ExternalViewRequest
+import com.example.amoledgallery.ui.screens.externalMediaItem
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Screens pushed over the main tabs. */
 private enum class PushedScreen { FAVORITES, TRASH }
@@ -104,24 +116,50 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: GalleryViewModel by viewModels()
 
+    /** Set when another app opened a photo or video with "Open with"; the activity then shows only that file. */
+    private val viewRequest = mutableStateOf<ExternalViewRequest?>(null)
+
     @OptIn(ExperimentalComposeUiApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleViewIntent(intent)
 
         // Compose would otherwise scale every animation by the system "animator duration scale"
         // developer option, and at 0x skip them all. The app's own graphics quality decides instead.
         val recomposer = window.decorView.createLifecycleAwareWindowRecomposer(AppMotionDurationScale, lifecycle)
         setContent(parent = recomposer) {
             AmoledGalleryTheme {
-                GalleryApp(viewModel = viewModel)
+                // Closing a handed-over file returns to the app that sent it, like the system gallery does.
+                GalleryApp(viewModel = viewModel, viewRequest = viewRequest.value, onCloseViewRequest = { finish() })
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleViewIntent(intent)
+    }
+
+    private fun handleViewIntent(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_VIEW) return
+        val uri = intent.data ?: return
+        val request = ExternalViewRequest(uri)
+        viewRequest.value = request
+        val typeHint = intent.type
+        lifecycleScope.launch {
+            request.item.value = withContext(Dispatchers.IO) { externalMediaItem(applicationContext, uri, typeHint) }
         }
     }
 }
 
 @Composable
-fun GalleryApp(viewModel: GalleryViewModel) {
+fun GalleryApp(
+    viewModel: GalleryViewModel,
+    viewRequest: ExternalViewRequest? = null,
+    onCloseViewRequest: () -> Unit = {}
+) {
     val graphicsQuality by viewModel.graphicsQuality.collectAsStateWithLifecycle()
 
     // Two blur backdrops: the whole window (behind dialogs, sheets and menus) and the tab content
@@ -133,7 +171,6 @@ fun GalleryApp(viewModel: GalleryViewModel) {
     val mediaOpenOrigin = remember { MediaOpenOrigin() }
     // An edited copy was saved: reload so it shows up in the grid and its album.
     val onMediaEdited: () -> Unit = remember(viewModel) { { viewModel.refreshAfterEdit() } }
-
     CompositionLocalProvider(
         LocalMediaOpenOrigin provides mediaOpenOrigin,
         LocalGraphicsQuality provides graphicsQuality,
@@ -143,10 +180,23 @@ fun GalleryApp(viewModel: GalleryViewModel) {
         LocalOnMediaEdited provides onMediaEdited
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            // In landscape the navigation bar and camera cutout sit at the sides; content keeps clear of them so
+            // no button ends up underneath. The background still reaches the screen edges.
+            val sideInsets = androidx.compose.foundation.layout.WindowInsets.safeDrawing
+                .only(androidx.compose.foundation.layout.WindowInsetsSides.Horizontal)
             HazeSource(rootHaze, Modifier.fillMaxSize().screenBackground()) {
-                GalleryAppContent(viewModel, contentHaze)
+                Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(sideInsets)) {
+                    // Opened with "Open with": only that file, and no gallery (or permission request) behind it.
+                    if (viewRequest != null) {
+                        ExternalMediaViewer(viewRequest, onClose = onCloseViewRequest)
+                    } else {
+                        GalleryAppContent(viewModel, contentHaze)
+                    }
+                }
             }
-            OverlayHost(overlayHost)
+            Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(sideInsets)) {
+                OverlayHost(overlayHost)
+            }
         }
     }
 }
@@ -175,6 +225,9 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
     val trashedMedia by viewModel.trashedMediaState.collectAsStateWithLifecycle()
     val favoriteMedia by viewModel.favoriteMediaState.collectAsStateWithLifecycle()
     val favoriteIds by viewModel.favoriteIds.collectAsStateWithLifecycle()
+    val albumColumns by viewModel.albumColumns.collectAsStateWithLifecycle()
+    val subAlbumColumns by viewModel.subAlbumColumns.collectAsStateWithLifecycle()
+    val loadedAlbumKey by viewModel.loadedAlbumKey.collectAsStateWithLifecycle()
 
     // Multi-Select and Hidden Albums state
     val isSelectionMode by viewModel.isSelectionMode.collectAsStateWithLifecycle()
@@ -185,6 +238,10 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
     val moveProgress by viewModel.moveProgress.collectAsStateWithLifecycle()
 
     var isFavoritesOpen by remember { mutableStateOf(false) }
+    // One UI: the "Menü" tab opens Samsung Gallery's round-icon popup instead of switching tabs.
+    var oneUiMenuOpen by remember { mutableStateOf(false) }
+    // Whether a settings page is pushed over the menu tab.
+    var settingsPageOpen by remember { mutableStateOf(false) }
     var showCreateAlbumFromMove by remember { mutableStateOf(false) }
 
     // Permission Launcher for media storage access
@@ -218,9 +275,8 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
         }
     }
 
-    // Ask for everything the app needs in one go on first launch - media access and notifications
-    // together - instead of popping the notification dialog first and then making the user tap
-    // through a separate screen for media access.
+    // Ask for media access right away on first launch instead of making the user tap through the
+    // permission screen first.
     var hasRequestedPermissions by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         if (!hasRequestedPermissions) {
@@ -249,14 +305,11 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
     }
 
     if (uiState is GalleryUiState.PermissionRequired) {
-        val missingNotifications = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         PermissionScreen(
             onRequestPermission = {
                 permissionLauncher.launch(getRequiredPermissions())
             },
             missingMedia = true,
-            missingNotifications = missingNotifications,
             onOpenSettings = {
                 context.startActivity(
                     Intent(
@@ -289,6 +342,8 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
             isTrashOpen -> PushedScreen.TRASH
             else -> null
         }
+        // Opening a tab or a pushed screen lets the Gemini glass surfaces on it play their animation once.
+        LaunchedEffect(selectedTab, pushedScreen) { com.example.amoledgallery.ui.design.GeminiVisits.bump() }
         val lastPushedScreen = remember { arrayOf(PushedScreen.FAVORITES) }
         if (pushedScreen != null) lastPushedScreen[0] = pushedScreen
         val pushProgress = animateFloatAsState(
@@ -364,6 +419,7 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                         isSelectionMode = isSelectionMode,
                                         selectedIds = selectedIds,
                                         onStartSelection = { id -> viewModel.startSelection(id) },
+                                        onEnterSelection = { viewModel.startSelection(null) },
                                         onToggleSelection = { id -> viewModel.toggleSelection(id) },
                                         onSetSelection = { id, sel -> viewModel.setItemSelection(id, sel) },
                                         onSetSelections = { ids, sel -> viewModel.setItemSelections(ids, sel) },
@@ -380,6 +436,15 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                 GalleryTab.ALBEN -> {
                                     AlbumsScreen(
                                         albums = if (breadcrumbStack.isNotEmpty()) currentSubAlbums else rootAlbums,
+                                        rootAlbums = rootAlbums,
+                                        loadedAlbumKey = loadedAlbumKey,
+                                        albumColumns = albumColumns,
+                                        onSetAlbumColumns = { viewModel.setAlbumColumns(it) },
+                                        subAlbumColumns = subAlbumColumns,
+                                        onSetSubAlbumColumns = { viewModel.setSubAlbumColumns(it) },
+                                        onZoomIn = { viewModel.zoomIn() },
+                                        onZoomOut = { viewModel.zoomOut() },
+                                        onOpenRootAlbum = { album -> viewModel.openRootAlbum(album) },
                                         isSdCardAvailable = viewModel.isSdCardAvailable,
                                         graphicsQuality = graphicsQuality,
                                         onAlbumClick = { album -> viewModel.openAlbum(album) },
@@ -418,7 +483,21 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                         onUpdateSelectedIds = { viewModel.setSelectedIds(it) },
                                         onSelectAll = { viewModel.selectAll(albumMedia) },
                                         onDeselectAll = { viewModel.deselectAll() },
-                                        onClearSelection = { viewModel.clearSelection() }
+                                        onClearSelection = { viewModel.clearSelection() },
+                                        onEnterSelection = { viewModel.startSelection(null) },
+                                        trashedCount = trashedMedia.size,
+                                        onOpenTrash = { viewModel.openTrash() },
+                                        allMedia = allItems,
+                                        favoriteMedia = favoriteMedia,
+                                        onOpenAllPhotos = {
+                                            viewModel.selectFilter(com.example.amoledgallery.ui.viewmodel.MediaFilter.ALL)
+                                            viewModel.selectTab(GalleryTab.BILDER)
+                                        },
+                                        onOpenVideos = {
+                                            viewModel.selectFilter(com.example.amoledgallery.ui.viewmodel.MediaFilter.VIDEOS)
+                                            viewModel.selectTab(GalleryTab.BILDER)
+                                        },
+                                        onOpenFavorites = { isFavoritesOpen = true }
                                     )
                                 }
 
@@ -438,7 +517,12 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                         graphicsQuality = graphicsQuality,
                                         onSetGraphicsQuality = { viewModel.setGraphicsQuality(it) },
                                         onOpenFavorites = { isFavoritesOpen = true },
-                                        onOpenTrash = { viewModel.openTrash() }
+                                        onOpenTrash = { viewModel.openTrash() },
+                                        loadStorageStats = { viewModel.loadStorageStats() },
+                                        onEmptyTrash = { viewModel.emptyTrash() },
+                                        onOpenLibrary = { viewModel.selectTab(GalleryTab.BILDER) },
+                                        onBack = { viewModel.selectTab(GalleryTab.BILDER) },
+                                        onSettingsPageOpenChanged = { settingsPageOpen = it }
                                     )
                                 }
                             }
@@ -455,18 +539,59 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
 
                 val barEnter = slideInVertically(animationSpec = qualityTween(graphicsQuality, 260), initialOffsetY = { it }) +
                     fadeIn(animationSpec = qualityTween(graphicsQuality, 200))
-                val barExit = slideOutVertically(animationSpec = qualityTween(graphicsQuality, 220), targetOffsetY = { it }) +
-                    fadeOut(animationSpec = qualityTween(graphicsQuality, 160))
+                // Opening a photo: the bar stays until the zooming photo has grown over it and then leaves
+                // with the end of the zoom, instead of vanishing before the photo is fully open.
+                val barExit = if (isFullscreenViewer) {
+                    slideOutVertically(animationSpec = tween(260, delayMillis = 110, easing = FastOutSlowInEasing), targetOffsetY = { it }) +
+                        fadeOut(animationSpec = tween(200, delayMillis = 150))
+                } else {
+                    slideOutVertically(animationSpec = qualityTween(graphicsQuality, 220), targetOffsetY = { it }) +
+                        fadeOut(animationSpec = qualityTween(graphicsQuality, 160))
+                }
 
+                // One UI and HyperOS hide the tab bar inside an album and in the settings; iOS only on a settings page.
+                val oneUiPushedPage = when (language) {
+                    com.example.amoledgallery.ui.theme.DesignLanguage.SAMSUNG_ONEUI,
+                    com.example.amoledgallery.ui.theme.DesignLanguage.XIAOMI_HYPEROS ->
+                        (selectedTab == GalleryTab.ALBEN && breadcrumbStack.isNotEmpty()) || selectedTab == GalleryTab.MENU
+                    com.example.amoledgallery.ui.theme.DesignLanguage.IOS_LIQUID_GLASS ->
+                        selectedTab == GalleryTab.MENU && settingsPageOpen
+                    else -> false
+                }
                 AnimatedVisibility(
-                    visible = !isFullscreenViewer && !isSelectionMode,
+                    visible = !isFullscreenViewer && !isSelectionMode && !oneUiPushedPage,
                     enter = barEnter,
                     exit = barExit,
                     modifier = Modifier.align(Alignment.BottomCenter)
                 ) {
                     BottomNavigationBar(
                         currentTab = selectedTab,
-                        onTabSelected = { viewModel.selectTab(it) }
+                        onTabSelected = { tab ->
+                            if (tab == GalleryTab.MENU && selectedTab != GalleryTab.MENU &&
+                                language == com.example.amoledgallery.ui.theme.DesignLanguage.SAMSUNG_ONEUI
+                            ) {
+                                oneUiMenuOpen = true
+                            } else {
+                                viewModel.selectTab(tab)
+                            }
+                        }
+                    )
+                }
+
+                if (oneUiMenuOpen) {
+                    com.example.amoledgallery.ui.screens.OneUiMenuPopup(
+                        onDismiss = { oneUiMenuOpen = false },
+                        onVideos = {
+                            viewModel.selectFilter(com.example.amoledgallery.ui.viewmodel.MediaFilter.VIDEOS)
+                            viewModel.selectTab(GalleryTab.BILDER)
+                        },
+                        onFavorites = { isFavoritesOpen = true },
+                        onRecent = {
+                            viewModel.selectFilter(com.example.amoledgallery.ui.viewmodel.MediaFilter.ALL)
+                            viewModel.selectTab(GalleryTab.BILDER)
+                        },
+                        onTrash = { viewModel.openTrash() },
+                        onSettings = { viewModel.selectTab(GalleryTab.MENU) }
                     )
                 }
 
@@ -554,22 +679,24 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                             TrashScreen(
                                 trashedItems = trashedMedia,
                                 onBack = { viewModel.closeTrash() },
-                                onRestoreItem = { item -> viewModel.restoreMedia(item) },
+                                onItemClick = { _, index -> viewModel.openDetail(index, DetailSource.TRASH) },
                                 onRestoreAll = { viewModel.restoreAllTrash() },
-                                onDeletePermanently = { item -> viewModel.deletePermanently(item) },
                                 onEmptyTrash = { viewModel.emptyTrash() }
                             )
                             BottomEdgeFade(Modifier.align(Alignment.BottomCenter))
 
+                            // A deleted item opens full size too, with only restore / delete permanently / details.
                             MediaZoomTransition(visible = selectedItemIndex != null && detailSource == DetailSource.TRASH) {
                                 MediaDetailScreen(
                                     mediaList = trashedMedia,
                                     initialIndex = trashDetailIndex[0],
                                     onBack = { viewModel.closeDetail() },
-                                    onTrashItem = { item -> viewModel.trashMedia(item) },
-                                    onRenameItem = { item, newName -> viewModel.renameMedia(item, newName) },
-                                    isFavorite = { id -> favoriteIds.contains(id) },
-                                    onToggleFavorite = { id -> viewModel.toggleFavorite(id) }
+                                    onTrashItem = {},
+                                    onRenameItem = { _, _ -> },
+                                    onPageChanged = { viewModel.updateDetailIndex(it) },
+                                    trashMode = true,
+                                    onRestoreItem = { item -> viewModel.restoreMedia(item) },
+                                    onDeletePermanently = { item -> viewModel.deletePermanently(item) }
                                 )
                             }
                         }
@@ -608,16 +735,17 @@ private fun getRequiredPermissions(): Array<String> {
         arrayOf(
             Manifest.permission.READ_MEDIA_IMAGES,
             Manifest.permission.READ_MEDIA_VIDEO,
-            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
-            Manifest.permission.POST_NOTIFICATIONS
+            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
         )
     } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         arrayOf(
             Manifest.permission.READ_MEDIA_IMAGES,
-            Manifest.permission.READ_MEDIA_VIDEO,
-            Manifest.permission.POST_NOTIFICATIONS
+            Manifest.permission.READ_MEDIA_VIDEO
         )
+    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     } else {
+        // Android 10 still uses legacy storage, where writing needs its own permission.
         arrayOf(
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.WRITE_EXTERNAL_STORAGE
@@ -635,6 +763,7 @@ private fun hasMediaPermission(context: Context): Boolean {
                 ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
     } else {
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ||
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED)
     }
 }

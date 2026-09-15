@@ -1,17 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Launcher label. The app's full name, Prism Gallery, is shown inside the app (see APP_FULL_NAME). -->
     <string name="app_name">Gallery</string>
-    <string name="header_media">Medien</string>
-    <string name="permission_title">Zugriff auf Fotos und Videos</string>
-    <string name="permission_description">Erlaube den Zugriff auf deine Medienbibliothek, um deine Fotos und Videos anzuzeigen.</string>
-    <string name="permission_grant_button">Berechtigungen erteilen</string>
-    <string name="permission_warning">Die App funktioniert nicht richtig, solange diese Berechtigungen fehlen:</string>
-    <string name="permission_missing_media">Zugriff auf Fotos und Videos — ohne diesen kann die Galerie nichts anzeigen</string>
-    <string name="permission_missing_notifications">Benachrichtigungen — für den Fortschritt beim Verschieben von Medien</string>
-    <string name="permission_open_settings">In den Einstellungen öffnen</string>
-    <string name="empty_gallery">Keine Medien gefunden</string>
-    <string name="tab_pictures">Bilder</string>
-    <string name="tab_albums">Alben</string>
-    <string name="title_trash">Papierkorb</string>
-    <string name="new_album">Neues Album</string>
 </resources>

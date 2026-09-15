@@ -69,7 +69,9 @@ fun HazeSource(
     // Without real blur (LOW/MEDIUM, API < 31) nothing samples the backdrop, so don't record the content
     // into an extra backdrop layer on every frame at all.
     val recordBackdrop = glassEnabled()
-    Box(modifier = (if (recordBackdrop) Modifier.haze(state) else Modifier).then(modifier)) {
+    // iOS Liquid Glass refracts a recording of the content itself instead of a blurred copy (API 33+).
+    val liquidRecorder = if (recordBackdrop && liquidRefractionEnabled()) Modifier.liquidBackdropSource(state) else Modifier
+    Box(modifier = (if (recordBackdrop) Modifier.haze(state) else Modifier).then(liquidRecorder).then(modifier)) {
         CompositionLocalProvider(LocalEnclosingHazeSources provides if (recordBackdrop) enclosing + state else enclosing) {
             content()
         }
@@ -125,11 +127,12 @@ fun barGlass(): GlassSpec {
             blur = 30.dp,
             rim = GlassRim.Subtle
         )
+        // Google Photos' floating bar: a dark frosted pill without a rim.
         DesignLanguage.GOOGLE_EXPRESSIVE -> GlassSpec(
-            tint = lerp(theme.palette.surface, theme.palette.accent, 0.08f).copy(alpha = if (light) 0.66f else 0.62f),
-            fallback = lerp(theme.palette.surface, theme.palette.accent, 0.08f).copy(alpha = 0.97f),
+            tint = theme.palette.surface.copy(alpha = if (light) 0.84f else 0.86f),
+            fallback = theme.palette.surface.copy(alpha = 0.98f),
             blur = 28.dp,
-            rim = GlassRim.Subtle
+            rim = GlassRim.None
         )
         DesignLanguage.IOS_LIQUID_GLASS -> if (light) {
             GlassSpec(Color.White.copy(alpha = 0.46f), Color.White.copy(alpha = 0.96f), 12.dp, GlassRim.Liquid)
@@ -155,7 +158,13 @@ fun Modifier.glass(
     state: HazeState? = LocalContentHaze.current,
     mask: Brush? = null
 ): Modifier {
-    val palette = LocalAppTheme.current.palette
+    val theme = LocalAppTheme.current
+    // iOS controls (buttons, capsules, the tab bar) are Liquid Glass: refraction instead of frosting, and a
+    // touch response. Large frosted surfaces - dialogs, sheets, menus, masked bars - keep their blur.
+    if (theme.language == DesignLanguage.IOS_LIQUID_GLASS && spec.rim == GlassRim.Liquid && spec.blur <= 16.dp && mask == null) {
+        return liquidGlass(shape, spec, state?.takeIf { it !in LocalEnclosingHazeSources.current })
+    }
+    val palette = theme.palette
     val blur = state != null && spec.blur > 0.dp && glassEnabled() &&
         state !in LocalEnclosingHazeSources.current
     var result = this.clip(shape)
@@ -178,7 +187,68 @@ fun Modifier.glass(
 }
 
 /** Specular rim + sheen that turns a frosted rectangle into a piece of glass. Drawn behind content. */
-fun Modifier.glassRim(shape: Shape, rim: GlassRim, light: Boolean): Modifier = drawWithCache {
+fun Modifier.glassRim(shape: Shape, rim: GlassRim, light: Boolean): Modifier =
+    if (rim == GlassRim.Liquid) liquidGlassRim(shape, light) else frostedGlassRim(shape, rim, light)
+
+/**
+ * Apple's Liquid Glass look: a thick, rounded pane. Its edge bends the light - a bright band hugging the rim,
+ * lit from above and shaded below - with sharp specular highlights on the top-left and bottom-right edges, a
+ * soft glow towards the middle and a fine dark outline that lifts it off the content behind.
+ */
+private fun Modifier.liquidGlassRim(shape: Shape, light: Boolean): Modifier = drawWithCache {
+    val outline = shape.createOutline(size, layoutDirection, this)
+    val minDim = size.minDimension
+    // Strokes are centred on the (already clipped) edge, so each one is doubled to get its visible width.
+    val bandWidth = (minDim * 0.16f).coerceIn(3.dp.toPx(), 9.dp.toPx())
+    val band = Stroke(width = bandWidth * 2f)
+    val glow = Stroke(width = bandWidth * 4f)
+    val specularStroke = Stroke(width = 1.2.dp.toPx() * 2f)
+    val outlineStroke = Stroke(width = 0.6.dp.toPx() * 2f)
+
+    val sheen = Brush.verticalGradient(
+        0f to Color.White.copy(alpha = if (light) 0.34f else 0.10f),
+        0.4f to Color.Transparent,
+        1f to Color.Transparent
+    )
+    // Kept light: the refraction itself now shapes the edge; these only add the sheen of the glass surface.
+    val glowBrush = Brush.verticalGradient(
+        0f to Color.White.copy(alpha = if (light) 0.08f else 0.025f),
+        0.5f to Color.Transparent,
+        1f to Color.White.copy(alpha = if (light) 0.04f else 0.012f)
+    )
+    val bandBrush = Brush.verticalGradient(
+        0f to Color.White.copy(alpha = if (light) 0.32f else 0.10f),
+        0.35f to Color.White.copy(alpha = if (light) 0.08f else 0.025f),
+        0.7f to Color.Transparent,
+        1f to Color.White.copy(alpha = if (light) 0.18f else 0.05f)
+    )
+    val shadeBrush = Brush.verticalGradient(
+        0f to Color.Transparent,
+        0.62f to Color.Transparent,
+        1f to Color.Black.copy(alpha = if (light) 0.06f else 0.20f)
+    )
+    val specular = Brush.linearGradient(
+        0f to Color.White.copy(alpha = if (light) 0.95f else 0.80f),
+        0.18f to Color.White.copy(alpha = 0.24f),
+        0.42f to Color.White.copy(alpha = 0.04f),
+        0.58f to Color.White.copy(alpha = 0.04f),
+        0.82f to Color.White.copy(alpha = 0.20f),
+        1f to Color.White.copy(alpha = if (light) 0.70f else 0.55f),
+        start = Offset.Zero,
+        end = Offset(size.width, size.height)
+    )
+    onDrawWithContent {
+        drawOutline(outline, sheen)
+        drawOutline(outline, glowBrush, style = glow)
+        drawOutline(outline, bandBrush, style = band)
+        drawOutline(outline, shadeBrush, style = band)
+        drawOutline(outline, Color.Black.copy(alpha = if (light) 0.08f else 0.28f), style = outlineStroke)
+        drawOutline(outline, specular, style = specularStroke)
+        drawContent()
+    }
+}
+
+private fun Modifier.frostedGlassRim(shape: Shape, rim: GlassRim, light: Boolean): Modifier = drawWithCache {
     val outline = shape.createOutline(size, layoutDirection, this)
     val liquid = rim == GlassRim.Liquid
     // The stroke is centred on the (already clipped) edge, so double it to get the visible width.
@@ -215,24 +285,13 @@ fun Modifier.screenBackground(): Modifier {
         this
             .background(palette.background)
             .drawBehind {
-                // Radial glows fade to fully transparent, so there is never an edge to see.
-                drawRect(
-                    Brush.radialGradient(
-                        0f to palette.accent.copy(alpha = 0.20f),
-                        0.45f to palette.accent.copy(alpha = 0.07f),
-                        1f to Color.Transparent,
-                        center = Offset(size.width * 0.1f, 0f),
-                        radius = size.width * 1.3f
-                    )
-                )
-                drawRect(
-                    Brush.radialGradient(
-                        0f to palette.accent.copy(alpha = 0.08f),
-                        1f to Color.Transparent,
-                        center = Offset(size.width, size.height * 0.55f),
-                        radius = size.width
-                    )
-                )
+                // Gemini: black (or near-white) with a glow in the accent's hue rising from the bottom edge.
+                val glow = if (palette.isLight) {
+                    accentTone(palette.accent, 0.36f, 0.97f).copy(alpha = 0.95f)
+                } else {
+                    accentTone(palette.accent, 0.75f, 0.42f).copy(alpha = 0.6f)
+                }
+                drawRect(Brush.verticalGradient(0f to Color.Transparent, if (palette.isLight) 0.5f to Color.Transparent else 0.52f to Color.Transparent, 1f to glow))
             }
     } else {
         this.background(palette.background)

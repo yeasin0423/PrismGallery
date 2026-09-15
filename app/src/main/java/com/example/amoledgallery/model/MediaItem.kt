@@ -39,8 +39,21 @@ data class MediaItem(
     val mimeType: String = "",
     val dataPath: String = "",
     /** When the photo/video was captured (seconds), from EXIF / container metadata; 0 if unknown. */
-    val dateTaken: Long = 0L
+    val dateTaken: Long = 0L,
+    /** Pixel size as stored by MediaStore (before [orientation] is applied); 0 if unknown. */
+    val width: Int = 0,
+    val height: Int = 0,
+    /** Clockwise rotation in degrees that has to be applied to show the media upright. */
+    val orientation: Int = 0
 ) {
+    /** Width / height as displayed on screen, or 0 if the size is unknown. */
+    val displayAspectRatio: Float
+        get() {
+            if (width <= 0 || height <= 0) return 0f
+            val rotated = orientation % 180 != 0
+            return if (rotated) height.toFloat() / width else width.toFloat() / height
+        }
+
     /**
      * The date the gallery sorts and groups by (seconds): when it was taken, else when the file was
      * last modified. DATE_ADDED is only a fallback - moving a file to the other storage volume creates

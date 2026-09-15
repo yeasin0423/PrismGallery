@@ -2,6 +2,9 @@ package com.example.amoledgallery.ui.components
 import com.example.amoledgallery.ui.i18n.strings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
@@ -18,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Checklist
+import androidx.compose.material.icons.rounded.RemoveDone
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -77,38 +82,39 @@ fun SelectionTopBar(
     val title = strings.selectionTitle(selectedCount)
 
     when (theme.language) {
-        DesignLanguage.SAMSUNG_ONEUI -> Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-        ) {
+        // One UI 8: "Alle" check circle, the count and "Abbrechen" on a frosted bar (the expanded form of this
+        // is the big "14 ausgewählt" title at the top of the grid).
+        DesignLanguage.SAMSUNG_ONEUI -> Box(modifier = modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .glass(
+                        RectangleShape,
+                        GlassSpec(palette.background.copy(alpha = 0.72f), palette.background.copy(alpha = 0.97f), 30.dp, GlassRim.None),
+                        hazeState
+                    )
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(66.dp)
-                    .glass(
-                        RoundedCornerShape(30.dp),
-                        GlassSpec(palette.frost(Color(0xFF2A2A2A), 0.60f), palette.frost(Color(0xFF2A2A2A), 0.97f), 40.dp, GlassRim.Subtle),
-                        hazeState
-                    )
-                    .padding(horizontal = 6.dp),
+                    .statusBarsPadding()
+                    .height(70.dp)
+                    .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                ThemedIconButton(
-                    icon = Icons.AutoMirrored.Rounded.ArrowBackIos,
-                    contentDescription = strings.endSelection,
-                    onClick = onClose
-                )
+                OneUiSelectAll(checked = allSelected, onClick = onToggleSelectAll)
                 Text(
-                    text = "$selectedCount/$totalCount",
+                    text = title,
                     color = palette.onBackground,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    modifier = Modifier.weight(1f)
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 14.dp)
                 )
-                SelectionTextAction(toggleLabel, palette.onBackground, onToggleSelectAll)
+                SelectionTextAction(strings.cancel, palette.onBackground, onClose)
             }
         }
 
@@ -150,6 +156,40 @@ fun SelectionTopBar(
             }
         }
 
+        // HyperOS: a close icon and a select-all icon over a big thin "Select items" / "10 selected" title.
+        DesignLanguage.XIAOMI_HYPEROS -> androidx.compose.foundation.layout.Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .background(palette.background)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .height(56.dp)
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ThemedIconButton(icon = Icons.Rounded.Close, contentDescription = strings.endSelection, onClick = onClose)
+                androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
+                ThemedIconButton(
+                    icon = if (allSelected) Icons.Rounded.RemoveDone else Icons.Rounded.Checklist,
+                    contentDescription = toggleLabel,
+                    onClick = onToggleSelectAll
+                )
+            }
+            Text(
+                text = title,
+                color = palette.onBackground,
+                fontSize = 40.sp,
+                fontWeight = FontWeight.Light,
+                letterSpacing = (-0.5).sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 28.dp, end = 28.dp, top = 30.dp, bottom = 18.dp)
+            )
+        }
+
         else -> ThemedTopBar(
             title = title,
             navigationIcon = Icons.Rounded.Close,
@@ -159,6 +199,46 @@ fun SelectionTopBar(
         ) {
             SelectionTextAction(toggleLabel, palette.accent, onToggleSelectAll)
         }
+    }
+}
+
+/** One UI's round check: a white ring, filled white with a black check when [checked]. */
+@Composable
+fun OneUiCheckCircle(checked: Boolean, modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 30.dp) {
+    val palette = LocalAppTheme.current.palette
+    val ring = if (palette.isLight) Color(0xFF1A1A1A) else Color.White
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(if (checked) ring else Color.Transparent)
+            .then(if (!checked) Modifier.border(2.dp, ring, CircleShape) else Modifier),
+        contentAlignment = Alignment.Center
+    ) {
+        if (checked) {
+            androidx.compose.material3.Icon(
+                androidx.compose.material.icons.Icons.Rounded.Check,
+                null,
+                tint = if (palette.isLight) Color.White else Color.Black,
+                modifier = Modifier.size(size * 0.66f)
+            )
+        }
+    }
+}
+
+/** One UI's "Alle" toggle: the round check with the label underneath. */
+@Composable
+fun OneUiSelectAll(checked: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val palette = LocalAppTheme.current.palette
+    androidx.compose.foundation.layout.Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        OneUiCheckCircle(checked, size = 28.dp)
+        Text(strings.all, color = palette.onBackground, fontSize = 14.sp, maxLines = 1)
     }
 }
 
@@ -183,7 +263,6 @@ private fun SelectionGlassButton(text: String, hazeState: HazeState?, prominent:
     val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
-            .pressScale(interaction, 0.92f)
             .height(44.dp)
             .then(
                 if (prominent) Modifier.clip(CircleShape).background(palette.accent)
@@ -213,6 +292,7 @@ private fun SelectionGlassButton(text: String, hazeState: HazeState?, prominent:
  * offset, which is minus the top content padding. Without that, grids with a large top padding (the
  * iOS title overlay) hit-tested rows below the finger.
  */
+@Composable
 internal fun Modifier.detectDragSelect(
     items: List<MediaItem>,
     gridState: LazyGridState,
@@ -225,7 +305,25 @@ internal fun Modifier.detectDragSelect(
     coroutineScope: CoroutineScope,
     onLongPressRecognized: (Long) -> Unit,
     onLongPressEnded: () -> Unit
-): Modifier = pointerInput(gridState, items) {
+): Modifier {
+    // The gesture handler keeps running across recompositions, so it must read the selection through the latest
+    // callbacks. It used to keep the ones from when it started - "not selecting, nothing selected" - so a second
+    // drag while already selecting started a new selection and replaced everything selected so far.
+    val latestIsSelectionMode = androidx.compose.runtime.rememberUpdatedState(isSelectionMode)
+    val latestSelectedIds = androidx.compose.runtime.rememberUpdatedState(selectedIds)
+    val latestOnStartSelection = androidx.compose.runtime.rememberUpdatedState(onStartSelection)
+    val latestOnSetSelection = androidx.compose.runtime.rememberUpdatedState(onSetSelection)
+    val latestOnUpdateSelectedIds = androidx.compose.runtime.rememberUpdatedState(onUpdateSelectedIds)
+    val latestOnLongPressRecognized = androidx.compose.runtime.rememberUpdatedState(onLongPressRecognized)
+    val latestOnLongPressEnded = androidx.compose.runtime.rememberUpdatedState(onLongPressEnded)
+    return pointerInput(gridState, items) {
+    val isSelectionMode: () -> Boolean = { latestIsSelectionMode.value() }
+    val selectedIds: () -> Set<Long> = { latestSelectedIds.value() }
+    val onStartSelection: (Long) -> Unit = { latestOnStartSelection.value(it) }
+    val onSetSelection: (Long, Boolean) -> Unit = { id, selected -> latestOnSetSelection.value(id, selected) }
+    val onUpdateSelectedIds: (Set<Long>) -> Unit = { latestOnUpdateSelectedIds.value(it) }
+    val onLongPressRecognized: (Long) -> Unit = { latestOnLongPressRecognized.value(it) }
+    val onLongPressEnded: () -> Unit = { latestOnLongPressEnded.value() }
     var dragSelectMode = true
     var autoScrollJob: Job? = null
     var currentTouch = Offset.Zero
@@ -362,4 +460,5 @@ internal fun Modifier.detectDragSelect(
         onDragEnd = { endGesture() },
         onDragCancel = { endGesture() }
     )
+    }
 }

@@ -332,6 +332,63 @@ fun Modifier.pushTransition(
 // Media zoom (grid tile -> fullscreen viewer)
 // ---------------------------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------------------------
+// Album navigation (opening an album, going back up)
+// ---------------------------------------------------------------------------------------------
+
+fun albumNavSpec(language: DesignLanguage): AnimationSpec<Float> = when (language) {
+    DesignLanguage.SAMSUNG_ONEUI -> tween(460, easing = EmphasizedDecelerate)
+    DesignLanguage.GOOGLE_EXPRESSIVE -> spring(dampingRatio = 0.9f, stiffness = 300f)
+    DesignLanguage.IOS_LIQUID_GLASS -> spring(dampingRatio = 1f, stiffness = 280f)
+    DesignLanguage.XIAOMI_HYPEROS -> tween(400, easing = EmphasizedDecelerate)
+}
+
+/**
+ * The album page arriving ([progress] 0 -> 1) from [direction] (1 = deeper, -1 = back up). Quick, but
+ * with enough travel, fade and depth to read as a real page change:
+ * - One UI: slide + fade with a slight grow.
+ * - Material: grows out of the page below with a fade.
+ * - iOS: full-width slide.
+ * - HyperOS: wide slide + fade.
+ */
+fun Modifier.albumNavTransition(
+    language: DesignLanguage,
+    progress: () -> Float,
+    direction: () -> Int,
+    /**
+     * Overrides [progress] while a navigation has happened but its animation has not started yet, so the
+     * new page is hidden from its very first frame instead of flashing up fully shown.
+     */
+    forcedProgress: Float? = null
+): Modifier =
+    graphicsLayer {
+        val p = forcedProgress ?: progress()
+        val c = p.coerceIn(0f, 1f)
+        val w = size.width
+        val d = direction().toFloat()
+        when (language) {
+            DesignLanguage.SAMSUNG_ONEUI -> {
+                translationX = (1f - p) * w * 0.12f * d
+                alpha = (c * 1.35f).coerceIn(0f, 1f)
+                val s = 0.965f + 0.035f * c
+                scaleX = s
+                scaleY = s
+            }
+            DesignLanguage.GOOGLE_EXPRESSIVE -> {
+                translationX = (1f - p) * w * 0.05f * d
+                alpha = (c * 1.6f).coerceIn(0f, 1f)
+                val s = 0.92f + 0.08f * p
+                scaleX = s
+                scaleY = s
+            }
+            DesignLanguage.IOS_LIQUID_GLASS -> translationX = (1f - p) * w * d
+            DesignLanguage.XIAOMI_HYPEROS -> {
+                translationX = (1f - p) * w * 0.3f * d
+                alpha = (c * 1.25f).coerceIn(0f, 1f)
+            }
+        }
+    }
+
 /** Where the last tapped media tile sits on screen, so the viewer can grow out of it. */
 class MediaOpenOrigin {
     private var bounds: Rect? = null

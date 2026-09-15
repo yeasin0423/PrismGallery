@@ -71,8 +71,28 @@ class MediaRepository(private val context: Context) {
 
     private val contentResolver: ContentResolver get() = context.contentResolver
 
+    /**
+     * Root paths of the storage volumes that are mounted right now, or null where that can't be told (API 29).
+     * MediaStore can keep returning rows of a removed SD card; those would show up as blank, unopenable tiles.
+     */
+    private fun mountedStorageRoots(): List<String>? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        val storage = context.getSystemService(StorageManager::class.java) ?: return null
+        return runCatching {
+            storage.storageVolumes
+                .filter { it.state == Environment.MEDIA_MOUNTED || it.state == Environment.MEDIA_MOUNTED_READ_ONLY }
+                .mapNotNull { it.directory?.path }
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
+    }
+
+    /** True for a file on a storage volume that isn't mounted (see [mountedStorageRoots]). */
+    private fun isOnMissingVolume(path: String?, mountedRoots: List<String>?): Boolean =
+        mountedRoots != null && path != null && path.startsWith("/storage/") &&
+            mountedRoots.none { path.startsWith("$it/", ignoreCase = true) }
+
     private val hiddenPrefs = context.getSharedPreferences("amoled_gallery_hidden_prefs", Context.MODE_PRIVATE)
     private val KEY_HIDDEN_BUCKETS = "hidden_bucket_ids"
+    private val KEY_CREATED_SUB_ALBUM_DIRS = "created_sub_album_dirs"
 
     /**
      * Gets set of persistently hidden album BUCKET_IDs.
@@ -116,7 +136,10 @@ class MediaRepository(private val context: Context) {
             MediaStore.Images.Media.DATE_MODIFIED,
             MediaStore.Images.Media.MIME_TYPE,
             MediaStore.Images.Media.DATA,
-            MediaStore.MediaColumns.DATE_TAKEN
+            MediaStore.MediaColumns.DATE_TAKEN,
+            MediaStore.MediaColumns.WIDTH,
+            MediaStore.MediaColumns.HEIGHT,
+            MediaStore.MediaColumns.ORIENTATION
         )
 
         val selection = if (bucketId != null) "${MediaStore.Images.Media.BUCKET_ID} = ?" else null
@@ -149,7 +172,10 @@ class MediaRepository(private val context: Context) {
             MediaStore.Video.Media.DATE_MODIFIED,
             MediaStore.Video.Media.MIME_TYPE,
             MediaStore.Video.Media.DATA,
-            MediaStore.MediaColumns.DATE_TAKEN
+            MediaStore.MediaColumns.DATE_TAKEN,
+            MediaStore.MediaColumns.WIDTH,
+            MediaStore.MediaColumns.HEIGHT,
+            MediaStore.MediaColumns.ORIENTATION
         )
 
         val videoSelection = if (bucketId != null) "${MediaStore.Video.Media.BUCKET_ID} = ?" else null
@@ -202,8 +228,13 @@ class MediaRepository(private val context: Context) {
         val dataColumn = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
         val durationColumn = if (isVideo) cursor.getColumnIndex(MediaStore.Video.Media.DURATION) else -1
         val dateTakenColumn = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN)
+        val widthColumn = cursor.getColumnIndex(MediaStore.MediaColumns.WIDTH)
+        val heightColumn = cursor.getColumnIndex(MediaStore.MediaColumns.HEIGHT)
+        val orientationColumn = cursor.getColumnIndex(MediaStore.MediaColumns.ORIENTATION)
+        val mountedRoots = mountedStorageRoots()
 
         while (cursor.moveToNext()) {
+            if (dataColumn != -1 && isOnMissingVolume(cursor.getString(dataColumn), mountedRoots)) continue
             val id = cursor.getLong(idColumn)
             val dateAdded = if (dateAddedColumn != -1) cursor.getLong(dateAddedColumn) else 0L
             val displayName = if (nameColumn != -1) cursor.getString(nameColumn) ?: "" else ""
@@ -233,7 +264,10 @@ class MediaRepository(private val context: Context) {
                     isTrashed = isTrashed,
                     mimeType = mimeType,
                     dataPath = dataPath,
-                    dateTaken = dateTaken
+                    dateTaken = dateTaken,
+                    width = if (widthColumn != -1) cursor.getInt(widthColumn) else 0,
+                    height = if (heightColumn != -1) cursor.getInt(heightColumn) else 0,
+                    orientation = if (orientationColumn != -1) cursor.getInt(orientationColumn) else 0
                 )
             )
         }
@@ -348,14 +382,17 @@ class MediaRepository(private val context: Context) {
             normalizeDirPath(other.parentDirectoryPath) == parentNormalized
         }.toMutableList()
 
-        // Also check filesystem for newly created empty subdirectories
+        // Also list empty sub-folders on disk - but only those created in this app. Other apps leave
+        // empty helper folders around (e.g. a camera's "Raw"), which would otherwise show up as albums
+        // nobody created. Folders that contain media are real albums and come from MediaStore above.
         if (parentAlbum.directoryPath.isNotBlank()) {
             val parentDir = File(parentAlbum.directoryPath)
+            val createdDirs = getCreatedSubAlbumDirs()
             if (parentDir.exists() && parentDir.isDirectory) {
                 val diskDirs = parentDir.listFiles { file -> file.isDirectory && !file.isHidden }
                 diskDirs?.forEach { subDir ->
                     val normalizedSub = normalizeDirPath(subDir.absolutePath)
-                    if (subAlbums.none { normalizeDirPath(it.directoryPath) == normalizedSub }) {
+                    if (normalizedSub in createdDirs && subAlbums.none { normalizeDirPath(it.directoryPath) == normalizedSub }) {
                         subAlbums.add(
                             AlbumItem(
                                 bucketId = "disk_${subDir.absolutePath.hashCode()}",
@@ -436,7 +473,7 @@ class MediaRepository(private val context: Context) {
 
             // Fast path: On same storage volume with Android 10+ Scoped Storage,
             // updating RELATIVE_PATH physically moves the file on disk via MediaStore
-            if (isSameVolume && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (isSameVolume) {
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.RELATIVE_PATH, targetRelPath)
                 }
@@ -471,9 +508,7 @@ class MediaRepository(private val context: Context) {
                         put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                         put(MediaStore.MediaColumns.MIME_TYPE, item.mimeType)
                         put(MediaStore.MediaColumns.RELATIVE_PATH, targetRelPath)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            put(MediaStore.MediaColumns.IS_PENDING, 1)
-                        }
+                        put(MediaStore.MediaColumns.IS_PENDING, 1)
                     }
 
                     // Resolve the actual target volume so cross-volume copies land on the SD card
@@ -498,11 +533,9 @@ class MediaRepository(private val context: Context) {
                                 }
                             }
                         } finally {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                values.clear()
-                                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                                contentResolver.update(destUri, values, null, null)
-                            }
+                            values.clear()
+                            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                            contentResolver.update(destUri, values, null, null)
                         }
                         if (copied) preserveModifiedTime(destUri, item)
                     }
@@ -765,6 +798,15 @@ class MediaRepository(private val context: Context) {
         }
     }
 
+    /** Normalized paths of the sub-album folders created in this app (shown even while still empty). */
+    private fun getCreatedSubAlbumDirs(): Set<String> =
+        hiddenPrefs.getStringSet(KEY_CREATED_SUB_ALBUM_DIRS, emptySet()) ?: emptySet()
+
+    private fun rememberCreatedSubAlbumDir(dir: File) {
+        val updated = getCreatedSubAlbumDirs() + normalizeDirPath(dir.absolutePath)
+        hiddenPrefs.edit().putStringSet(KEY_CREATED_SUB_ALBUM_DIRS, updated).apply()
+    }
+
     /**
      * Creates a new sub-album folder inside [parentAlbum].
      */
@@ -799,6 +841,7 @@ class MediaRepository(private val context: Context) {
                     return@withContext Result.failure(IllegalStateException(strings.subFolderCreateFailed))
                 }
             }
+            rememberCreatedSubAlbumDir(targetDir)
 
             Result.success(targetDir)
         } catch (e: Exception) {
@@ -860,6 +903,108 @@ class MediaRepository(private val context: Context) {
     /**
      * Free/total space for a storage volume, in bytes.
      */
+    data class AlbumStorage(val bucketId: String, val name: String, val count: Int, val bytes: Long, val coverUri: Uri?)
+
+    /** How much space the photos, videos and the trash take, and each album's share, for the storage page. */
+    data class MediaStorageStats(
+        /** Photos, videos and trash on internal storage. */
+        val photoBytes: Long,
+        val videoBytes: Long,
+        val trashBytes: Long,
+        /** The same on the SD card (0 without one). */
+        val sdPhotoBytes: Long = 0L,
+        val sdVideoBytes: Long = 0L,
+        val sdTrashBytes: Long = 0L,
+        /** Largest first. */
+        val albums: List<AlbumStorage>
+    )
+
+    suspend fun getMediaStorageStats(): MediaStorageStats = withContext(Dispatchers.IO) {
+        val projection = arrayOf(
+            MediaStore.MediaColumns._ID,
+            MediaStore.MediaColumns.SIZE,
+            MediaStore.MediaColumns.BUCKET_ID,
+            MediaStore.MediaColumns.BUCKET_DISPLAY_NAME,
+            MediaStore.MediaColumns.VOLUME_NAME,
+            MediaStore.MediaColumns.DATA
+        )
+        class AlbumTotal(val name: String, var count: Int = 0, var bytes: Long = 0L, var cover: Uri? = null)
+        val albums = HashMap<String, AlbumTotal>()
+        val mountedRoots = mountedStorageRoots()
+
+        /** Sums of [uri] as (internal, SD card): anything not on the primary volume is on the SD card. */
+        fun sumOf(uri: Uri): Pair<Long, Long> {
+            var internal = 0L
+            var sd = 0L
+            try {
+                contentResolver.query(uri, projection, null, null, "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { cursor ->
+                    val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                    val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                    val bucketColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_ID)
+                    val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
+                    val volumeColumn = cursor.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME)
+                    val dataColumn = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+                    while (cursor.moveToNext()) {
+                        if (dataColumn >= 0 && isOnMissingVolume(cursor.getString(dataColumn), mountedRoots)) continue
+                        val size = cursor.getLong(sizeColumn)
+                        val volume = if (volumeColumn >= 0) cursor.getString(volumeColumn) else null
+                        if (volume == null || volume == MediaStore.VOLUME_EXTERNAL_PRIMARY) internal += size else sd += size
+                        val bucket = cursor.getString(bucketColumn) ?: continue
+                        val album = albums.getOrPut(bucket) { AlbumTotal(cursor.getString(nameColumn) ?: strings.unknown) }
+                        album.count++
+                        album.bytes += size
+                        if (album.cover == null) album.cover = ContentUris.withAppendedId(uri, cursor.getLong(idColumn))
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            return internal to sd
+        }
+
+        val imagesUri = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        val videosUri = MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        val (photoBytes, sdPhotoBytes) = sumOf(imagesUri)
+        val (videoBytes, sdVideoBytes) = sumOf(videosUri)
+
+        var trashBytes = 0L
+        var sdTrashBytes = 0L
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bundle = Bundle().apply { putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY) }
+            listOf(imagesUri, videosUri).forEach { uri ->
+                try {
+                    contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.VOLUME_NAME, MediaStore.MediaColumns.DATA), bundle, null)?.use { cursor ->
+                        val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                        val volumeColumn = cursor.getColumnIndex(MediaStore.MediaColumns.VOLUME_NAME)
+                        val dataColumn = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+                        while (cursor.moveToNext()) {
+                            if (dataColumn >= 0 && isOnMissingVolume(cursor.getString(dataColumn), mountedRoots)) continue
+                            val volume = if (volumeColumn >= 0) cursor.getString(volumeColumn) else null
+                            if (volume == null || volume == MediaStore.VOLUME_EXTERNAL_PRIMARY) {
+                                trashBytes += cursor.getLong(sizeColumn)
+                            } else {
+                                sdTrashBytes += cursor.getLong(sizeColumn)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+
+        MediaStorageStats(
+            photoBytes = photoBytes,
+            videoBytes = videoBytes,
+            trashBytes = trashBytes,
+            sdPhotoBytes = sdPhotoBytes,
+            sdVideoBytes = sdVideoBytes,
+            sdTrashBytes = sdTrashBytes,
+            albums = albums.map { (bucketId, album) -> AlbumStorage(bucketId, album.name, album.count, album.bytes, album.cover) }
+                .sortedByDescending { it.bytes }
+        )
+    }
+
     data class StorageSpaceInfo(val freeBytes: Long, val totalBytes: Long)
 
     /**
@@ -917,11 +1062,7 @@ class MediaRepository(private val context: Context) {
             // Update all media items belonging to this album in MediaStore. Items of other apps (camera
             // photos) refuse the update; they are handed back so the user can grant write access.
             val items = getAllMedia(album.bucketId, includeHidden = true)
-            val denied = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                moveToRelativePath(items, newRelPath)
-            } else {
-                emptyList()
-            }
+            val denied = moveToRelativePath(items, newRelPath)
 
             // Trigger rescan of the renamed folder
             targetDir?.let { dir ->

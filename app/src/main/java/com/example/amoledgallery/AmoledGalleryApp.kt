@@ -1,5 +1,4 @@
 package com.example.amoledgallery
-import com.example.amoledgallery.ui.i18n.strings
 
 import android.app.Application
 import android.content.Context
@@ -14,10 +13,6 @@ import com.example.amoledgallery.data.MediaThumbnailFetcher
 import com.example.amoledgallery.data.MediaThumbnailKeyer
 import kotlinx.coroutines.Dispatchers
 import okio.Path.Companion.toOkioPath
-
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.os.Build
 
 /**
  * Manual graphics quality tiers (like a game's video settings).
@@ -61,7 +56,6 @@ class AmoledGalleryApp : Application(), SingletonImageLoader.Factory {
         performanceProfile = loadGraphicsQuality()
         com.example.amoledgallery.ui.theme.ThemeState.load(this)
         com.example.amoledgallery.ui.i18n.LanguageState.load(this)
-        createNotificationChannels()
     }
 
     private fun loadGraphicsQuality(): PerformanceProfile {
@@ -81,21 +75,6 @@ class AmoledGalleryApp : Application(), SingletonImageLoader.Factory {
             totalRam >= 6 * gb -> PerformanceProfile.HIGH
             totalRam >= 3 * gb -> PerformanceProfile.MEDIUM
             else -> PerformanceProfile.LOW
-        }
-    }
-
-    private fun createNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                "move_media_channel",
-                strings.moveChannelName,
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = strings.moveChannelDescription
-                setShowBadge(false)
-            }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            manager?.createNotificationChannel(channel)
         }
     }
 

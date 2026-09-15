@@ -10,3 +10,13 @@
 local.properties
 app/build/
 app/release/
+
+# Release signing (the key itself lives outside the repository)
+keystore.properties
+*.jks
+*.keystore
+
+# Local tooling and design references
+/.kotlin/
+/.claude/
+/Reference Images/

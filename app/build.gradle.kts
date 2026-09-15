@@ -1,7 +1,17 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+// Release signing. The key lives outside the repository; the git-ignored keystore.properties in the project root
+// says where. Without that file (e.g. on F-Droid's build server, which signs with its own key) the release
+// build is left unsigned.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
 }
 
 android {
@@ -9,7 +19,8 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.amoledgallery"
+        // Store identity of Prism Gallery (the Kotlin namespace stays as it is; it is not visible to users).
+        applicationId = "com.prismgallery.app"
         minSdk = 29
         targetSdk = 34
         versionCode = 1
@@ -21,9 +32,20 @@ android {
         }
     }
 
+    signingConfigs {
+        keystoreProperties.getProperty("storeFile")?.let { path ->
+            create("release") {
+                storeFile = file(path)
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

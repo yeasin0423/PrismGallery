@@ -24,8 +24,8 @@ enum class DesignLanguage(val displayName: String, val shortDescription: String)
         "AMOLED-Schwarz, riesiger zentrierter Titel und schwebende Milchglas-Leiste wie in der Samsung Galerie"
     ),
     GOOGLE_EXPRESSIVE(
-        "Google Material 3 Expressive",
-        "Tonale Farbflächen, große weiche Formen, federnde Animationen und wellenförmige Fortschrittsbalken"
+        "Google Gemini",
+        "Google Fotos im Gemini-Look: tiefschwarz mit farbigem Schimmer, schwebende Pillen-Leiste und leuchtende Glaskarten"
     ),
     IOS_LIQUID_GLASS(
         "iOS Liquid Glass",
@@ -33,7 +33,7 @@ enum class DesignLanguage(val displayName: String, val shortDescription: String)
     ),
     XIAOMI_HYPEROS(
         "Xiaomi HyperOS",
-        "Helle, luftige Karten, kompakte Milchglas-Leiste und Dialoge am unteren Bildschirmrand"
+        "Große dünne Titel, runde Album-Cover, gestapelte Menükarten, volle Tab-Leiste und Dialoge am unteren Rand"
     )
 }
 
@@ -77,18 +77,19 @@ fun shapeTokensFor(language: DesignLanguage): AppShapeTokens = when (language) {
         headerTitleSize = 40.sp,
         bottomBarHeight = 76.dp
     )
+    // Google Photos with Gemini's look: photos edge to edge with thin gaps, a floating pill bar, big soft cards.
     DesignLanguage.GOOGLE_EXPRESSIVE -> AppShapeTokens(
         cardCornerRadius = 28.dp,
-        dialogCornerRadius = 28.dp,
-        pillCornerRadius = 20.dp,
+        dialogCornerRadius = 32.dp,
+        pillCornerRadius = 28.dp,
         iconButtonSize = 44.dp,
         useBlur = true,
         motionStyle = MotionStyle.SPRING,
-        gridSpacing = 4.dp,
-        gridItemCornerRadius = 12.dp,
-        gridHorizontalPadding = 8.dp,
-        headerTitleSize = 34.sp,
-        bottomBarHeight = 90.dp
+        gridSpacing = 2.dp,
+        gridItemCornerRadius = 0.dp,
+        gridHorizontalPadding = 0.dp,
+        headerTitleSize = 30.sp,
+        bottomBarHeight = 92.dp
     )
     DesignLanguage.IOS_LIQUID_GLASS -> AppShapeTokens(
         cardCornerRadius = 26.dp,
@@ -103,18 +104,19 @@ fun shapeTokensFor(language: DesignLanguage): AppShapeTokens = when (language) {
         headerTitleSize = 34.sp,
         bottomBarHeight = 86.dp
     )
+    // HyperOS Gallery: square photos edge to edge with hairline gaps, a big thin title, a full-width tab bar.
     DesignLanguage.XIAOMI_HYPEROS -> AppShapeTokens(
-        cardCornerRadius = 20.dp,
-        dialogCornerRadius = 28.dp,
+        cardCornerRadius = 24.dp,
+        dialogCornerRadius = 32.dp,
         pillCornerRadius = 24.dp,
         iconButtonSize = 40.dp,
         useBlur = true,
         motionStyle = MotionStyle.FAST_CUT,
-        gridSpacing = 3.dp,
-        gridItemCornerRadius = 6.dp,
-        gridHorizontalPadding = 12.dp,
-        headerTitleSize = 32.sp,
-        bottomBarHeight = 80.dp
+        gridSpacing = 1.5.dp,
+        gridItemCornerRadius = 0.dp,
+        gridHorizontalPadding = 0.dp,
+        headerTitleSize = 40.sp,
+        bottomBarHeight = 66.dp
     )
 }
 
@@ -169,6 +171,30 @@ val AppColorPalette.onAccent: Color get() = if (accent.luminance() > 0.45f) Colo
 fun AppColorPalette.frost(darkBase: Color, alpha: Float): Color =
     if (isLight) Color.White.copy(alpha = alpha) else darkBase.copy(alpha = alpha)
 
+private fun contrastRatio(a: Color, b: Color): Float {
+    val la = a.luminance()
+    val lb = b.luminance()
+    return (maxOf(la, lb) + 0.05f) / (minOf(la, lb) + 0.05f)
+}
+
+/**
+ * The palette with an accent that stays visible: accents are drawn as text and icons on the background
+ * and on cards, so a custom accent too close to them (white on a light theme, black on AMOLED black) is
+ * pulled towards [AppColorPalette.onBackground] until it reads again. Presets pass unchanged.
+ */
+fun AppColorPalette.withReadableAccent(): AppColorPalette {
+    val minContrast = 2.4f
+    fun readable(c: Color) = contrastRatio(c, background) >= minContrast && contrastRatio(c, surface) >= minContrast * 0.8f
+    if (readable(accent)) return this
+    var t = 0.1f
+    while (t < 1f) {
+        val candidate = androidx.compose.ui.graphics.lerp(accent, onBackground, t)
+        if (readable(candidate)) return copy(accent = candidate)
+        t += 0.1f
+    }
+    return copy(accent = onBackground)
+}
+
 /** Destructive action color tuned for the palette's brightness. */
 val AppColorPalette.destructive: Color get() = if (isLight) Color(0xFFE5302E) else Color(0xFFFF6961)
 
@@ -191,6 +217,20 @@ private val OneUiLight = AppColorPalette(
     textMuted = Color(0xFF7A7A7A), surface = Color(0xFFFFFFFF),
     surfaceVariant = Color(0xFFEAEAEA), accent = Color(0xFF0A7CFF),
     cardBorder = Color(0xFFE0E0E0), overlayScrim = Color(0x66000000)
+)
+private val GeminiDark = AppColorPalette(
+    id = "expressive_mint", label = "Gemini Blau",
+    background = Color(0xFF000000), onBackground = Color(0xFFE3E3E3),
+    textMuted = Color(0xFF9AA0A6), surface = Color(0xFF1E1F20),
+    surfaceVariant = Color(0xFF2A2B2E), accent = Color(0xFF3D7BF2),
+    cardBorder = Color(0xFF3C4043), overlayScrim = Color(0x99000000)
+)
+private val GeminiLight = AppColorPalette(
+    id = "expressive_light_mint", label = "Gemini Hell Blau",
+    background = Color(0xFFF8F8F8), onBackground = Color(0xFF1F1F1F),
+    textMuted = Color(0xFF5F6368), surface = Color(0xFFFFFFFF),
+    surfaceVariant = Color(0xFFEDEFF2), accent = Color(0xFF0B57D0),
+    cardBorder = Color(0xFFDADCE0), overlayScrim = Color(0x66000000)
 )
 private val IosDark = AppColorPalette(
     id = "glass_blue", label = "Glass Blau",
@@ -215,9 +255,9 @@ private val HyperOsLight = AppColorPalette(
 )
 private val HyperOsDark = AppColorPalette(
     id = "hyperos_dark", label = "HyperOS Dunkel Blau",
-    background = Color(0xFF111111), onBackground = Color(0xFFF2F2F2),
-    textMuted = Color(0xFF8A8A8E), surface = Color(0xFF1E1E1E),
-    surfaceVariant = Color(0xFF2A2A2A), accent = Color(0xFF3D8BFF),
+    background = Color(0xFF000000), onBackground = Color(0xFFF2F2F2),
+    textMuted = Color(0xFF8C8C8C), surface = Color(0xFF1E1E1F),
+    surfaceVariant = Color(0xFF262628), accent = Color(0xFF3482FF),
     cardBorder = Color(0xFF2C2C2C), overlayScrim = Color(0x9E000000)
 )
 
@@ -234,51 +274,15 @@ fun presetsFor(language: DesignLanguage): List<AppColorPalette> = when (language
         OneUiLight.variant("oneui_light_lavender", "OneUI Hell Lavendel", Color(0xFF6F5FD6)),
         OneUiLight.variant("oneui_light_green", "OneUI Hell Grün", Color(0xFF1E9E5A))
     )
-    // Material 3 Expressive is tonal: every surface carries the accent's hue, so each accent has its
-    // own full palette.
+    // Gemini: neutral black (or white) surfaces; the accent only colours icons, selections and buttons.
+    // The ids stay from the previous Material palettes so a saved choice keeps its slot.
     DesignLanguage.GOOGLE_EXPRESSIVE -> listOf(
-        AppColorPalette(
-            id = "expressive_mint", label = "Material Petrol",
-            background = Color(0xFF0B1B1C), onBackground = Color(0xFFDCF3F0),
-            textMuted = Color(0xFF8FB0AC), surface = Color(0xFF132A2B),
-            surfaceVariant = Color(0xFF1C3939), accent = Color(0xFF6FF0DA),
-            cardBorder = Color(0xFF2A4A49), overlayScrim = Color(0x99041011)
-        ),
-        AppColorPalette(
-            id = "expressive_violet", label = "Material Violett",
-            background = Color(0xFF131020), onBackground = Color(0xFFEAE0FA),
-            textMuted = Color(0xFFA097B4), surface = Color(0xFF1D182F),
-            surfaceVariant = Color(0xFF2A2341), accent = Color(0xFFC9B4FF),
-            cardBorder = Color(0xFF3A3052), overlayScrim = Color(0x99080415)
-        ),
-        AppColorPalette(
-            id = "expressive_amber", label = "Material Bernstein",
-            background = Color(0xFF191309), onBackground = Color(0xFFF6E7D0),
-            textMuted = Color(0xFFB3A084), surface = Color(0xFF251C10),
-            surfaceVariant = Color(0xFF352918), accent = Color(0xFFFFC66E),
-            cardBorder = Color(0xFF4A3A22), overlayScrim = Color(0x99120B03)
-        ),
-        AppColorPalette(
-            id = "expressive_light_mint", label = "Material Hell Petrol",
-            background = Color(0xFFF1FAF7), onBackground = Color(0xFF0F1F1C),
-            textMuted = Color(0xFF5C736E), surface = Color(0xFFE2F2EE),
-            surfaceVariant = Color(0xFFD0E7E1), accent = Color(0xFF00796B),
-            cardBorder = Color(0xFFBFD6D0), overlayScrim = Color(0x66001410)
-        ),
-        AppColorPalette(
-            id = "expressive_light_violet", label = "Material Hell Violett",
-            background = Color(0xFFF8F4FF), onBackground = Color(0xFF1D1829),
-            textMuted = Color(0xFF6C6480), surface = Color(0xFFEEE7FB),
-            surfaceVariant = Color(0xFFE0D6F5), accent = Color(0xFF6750A4),
-            cardBorder = Color(0xFFD0C4E6), overlayScrim = Color(0x66080415)
-        ),
-        AppColorPalette(
-            id = "expressive_light_amber", label = "Material Hell Bernstein",
-            background = Color(0xFFFFF8F0), onBackground = Color(0xFF261A0A),
-            textMuted = Color(0xFF7D6B54), surface = Color(0xFFF8EBDA),
-            surfaceVariant = Color(0xFFEEDCC4), accent = Color(0xFF8C5000),
-            cardBorder = Color(0xFFDECBB0), overlayScrim = Color(0x66120B03)
-        )
+        GeminiDark,
+        GeminiDark.variant("expressive_violet", "Gemini Violett", Color(0xFF9B5CF0)),
+        GeminiDark.variant("expressive_amber", "Gemini Grün", Color(0xFF2E9E54)),
+        GeminiLight,
+        GeminiLight.variant("expressive_light_violet", "Gemini Hell Violett", Color(0xFF8430CE)),
+        GeminiLight.variant("expressive_light_amber", "Gemini Hell Grün", Color(0xFF188038))
     )
     DesignLanguage.IOS_LIQUID_GLASS -> listOf(
         IosDark,

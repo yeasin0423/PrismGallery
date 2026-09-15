@@ -10,6 +10,7 @@ import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -347,7 +348,7 @@ private fun DialogFrame(
                             DesignLanguage.SAMSUNG_ONEUI -> 20.sp
                             DesignLanguage.GOOGLE_EXPRESSIVE -> 24.sp
                             DesignLanguage.IOS_LIQUID_GLASS -> 17.sp
-                            DesignLanguage.XIAOMI_HYPEROS -> 18.sp
+                            DesignLanguage.XIAOMI_HYPEROS -> 21.sp
                         },
                         fontWeight = when (language) {
                             DesignLanguage.GOOGLE_EXPRESSIVE -> FontWeight.Normal
@@ -367,8 +368,12 @@ private fun DialogFrame(
                             DesignLanguage.GOOGLE_EXPRESSIVE, DesignLanguage.XIAOMI_HYPEROS -> palette.textMuted
                             else -> palette.onBackground.copy(alpha = 0.86f)
                         },
-                        fontSize = if (language == DesignLanguage.IOS_LIQUID_GLASS) 14.sp else 15.sp,
-                        lineHeight = 21.sp,
+                        fontSize = when (language) {
+                            DesignLanguage.IOS_LIQUID_GLASS -> 14.sp
+                            DesignLanguage.XIAOMI_HYPEROS -> 17.sp
+                            else -> 15.sp
+                        },
+                        lineHeight = if (language == DesignLanguage.XIAOMI_HYPEROS) 24.sp else 21.sp,
                         textAlign = textAlign,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -397,11 +402,8 @@ private fun Modifier.dialogSurface(shape: Shape): Modifier {
             GlassSpec(palette.frost(Color(0xFF282828), 0.80f), palette.frost(Color(0xFF282828), 1f), 44.dp, GlassRim.Subtle),
             rootHaze
         )
-        DesignLanguage.GOOGLE_EXPRESSIVE -> this.glass(
-            shape,
-            GlassSpec(lerp(palette.surfaceVariant, palette.accent, 0.08f).copy(alpha = 0.82f), lerp(palette.surfaceVariant, palette.accent, 0.08f), 40.dp, GlassRim.Subtle),
-            rootHaze
-        )
+        // Gemini's glowing translucent box.
+        DesignLanguage.GOOGLE_EXPRESSIVE -> this.geminiGlass(shape, rootHaze, tintAlpha = 0.74f)
         DesignLanguage.IOS_LIQUID_GLASS -> this.glass(
             shape,
             if (palette.isLight) {
@@ -414,7 +416,7 @@ private fun Modifier.dialogSurface(shape: Shape): Modifier {
         DesignLanguage.XIAOMI_HYPEROS -> this
             .shadow(24.dp, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.25f))
             .clip(shape)
-            .background(palette.surface)
+            .background(if (palette.isLight) palette.surface else palette.surfaceVariant)
     }
 }
 
@@ -523,31 +525,34 @@ private fun DialogButtons(buttons: List<DialogButton>) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // HyperOS: wide pills on a lighter grey; cancel in soft white, delete in red.
             buttons.forEach { button ->
                 val primary = button.style == DialogButtonStyle.Primary
+                val interaction = remember { MutableInteractionSource() }
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(50.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                        .pressScale(interaction, 0.96f)
+                        .height(56.dp)
+                        .clip(CircleShape)
                         .background(
                             when {
                                 primary && button.enabled -> palette.accent
                                 primary -> palette.accent.copy(alpha = 0.35f)
-                                else -> palette.surfaceVariant
+                                else -> lerp(if (palette.isLight) palette.surfaceVariant else palette.surfaceVariant, palette.onBackground, if (palette.isLight) 0.02f else 0.10f)
                             }
                         )
-                        .clickable(enabled = button.enabled, onClick = button.onClick),
+                        .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(), enabled = button.enabled, onClick = button.onClick),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = button.text,
                         color = when (button.style) {
-                            DialogButtonStyle.Primary -> Color.White
+                            DialogButtonStyle.Primary -> palette.onAccent
                             DialogButtonStyle.Destructive -> palette.destructive
-                            else -> palette.onBackground
+                            else -> palette.onBackground.copy(alpha = 0.8f)
                         },
-                        fontSize = 16.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -579,7 +584,7 @@ private fun IosCapsuleButton(button: DialogButton, modifier: Modifier) {
         Text(
             text = button.text,
             color = when (button.style) {
-                DialogButtonStyle.Primary -> Color.White
+                DialogButtonStyle.Primary -> palette.onAccent
                 DialogButtonStyle.Destructive -> palette.destructive
                 else -> palette.onBackground
             }.let { if (button.enabled) it else it.copy(alpha = 0.5f) },
@@ -845,6 +850,8 @@ data class MenuEntry(
     val icon: ImageVector? = null,
     val checked: Boolean = false,
     val destructive: Boolean = false,
+    /** HyperOS shows each group of entries as its own stacked card (e.g. actions, then the view choice). */
+    val group: Int = 0,
     val onClick: () -> Unit
 )
 
@@ -904,39 +911,65 @@ private fun PopupMenuFrame(
                 val shape = RoundedCornerShape(
                     when (language) {
                         DesignLanguage.SAMSUNG_ONEUI -> 26.dp
-                        DesignLanguage.GOOGLE_EXPRESSIVE -> 18.dp
+                        DesignLanguage.GOOGLE_EXPRESSIVE -> 30.dp
                         DesignLanguage.IOS_LIQUID_GLASS -> 26.dp
-                        DesignLanguage.XIAOMI_HYPEROS -> 20.dp
+                        DesignLanguage.XIAOMI_HYPEROS -> 24.dp
                     }
                 )
-                Column(
-                    modifier = Modifier
-                        .graphicsLayer {
-                            val p = progress
-                            alpha = p.coerceIn(0f, 1f)
-                            val s = 0.82f + 0.18f * p
-                            scaleX = s
-                            scaleY = s
-                            transformOrigin = TransformOrigin(1f, 0f)
-                        }
-                        .widthIn(min = 196.dp, max = 290.dp)
-                        .width(IntrinsicSize.Max)
-                        .menuSurface(shape)
-                        .padding(vertical = if (language == DesignLanguage.GOOGLE_EXPRESSIVE) 6.dp else 6.dp)
-                ) {
-                    val anyChecked = entries.any { it.checked }
-                    entries.forEachIndexed { index, entry ->
-                        if (index > 0 && language == DesignLanguage.IOS_LIQUID_GLASS) {
-                            Box(
+                val popIn = Modifier.graphicsLayer {
+                    val p = progress
+                    alpha = p.coerceIn(0f, 1f)
+                    val s = 0.82f + 0.18f * p
+                    scaleX = s
+                    scaleY = s
+                    transformOrigin = TransformOrigin(1f, 0f)
+                }
+                if (language == DesignLanguage.XIAOMI_HYPEROS) {
+                    Column(
+                        modifier = popIn
+                            .widthIn(min = 236.dp, max = 300.dp)
+                            .width(IntrinsicSize.Max),
+                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)
+                    ) {
+                        entries.groupBy { it.group }.toSortedMap().values.forEach { group ->
+                            val anyChecked = group.any { it.checked }
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(0.5.dp)
-                                    .background(palette.onBackground.copy(alpha = 0.12f))
-                            )
+                                    .menuSurface(shape)
+                                    .padding(vertical = if (anyChecked) 0.dp else 6.dp)
+                            ) {
+                                group.forEach { entry ->
+                                    MenuRow(entry, anyChecked) {
+                                        onDismissRequest()
+                                        entry.onClick()
+                                    }
+                                }
+                            }
                         }
-                        MenuRow(entry, anyChecked) {
-                            onDismissRequest()
-                            entry.onClick()
+                    }
+                } else {
+                    Column(
+                        modifier = popIn
+                            .widthIn(min = 196.dp, max = 290.dp)
+                            .width(IntrinsicSize.Max)
+                            .menuSurface(shape)
+                            .padding(vertical = if (language == DesignLanguage.GOOGLE_EXPRESSIVE) 10.dp else 6.dp)
+                    ) {
+                        val anyChecked = entries.any { it.checked }
+                        entries.forEachIndexed { index, entry ->
+                            if (index > 0 && language == DesignLanguage.IOS_LIQUID_GLASS) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(0.5.dp)
+                                        .background(palette.onBackground.copy(alpha = 0.12f))
+                                )
+                            }
+                            MenuRow(entry, anyChecked) {
+                                onDismissRequest()
+                                entry.onClick()
+                            }
                         }
                     }
                 }
@@ -967,16 +1000,17 @@ private fun Modifier.menuSurface(shape: Shape): Modifier {
     val palette = theme.palette
     val rootHaze = LocalRootHaze.current
     return when (theme.language) {
-        DesignLanguage.SAMSUNG_ONEUI -> this.glass(
-            shape,
-            GlassSpec(palette.frost(Color(0xFF2A2A2A), 0.78f), palette.frost(Color(0xFF2A2A2A), 1f), 32.dp, GlassRim.Subtle),
-            rootHaze
-        )
-        DesignLanguage.GOOGLE_EXPRESSIVE -> this.glass(
-            shape,
-            GlassSpec(lerp(palette.surfaceVariant, palette.accent, 0.08f).copy(alpha = 0.82f), lerp(palette.surfaceVariant, palette.accent, 0.08f), 32.dp, GlassRim.Subtle),
-            rootHaze
-        )
+        // One UI 8 popups are a solid grey card.
+        DesignLanguage.SAMSUNG_ONEUI -> this
+            .shadow(16.dp, shape, ambientColor = Color.Black.copy(alpha = 0.3f), spotColor = Color.Black.copy(alpha = 0.3f))
+            .clip(shape)
+            .background(if (palette.isLight) Color.White else Color(0xFF3A3A3C))
+        // Gemini menus: a black card with a hairline edge; the accent marks the chosen entry.
+        DesignLanguage.GOOGLE_EXPRESSIVE -> this
+            .shadow(14.dp, shape, ambientColor = Color.Black.copy(alpha = 0.35f), spotColor = Color.Black.copy(alpha = 0.35f))
+            .clip(shape)
+            .background(if (palette.isLight) Color.White else Color(0xFF0C0D0E))
+            .border(1.dp, palette.onBackground.copy(alpha = if (palette.isLight) 0.08f else 0.10f), shape)
         DesignLanguage.IOS_LIQUID_GLASS -> this.glass(
             shape,
             if (palette.isLight) {
@@ -989,7 +1023,7 @@ private fun Modifier.menuSurface(shape: Shape): Modifier {
         DesignLanguage.XIAOMI_HYPEROS -> this
             .shadow(18.dp, shape, ambientColor = Color.Black.copy(alpha = 0.2f), spotColor = Color.Black.copy(alpha = 0.2f))
             .clip(shape)
-            .background(palette.surface)
+            .background(if (palette.isLight) palette.surface else palette.surfaceVariant)
     }
 }
 
@@ -1003,24 +1037,35 @@ private fun MenuRow(entry: MenuEntry, anyChecked: Boolean, onClick: () -> Unit) 
         else -> palette.onBackground
     }
     when (theme.language) {
-        DesignLanguage.GOOGLE_EXPRESSIVE -> Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 1.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(if (entry.checked) palette.accent.copy(alpha = 0.16f) else Color.Transparent)
-                .clickable(onClick = onClick)
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (entry.icon != null) {
-                Icon(entry.icon, null, tint = textColor, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(12.dp))
-            }
-            Text(entry.text, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-            if (entry.checked) {
-                Spacer(modifier = Modifier.width(12.dp))
-                Icon(Icons.Rounded.Check, null, tint = palette.accent, modifier = Modifier.size(18.dp))
+        DesignLanguage.GOOGLE_EXPRESSIVE -> {
+            // A neutral (white/grey/black) accent on its own tinted pill is unreadable: use the text colour instead.
+            val neutral = isNeutralColor(palette.accent)
+            val rowText = if (entry.checked && neutral) palette.onBackground else textColor
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 2.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(
+                        when {
+                            !entry.checked -> Color.Transparent
+                            neutral -> palette.onBackground.copy(alpha = if (palette.isLight) 0.08f else 0.12f)
+                            else -> vividAccent(palette.accent).copy(alpha = if (palette.isLight) 0.12f else 0.22f)
+                        }
+                    )
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (entry.icon != null) {
+                    Icon(entry.icon, null, tint = rowText, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
+                Text(entry.text, color = rowText, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                if (entry.checked) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Icon(Icons.Rounded.Check, null, tint = if (neutral) palette.onBackground else palette.accent, modifier = Modifier.size(18.dp))
+                }
             }
         }
 
@@ -1045,26 +1090,39 @@ private fun MenuRow(entry: MenuEntry, anyChecked: Boolean, onClick: () -> Unit) 
             }
         }
 
-        DesignLanguage.SAMSUNG_ONEUI, DesignLanguage.XIAOMI_HYPEROS -> Row(
+        DesignLanguage.SAMSUNG_ONEUI -> Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .padding(
-                    horizontal = if (theme.language == DesignLanguage.SAMSUNG_ONEUI) 24.dp else 20.dp,
-                    vertical = 14.dp
-                ),
+                .padding(horizontal = 30.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 entry.text,
                 color = textColor,
-                fontSize = 16.sp,
+                fontSize = 19.sp,
                 fontWeight = if (entry.checked) FontWeight.SemiBold else FontWeight.Normal,
                 modifier = Modifier.weight(1f)
             )
-            if (entry.checked && theme.language == DesignLanguage.XIAOMI_HYPEROS) {
+        }
+
+        // HyperOS: the chosen entry fills its row with an accent wash, with accent icon, text and check.
+        DesignLanguage.XIAOMI_HYPEROS -> Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(if (entry.checked) palette.accent.copy(alpha = if (palette.isLight) 0.10f else 0.18f) else Color.Transparent)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 24.dp, vertical = 17.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (anyChecked && entry.icon != null) {
+                Icon(entry.icon, null, tint = if (entry.checked) palette.accent else palette.onBackground, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(18.dp))
+            }
+            Text(entry.text, color = textColor, fontSize = 17.sp, modifier = Modifier.weight(1f))
+            if (entry.checked) {
                 Spacer(modifier = Modifier.width(16.dp))
-                Icon(Icons.Rounded.Check, null, tint = palette.accent, modifier = Modifier.size(20.dp))
+                Icon(Icons.Rounded.Check, null, tint = palette.accent, modifier = Modifier.size(24.dp))
             }
         }
     }

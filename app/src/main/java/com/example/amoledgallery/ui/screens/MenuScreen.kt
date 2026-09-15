@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -24,6 +25,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Info
@@ -50,7 +53,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.amoledgallery.PerformanceProfile
@@ -59,18 +61,25 @@ import com.example.amoledgallery.ui.components.LargeHeader
 import com.example.amoledgallery.ui.design.DialogButton
 import com.example.amoledgallery.ui.design.DialogButtonStyle
 import com.example.amoledgallery.ui.design.ExpressiveCookieShape
+import com.example.amoledgallery.ui.design.HazeSource
 import com.example.amoledgallery.ui.design.ListRow
 import com.example.amoledgallery.ui.design.ThemedCard
 import com.example.amoledgallery.ui.design.ThemedDialog
+import com.example.amoledgallery.ui.design.ThemedIconButton
 import com.example.amoledgallery.ui.design.ThemedListSection
 import com.example.amoledgallery.ui.design.ThemedProgressBar
 import com.example.amoledgallery.ui.design.ThemedRadioIndicator
 import com.example.amoledgallery.ui.design.ThemedSectionHeader
 import com.example.amoledgallery.ui.design.ThemedSegmentedControl
 import com.example.amoledgallery.ui.design.ThemedSheet
+import com.example.amoledgallery.ui.design.ThemedTopBar
 import com.example.amoledgallery.ui.design.bottomBarContentPadding
 import com.example.amoledgallery.ui.design.pressScale
 import com.example.amoledgallery.ui.design.selectionPop
+import com.example.amoledgallery.ui.design.pushSpec
+import com.example.amoledgallery.ui.design.pushTransition
+import com.example.amoledgallery.ui.design.screenBackground
+import com.example.amoledgallery.ui.design.blockTouchesBelow
 import com.example.amoledgallery.ui.theme.AppColorPalette
 import com.example.amoledgallery.ui.theme.CUSTOM_PALETTE_ID
 import com.example.amoledgallery.ui.theme.DesignLanguage
@@ -79,10 +88,13 @@ import com.example.amoledgallery.ui.theme.ThemeState
 import com.example.amoledgallery.ui.theme.isLight
 import com.example.amoledgallery.ui.theme.onAccent
 import com.example.amoledgallery.ui.theme.presetsFor
-import kotlinx.coroutines.delay
+import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
+
+/** The app's full name, shown on the info pages; the launcher label stays "Gallery". */
+internal const val APP_FULL_NAME = "Prism Gallery"
 
 /** Sections of the settings sheet; every menu entry opens the sheet scrolled to its own section. */
 enum class SettingsSection { DESIGN, SETTINGS, STORAGE, INFO }
@@ -92,7 +104,8 @@ enum class SettingsSection { DESIGN, SETTINGS, STORAGE, INFO }
  * - One UI: huge centred title, two big shortcut tiles, a list card with blue value summaries.
  * - Material 3 Expressive: a tonal storage card with the wavy progress indicator, segmented lists with
  *   cookie-shaped icons.
- * - iOS: Settings-style inset grouped lists with colored icon squares and trailing values.
+ * - iOS: the Settings app - a pinned centred "Einstellungen" title over the glass, header-less inset grouped
+ *   lists with icon squares in the accent colour and trailing values.
  * - HyperOS: light cards - shortcut cards with pastel icon circles, a storage card, a chevron list.
  *
  * Design, Einstellungen, Speicher and Info all live in one settings sheet, and each entry opens it
@@ -111,12 +124,21 @@ fun MenuScreen(
     onSetGraphicsQuality: (PerformanceProfile) -> Unit = {},
     onOpenFavorites: () -> Unit,
     onOpenTrash: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // iOS settings pages
+    loadStorageStats: suspend () -> com.example.amoledgallery.data.MediaRepository.MediaStorageStats? = { null },
+    onEmptyTrash: () -> Unit = {},
+    onOpenLibrary: () -> Unit = {},
+    /** One UI: its settings are a pushed page without the tab bar, so they need their own way back. */
+    onBack: () -> Unit = {},
+    /** Reports whether a settings page is pushed over the menu (iOS hides the tab bar then). */
+    onSettingsPageOpenChanged: (Boolean) -> Unit = {}
 ) {
     var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
     val theme = LocalAppTheme.current
     val palette = theme.palette
     val language = theme.language
+    val isIos = language == DesignLanguage.IOS_LIQUID_GLASS
 
     val favoritesText = strings.items(favoriteCount)
     val trashText = strings.items(trashedCount)
@@ -130,138 +152,250 @@ fun MenuScreen(
     } else {
         0f
     }
-    val openDesign = { settingsSection = SettingsSection.DESIGN }
-    val openSettings = { settingsSection = SettingsSection.SETTINGS }
-    val openStorage = { settingsSection = SettingsSection.STORAGE }
-    val openInfo = { settingsSection = SettingsSection.INFO }
+    // iOS and HyperOS push each entry as its own page, like their Settings apps; the others open the shared sheet.
+    val isHyperOs = language == DesignLanguage.XIAOMI_HYPEROS
+    val isOneUi = language == DesignLanguage.SAMSUNG_ONEUI
+    val isGoogle = language == DesignLanguage.GOOGLE_EXPRESSIVE
+    val usesPages = isIos || isHyperOs || isOneUi || isGoogle
+    var page by remember { mutableStateOf<SettingsSection?>(null) }
+    val openSection: (SettingsSection) -> Unit = { if (usesPages) page = it else settingsSection = it }
+    val openDesign = { openSection(SettingsSection.DESIGN) }
+    val openSettings = { openSection(SettingsSection.SETTINGS) }
+    val openStorage = { openSection(SettingsSection.STORAGE) }
+    val openInfo = { openSection(SettingsSection.INFO) }
+    // The last page stays shown while it slides back out.
+    val lastPage = remember { arrayOf(SettingsSection.DESIGN) }
+    page?.let { lastPage[0] = it }
+    val pageProgress = androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (page != null) 1f else 0f,
+        animationSpec = pushSpec(language),
+        label = "settings_page_push"
+    )
+    val pageShown by remember { androidx.compose.runtime.derivedStateOf { pageProgress.value > 0.001f } }
+    // Composed only while a page is open: a handler added later takes priority over the tab's own back handler,
+    // which merely enabling an always-present one would not.
+    if (page != null) {
+        androidx.activity.compose.BackHandler { page = null }
+    }
+    LaunchedEffect(page != null) {
+        onSettingsPageOpenChanged(page != null)
+        com.example.amoledgallery.ui.design.GeminiVisits.bump()
+    }
+    // Picking a design whose settings take the other form carries the open section over to it, so the settings
+    // switch to the new design at once instead of staying in the old form until the menu is reopened.
+    LaunchedEffect(usesPages) {
+        if (usesPages && settingsSection != null) {
+            page = settingsSection
+            settingsSection = null
+        } else if (!usesPages && page != null) {
+            settingsSection = page
+            page = null
+        }
+    }
 
     val menuScroll = rememberScrollState()
     // One UI's big title fades out while the page scrolls instead of sliding under the status bar.
     val headerCollapsePx = with(androidx.compose.ui.platform.LocalDensity.current) { 220.dp.toPx() }
-    Column(
-        modifier = modifier
+    // Backdrop for iOS's pinned title bar, which blurs the list scrolling underneath it.
+    val menuHaze = remember { HazeState() }
+
+    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(menuScroll)
+            .then(if (usesPages) Modifier.pushTransition(language, { pageProgress.value }, isTop = false) else Modifier)
     ) {
-        LargeHeader(
-            title = strings.tabMenu,
-            collapseFraction = { (menuScroll.value / headerCollapsePx).coerceIn(0f, 1f) }
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = if (language == DesignLanguage.GOOGLE_EXPRESSIVE || language == DesignLanguage.XIAOMI_HYPEROS) 12.dp else 16.dp)
-                .padding(bottom = bottomBarContentPadding(24.dp)),
-            verticalArrangement = Arrangement.spacedBy(if (language == DesignLanguage.IOS_LIQUID_GLASS) 26.dp else 16.dp)
-        ) {
-            when (language) {
-                DesignLanguage.SAMSUNG_ONEUI -> {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OneUiShortcutTile(Icons.Rounded.Favorite, Color(0xFFFF5A7A), strings.favorites, favoritesText, Modifier.weight(1f), onOpenFavorites)
-                        OneUiShortcutTile(Icons.Rounded.Delete, Color(0xFFFFA24C), strings.trash, trashText, Modifier.weight(1f), onOpenTrash)
-                    }
-                    ThemedListSection(
-                        rows = listOf(
-                            ListRow(strings.design, subtitle = "${ThemeState.designLanguage.displayName} · ${strings.paletteLabel(ThemeState.palette)}", icon = Icons.Rounded.Palette, iconColor = Color(0xFFB39DFF), onClick = openDesign),
-                            ListRow(strings.settings, subtitle = strings.graphicsQuality, icon = Icons.Rounded.Settings, iconColor = palette.onBackground, onClick = openSettings),
-                            ListRow(strings.storage, subtitle = storageText, icon = Icons.Rounded.Storage, iconColor = Color(0xFF4FC3F7), onClick = openStorage),
-                            ListRow(strings.info, subtitle = strings.version(appVersionName), icon = Icons.Rounded.Info, iconColor = palette.textMuted, onClick = openInfo)
-                        )
-                    )
-                }
-
-                DesignLanguage.GOOGLE_EXPRESSIVE -> {
-                    val interaction = remember { MutableInteractionSource() }
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .pressScale(interaction, 0.98f)
-                            .clip(RoundedCornerShape(30.dp))
-                            .background(lerp(palette.surfaceVariant, palette.accent, 0.14f))
-                            .clickable(interactionSource = interaction, indication = null, onClick = openStorage)
-                            .padding(22.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(52.dp)
-                                    .clip(ExpressiveCookieShape)
-                                    .background(palette.accent),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Rounded.Storage, null, tint = palette.onAccent, modifier = Modifier.size(26.dp))
-                            }
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Column {
-                                Text(strings.deviceStorage, color = palette.onBackground, fontSize = 20.sp, fontWeight = FontWeight.Medium)
-                                Text(storageText, color = palette.textMuted, fontSize = 14.sp)
+        HazeSource(menuHaze, Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(menuScroll)
+            ) {
+                if (isIos) {
+                    Spacer(modifier = Modifier.statusBarsPadding().height(72.dp))
+                } else {
+                    LargeHeader(
+                        title = if (isOneUi) strings.settings else strings.tabMenu,
+                        collapseFraction = { (menuScroll.value / headerCollapsePx).coerceIn(0f, 1f) },
+                        actions = {
+                            if (isOneUi || isHyperOs) {
+                                ThemedIconButton(
+                                    icon = if (isOneUi) Icons.AutoMirrored.Rounded.ArrowBackIos else Icons.AutoMirrored.Rounded.ArrowBack,
+                                    contentDescription = strings.back,
+                                    onClick = onBack
+                                )
+                                Spacer(modifier = Modifier.weight(1f))
                             }
                         }
-                        Spacer(modifier = Modifier.height(20.dp))
-                        ThemedProgressBar(progress = usedFraction)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = strings.percentUsed((usedFraction * 100).roundToInt()),
-                            color = palette.textMuted,
-                            fontSize = 13.sp
-                        )
-                    }
-                    ThemedListSection(
-                        header = strings.library,
-                        rows = listOf(
-                            ListRow(strings.favorites, subtitle = favoritesText, icon = Icons.Rounded.Favorite, iconColor = Color(0xFFFF8AB3), onClick = onOpenFavorites),
-                            ListRow(strings.trash, subtitle = trashText, icon = Icons.Rounded.Delete, iconColor = Color(0xFFFFB870), onClick = onOpenTrash)
-                        )
-                    )
-                    ThemedListSection(
-                        header = "App",
-                        rows = listOf(
-                            ListRow(strings.designAndColors, subtitle = ThemeState.designLanguage.displayName, icon = Icons.Rounded.Palette, iconColor = Color(0xFFB39DFF), onClick = openDesign),
-                            ListRow(strings.settings, subtitle = strings.graphicsQuality, icon = Icons.Rounded.Settings, iconColor = palette.accent, onClick = openSettings),
-                            ListRow(strings.info, subtitle = strings.version(appVersionName), icon = Icons.Rounded.Info, iconColor = Color(0xFF90CAF9), onClick = openInfo)
-                        )
                     )
                 }
 
-                DesignLanguage.IOS_LIQUID_GLASS -> {
-                    ThemedListSection(
-                        header = strings.mediaLibrary,
-                        rows = listOf(
-                            ListRow(strings.favorites, icon = Icons.Rounded.Favorite, iconColor = Color(0xFFFF375F), value = "$favoriteCount", onClick = onOpenFavorites),
-                            ListRow(strings.recentlyDeleted, icon = Icons.Rounded.Delete, iconColor = Color(0xFF8E8E93), value = "$trashedCount", onClick = onOpenTrash)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = when (language) {
+                                DesignLanguage.GOOGLE_EXPRESSIVE -> 12.dp
+                                DesignLanguage.XIAOMI_HYPEROS -> 0.dp
+                                else -> 16.dp
+                            }
                         )
-                    )
-                    ThemedListSection(
-                        header = strings.general,
-                        rows = listOf(
-                            ListRow(strings.appearance, icon = Icons.Rounded.Palette, iconColor = Color(0xFF0A84FF), onClick = openDesign),
-                            ListRow(strings.settings, icon = Icons.Rounded.Settings, iconColor = Color(0xFF8E8E93), onClick = openSettings),
-                            ListRow(strings.storage, icon = Icons.Rounded.Storage, iconColor = Color(0xFF34C759), value = if (internalTotalBytes > 0) strings.free(formatBytes(internalFreeBytes)) else null, onClick = openStorage),
-                            ListRow(strings.info, icon = Icons.Rounded.Info, iconColor = Color(0xFF5E5CE6), value = appVersionName.ifBlank { null }, onClick = openInfo)
+                        .padding(bottom = bottomBarContentPadding(24.dp)),
+                    verticalArrangement = Arrangement.spacedBy(if (isIos) 32.dp else 16.dp)
+                ) {
+                    when (language) {
+                        // One UI 8: Samsung Settings' grouped cards with coloured circle icons.
+                        DesignLanguage.SAMSUNG_ONEUI -> OneUiMenuContent(
+                            favoriteCount = favoriteCount,
+                            trashedCount = trashedCount,
+                            storageValue = storageText,
+                            appVersionName = appVersionName,
+                            onOpenFavorites = onOpenFavorites,
+                            onOpenTrash = onOpenTrash,
+                            onOpenDesign = openDesign,
+                            onOpenSettings = openSettings,
+                            onOpenStorage = openStorage,
+                            onOpenInfo = openInfo
                         )
-                    )
-                }
 
-                DesignLanguage.XIAOMI_HYPEROS -> {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        HyperOsShortcutCard(Icons.Rounded.Favorite, Color(0xFFFF5C7A), strings.favorites, favoritesText, Modifier.weight(1f), onOpenFavorites)
-                        HyperOsShortcutCard(Icons.Rounded.Delete, Color(0xFF3482FF), strings.trash, trashText, Modifier.weight(1f), onOpenTrash)
-                    }
-                    ThemedCard(modifier = Modifier.clickable(onClick = openStorage)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(strings.storage, color = palette.onBackground, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                            Text(storageText, color = palette.textMuted, fontSize = 13.sp)
+                        // Google (Gemini): the glowing storage box, then Gemini's drawer-style lists.
+                        DesignLanguage.GOOGLE_EXPRESSIVE -> GoogleMenuContent(
+                            internalFreeBytes = internalFreeBytes,
+                            internalTotalBytes = internalTotalBytes,
+                            sdCardFreeBytes = sdCardFreeBytes,
+                            sdCardTotalBytes = sdCardTotalBytes,
+                            loadStorageStats = loadStorageStats,
+                            favoriteCount = favoriteCount,
+                            trashedCount = trashedCount,
+                            storageText = storageText,
+                            usedFraction = usedFraction,
+                            appVersionName = appVersionName,
+                            onOpenFavorites = onOpenFavorites,
+                            onOpenTrash = onOpenTrash,
+                            onOpenDesign = openDesign,
+                            onOpenSettings = openSettings,
+                            onOpenStorage = openStorage,
+                            onOpenInfo = openInfo
+                        )
+
+                        // iOS Settings groups have no headers; the icon squares take the accent colour (see ListRow).
+                        DesignLanguage.IOS_LIQUID_GLASS -> {
+                            ThemedListSection(
+                                rows = listOf(
+                                    ListRow(strings.favorites, icon = Icons.Rounded.Favorite, value = "$favoriteCount", onClick = onOpenFavorites),
+                                    ListRow(strings.recentlyDeleted, icon = Icons.Rounded.Delete, value = "$trashedCount", onClick = onOpenTrash)
+                                )
+                            )
+                            ThemedListSection(
+                                rows = listOf(
+                                    ListRow(strings.appearance, icon = Icons.Rounded.Palette, onClick = openDesign),
+                                    ListRow(strings.settings, icon = Icons.Rounded.Settings, onClick = openSettings),
+                                    ListRow(strings.storage, icon = Icons.Rounded.Storage, value = if (internalTotalBytes > 0) strings.free(formatBytes(internalFreeBytes)) else null, onClick = openStorage),
+                                    ListRow(strings.info, icon = Icons.Rounded.Info, value = appVersionName.ifBlank { null }, onClick = openInfo)
+                                )
+                            )
                         }
-                        Spacer(modifier = Modifier.height(14.dp))
-                        ThemedProgressBar(progress = usedFraction)
-                    }
-                    ThemedListSection(
-                        rows = listOf(
-                            ListRow(strings.design, subtitle = ThemeState.designLanguage.displayName, icon = Icons.Rounded.Palette, iconColor = Color(0xFFFF9F0A), onClick = openDesign),
-                            ListRow(strings.settings, subtitle = strings.graphicsQuality, icon = Icons.Rounded.Settings, iconColor = Color(0xFF8A8A8E), onClick = openSettings),
-                            ListRow(strings.aboutGallery, icon = Icons.Rounded.Info, iconColor = Color(0xFF34C759), value = appVersionName.ifBlank { null }, onClick = openInfo)
+
+                        DesignLanguage.XIAOMI_HYPEROS -> HyperOsMenuContent(
+                            favoriteCount = favoriteCount,
+                            trashedCount = trashedCount,
+                            storageValue = if (internalTotalBytes > 0) strings.free(formatBytes(internalFreeBytes)) else null,
+                            appVersionName = appVersionName,
+                            onOpenFavorites = onOpenFavorites,
+                            onOpenTrash = onOpenTrash,
+                            onOpenDesign = openDesign,
+                            onOpenSettings = openSettings,
+                            onOpenStorage = openStorage,
+                            onOpenInfo = openInfo
                         )
+                    }
+                }
+            }
+        }
+
+        if (isIos) {
+            ThemedTopBar(
+                title = strings.settings,
+                hazeState = menuHaze,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+        }
+    }
+
+        if (usesPages && (page != null || pageShown)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pushTransition(language, { pageProgress.value }, isTop = true)
+                    .screenBackground()
+                    .blockTouchesBelow()
+            ) {
+                if (isIos) {
+                    IosSettingsPage(
+                        section = lastPage[0],
+                        onBack = { page = null },
+                        internalFreeBytes = internalFreeBytes,
+                        internalTotalBytes = internalTotalBytes,
+                        sdCardFreeBytes = sdCardFreeBytes,
+                        sdCardTotalBytes = sdCardTotalBytes,
+                        appVersionName = appVersionName,
+                        trashedCount = trashedCount,
+                        graphicsQuality = graphicsQuality,
+                        onSetGraphicsQuality = onSetGraphicsQuality,
+                        loadStorageStats = loadStorageStats,
+                        onEmptyTrash = onEmptyTrash,
+                        onOpenLibrary = onOpenLibrary
+                    )
+                } else if (isOneUi) {
+                    OneUiSettingsPage(
+                        section = lastPage[0],
+                        onBack = { page = null },
+                        internalFreeBytes = internalFreeBytes,
+                        internalTotalBytes = internalTotalBytes,
+                        sdCardFreeBytes = sdCardFreeBytes,
+                        sdCardTotalBytes = sdCardTotalBytes,
+                        appVersionName = appVersionName,
+                        trashedCount = trashedCount,
+                        graphicsQuality = graphicsQuality,
+                        onSetGraphicsQuality = onSetGraphicsQuality,
+                        loadStorageStats = loadStorageStats,
+                        onEmptyTrash = onEmptyTrash,
+                        onOpenLibrary = onOpenLibrary,
+                        onOpenTrash = onOpenTrash
+                    )
+                } else if (isGoogle) {
+                    GoogleSettingsPage(
+                        section = lastPage[0],
+                        onBack = { page = null },
+                        internalFreeBytes = internalFreeBytes,
+                        internalTotalBytes = internalTotalBytes,
+                        sdCardFreeBytes = sdCardFreeBytes,
+                        sdCardTotalBytes = sdCardTotalBytes,
+                        appVersionName = appVersionName,
+                        trashedCount = trashedCount,
+                        graphicsQuality = graphicsQuality,
+                        onSetGraphicsQuality = onSetGraphicsQuality,
+                        loadStorageStats = loadStorageStats,
+                        onEmptyTrash = onEmptyTrash,
+                        onOpenLibrary = onOpenLibrary,
+                        onOpenTrash = onOpenTrash
+                    )
+                } else {
+                    HyperOsSettingsPage(
+                        section = lastPage[0],
+                        onBack = { page = null },
+                        internalFreeBytes = internalFreeBytes,
+                        internalTotalBytes = internalTotalBytes,
+                        sdCardFreeBytes = sdCardFreeBytes,
+                        sdCardTotalBytes = sdCardTotalBytes,
+                        appVersionName = appVersionName,
+                        trashedCount = trashedCount,
+                        graphicsQuality = graphicsQuality,
+                        onSetGraphicsQuality = onSetGraphicsQuality,
+                        loadStorageStats = loadStorageStats,
+                        onEmptyTrash = onEmptyTrash,
+                        onOpenLibrary = onOpenLibrary,
+                        onOpenTrash = onOpenTrash
                     )
                 }
             }
@@ -309,38 +443,6 @@ private fun OneUiShortcutTile(
 }
 
 @Composable
-private fun HyperOsShortcutCard(
-    icon: ImageVector,
-    iconColor: Color,
-    title: String,
-    subtitle: String,
-    modifier: Modifier,
-    onClick: () -> Unit
-) {
-    val palette = LocalAppTheme.current.palette
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(palette.surface)
-            .clickable(onClick = onClick)
-            .padding(16.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(iconColor.copy(alpha = 0.13f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, null, tint = iconColor, modifier = Modifier.size(23.dp))
-        }
-        Spacer(modifier = Modifier.height(14.dp))
-        Text(title, color = palette.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-        Text(subtitle, color = palette.textMuted, fontSize = 12.sp)
-    }
-}
-
-@Composable
 private fun SettingsSheet(
     initialSection: SettingsSection,
     internalFreeBytes: Long,
@@ -365,25 +467,15 @@ private fun SettingsSheet(
         sectionOffsets[section] = it.positionInParent().y.roundToInt()
     }
 
-    fun switchBrightness(light: Boolean) {
-        if (currentPalette.isLight == light) return
-        val target = presetsFor(currentLanguage, light)
-        val next = if (currentPalette.id == CUSTOM_PALETTE_ID) {
-            target.first().copy(id = CUSTOM_PALETTE_ID, label = "Eigene Palette", accent = currentPalette.accent)
-        } else {
-            // Keep the same accent slot (blue stays blue) when switching between light and dark.
-            val slot = presetsFor(currentLanguage, currentPalette.isLight).indexOfFirst { it.id == currentPalette.id }
-            target.getOrElse(slot) { target.first() }
-        }
-        ThemeState.apply(currentLanguage, next, context = context)
-    }
+    fun switchBrightness(light: Boolean) = switchPaletteBrightness(context, light)
 
     ThemedSheet(onDismissRequest = onDismiss, title = strings.settings) {
+        // Jump to the section on the first laid-out frame, while the sheet is still below the screen, so
+        // it slides up already showing that section instead of visibly racing down the whole list.
         LaunchedEffect(initialSection) {
             if (initialSection != SettingsSection.DESIGN) {
                 val offset = snapshotFlow { sectionOffsets[initialSection] }.filterNotNull().first()
-                delay(150)
-                scrollState.animateScrollTo(offset)
+                scrollState.scrollTo(offset)
             }
         }
 
@@ -497,10 +589,7 @@ private fun SettingsSheet(
             lightMode = lightMode,
             initialAccent = currentPalette.accent,
             onConfirm = { accent ->
-                // The custom palette keeps the active mode's base colors - light stays light.
-                val base = presetsFor(currentLanguage, lightMode).first()
-                val custom = base.copy(id = CUSTOM_PALETTE_ID, label = "Eigene Palette", accent = accent)
-                ThemeState.apply(currentLanguage, custom, context = context)
+                applyCustomAccent(context, currentLanguage, lightMode, accent)
                 showCustomEditor = false
             },
             onDismiss = { showCustomEditor = false }
@@ -531,7 +620,7 @@ private fun StorageBlock(label: String, freeBytes: Long?, totalBytes: Long?, not
 
 /** Accent swatches for the active mode, plus a trailing "custom" swatch. */
 @Composable
-private fun PaletteRow(
+internal fun PaletteRow(
     presets: List<AppColorPalette>,
     currentPaletteId: String,
     onSelectPreset: (AppColorPalette) -> Unit,
@@ -539,7 +628,7 @@ private fun PaletteRow(
 ) {
     val theme = LocalAppTheme.current
     val palette = theme.palette
-    val swatchShape = if (theme.language == DesignLanguage.GOOGLE_EXPRESSIVE) ExpressiveCookieShape else CircleShape
+    val swatchShape = CircleShape
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(14.dp)
@@ -592,7 +681,7 @@ private fun PaletteRow(
 }
 
 @Composable
-private fun CustomAccentDialog(
+internal fun CustomAccentDialog(
     language: DesignLanguage,
     lightMode: Boolean,
     initialAccent: Color,
@@ -616,7 +705,29 @@ private fun CustomAccentDialog(
     }
 }
 
-private fun graphicsQualityLabel(tier: PerformanceProfile): String = when (tier) {
+/** Switches the active palette between light and dark, keeping the accent slot (blue stays blue) or custom accent. */
+internal fun switchPaletteBrightness(context: android.content.Context, light: Boolean) {
+    val currentLanguage = ThemeState.designLanguage
+    val currentPalette = ThemeState.palette
+    if (currentPalette.isLight == light) return
+    val target = presetsFor(currentLanguage, light)
+    val next = if (currentPalette.id == CUSTOM_PALETTE_ID) {
+        target.first().copy(id = CUSTOM_PALETTE_ID, label = "Eigene Palette", accent = currentPalette.accent)
+    } else {
+        val slot = presetsFor(currentLanguage, currentPalette.isLight).indexOfFirst { it.id == currentPalette.id }
+        target.getOrElse(slot) { target.first() }
+    }
+    ThemeState.apply(currentLanguage, next, context = context)
+}
+
+/** Applies a custom accent on the active mode's base colors - light stays light. */
+internal fun applyCustomAccent(context: android.content.Context, language: DesignLanguage, lightMode: Boolean, accent: Color) {
+    val base = presetsFor(language, lightMode).first()
+    val custom = base.copy(id = CUSTOM_PALETTE_ID, label = "Eigene Palette", accent = accent)
+    ThemeState.apply(language, custom, context = context)
+}
+
+internal fun graphicsQualityLabel(tier: PerformanceProfile): String = when (tier) {
     PerformanceProfile.LOW -> "Low"
     PerformanceProfile.MEDIUM -> "Medium"
     PerformanceProfile.HIGH -> "High"

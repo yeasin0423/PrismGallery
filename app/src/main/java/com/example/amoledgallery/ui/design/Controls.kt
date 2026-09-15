@@ -52,6 +52,10 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
@@ -77,6 +81,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -382,15 +388,15 @@ fun <T> ThemedSegmentedControl(
             targetValue = fingerOffset ?: (segmentWidth * index),
             animationSpec = when {
                 fingerOffset != null -> snap()
-                language == DesignLanguage.IOS_LIQUID_GLASS -> spring(dampingRatio = 0.72f, stiffness = 420f)
+                language == DesignLanguage.IOS_LIQUID_GLASS -> spring(dampingRatio = 0.55f, stiffness = 480f)
                 language == DesignLanguage.XIAOMI_HYPEROS -> tween(160)
                 else -> tween(260, easing = FastOutSlowInEasing)
             },
             label = "segment_thumb"
         )
         val thumbScale by animateFloatAsState(
-            targetValue = if (dragX != null) (if (language == DesignLanguage.IOS_LIQUID_GLASS) 1.1f else 1.04f) else 1f,
-            animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
+            targetValue = if (dragX != null) (if (language == DesignLanguage.IOS_LIQUID_GLASS) 1.18f else 1.04f) else 1f,
+            animationSpec = if (language == DesignLanguage.IOS_LIQUID_GLASS) spring(dampingRatio = 0.42f, stiffness = 500f) else spring(dampingRatio = 0.6f, stiffness = 500f),
             label = "segment_thumb_scale"
         )
 
@@ -609,28 +615,24 @@ private fun ListRowContent(row: ListRow) {
         if (row.icon != null) {
             when (language) {
                 DesignLanguage.IOS_LIQUID_GLASS -> {
+                    // iOS Settings with tinted icons: every square takes the accent colour. Rows with their own
+                    // title colour (destructive actions) keep their icon colour.
+                    val ownColor = row.titleColor != Color.Unspecified
                     Box(
                         modifier = Modifier
                             .size(30.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(iconColor),
+                            .background(if (ownColor) iconColor else palette.accent),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(row.icon, null, tint = Color.White, modifier = Modifier.size(19.dp))
+                        Icon(row.icon, null, tint = if (ownColor) Color.White else palette.onAccent, modifier = Modifier.size(19.dp))
                     }
                     Spacer(modifier = Modifier.width(14.dp))
                 }
+                // Gemini lists: a plain outlined icon in the text colour.
                 DesignLanguage.GOOGLE_EXPRESSIVE -> {
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(ExpressiveCookieShape)
-                            .background(iconColor.copy(alpha = 0.22f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(row.icon, null, tint = lerp(iconColor, Color.White, 0.25f), modifier = Modifier.size(22.dp))
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Icon(row.icon, null, tint = if (row.titleColor == Color.Unspecified) palette.onBackground else row.titleColor, modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(20.dp))
                 }
                 DesignLanguage.SAMSUNG_ONEUI -> {
                     Icon(row.icon, null, tint = iconColor, modifier = Modifier.size(26.dp))
@@ -804,7 +806,12 @@ fun ThemedTextField(
     onValueChange: (String) -> Unit,
     placeholder: String,
     modifier: Modifier = Modifier,
-    autoFocus: Boolean = false
+    autoFocus: Boolean = false,
+    /**
+     * Above 1 a long value wraps onto further lines instead of scrolling sideways, so every position can
+     * be reached by tapping or dragging the cursor handle. Line breaks are never entered.
+     */
+    maxLines: Int = 1
 ) {
     val theme = LocalAppTheme.current
     val palette = theme.palette
@@ -812,6 +819,7 @@ fun ThemedTextField(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val focusRequester = remember { FocusRequester() }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
 
     if (autoFocus) {
         LaunchedEffect(Unit) {
@@ -822,8 +830,11 @@ fun ThemedTextField(
 
     BasicTextField(
         value = value,
-        onValueChange = onValueChange,
-        singleLine = true,
+        onValueChange = { onValueChange(if (maxLines > 1) it.replace("\n", "") else it) },
+        singleLine = maxLines == 1,
+        maxLines = maxLines,
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { focusManager.clearFocus() }),
         textStyle = TextStyle(color = palette.onBackground, fontSize = 17.sp),
         cursorBrush = SolidColor(palette.accent),
         interactionSource = interaction,
@@ -913,7 +924,7 @@ fun ThemedRadioIndicator(selected: Boolean, modifier: Modifier = Modifier) {
                 .then(if (!selected) Modifier.border(1.5.dp, palette.textMuted.copy(alpha = 0.5f), CircleShape) else Modifier),
             contentAlignment = Alignment.Center
         ) {
-            if (selected) Icon(Icons.Rounded.Check, null, tint = Color.White, modifier = Modifier.size(15.dp))
+            if (selected) Icon(Icons.Rounded.Check, null, tint = palette.onAccent, modifier = Modifier.size(15.dp))
         }
 
         else -> {
@@ -986,13 +997,12 @@ fun ThemedIconButton(
     }
 
     when (theme.language) {
+        // The Liquid Glass itself swells, bounces and lights up on touch.
         DesignLanguage.IOS_LIQUID_GLASS -> Box(
             modifier = modifier
-                .then(pulseModifier)
-                .pressScale(interaction, 0.88f)
                 .size(44.dp)
                 .glass(CircleShape, barGlass(), hazeState)
-                .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = pulsingClick),
+                .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, contentDescription, tint = resolvedTint, modifier = Modifier.size(21.dp))
@@ -1002,7 +1012,8 @@ fun ThemedIconButton(
             modifier = modifier
                 .then(pulseModifier)
                 .pressScale(interaction, 0.9f)
-                .size(44.dp)                .glass(CircleShape, barGlass(), hazeState)
+                .size(48.dp)
+                .geminiChip(CircleShape)
                 .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = pulsingClick),
             contentAlignment = Alignment.Center
         ) {
@@ -1066,6 +1077,8 @@ fun ThemedTopBar(
                 GlassSpec(palette.background.copy(alpha = 0.72f), palette.background.copy(alpha = 0.97f), 30.dp, GlassRim.None),
                 hazeState
             )
+            // Fades out below the bar (see the extended background box) instead of ending in a hard edge
+            // across Material's tonal background glow.
             DesignLanguage.GOOGLE_EXPRESSIVE -> Modifier.glass(
                 RectangleShape,
                 GlassSpec(
@@ -1074,7 +1087,10 @@ fun ThemedTopBar(
                     28.dp,
                     GlassRim.None
                 ),
-                hazeState
+                hazeState,
+                // Solid behind the bar itself (title and subtitle stay legible), fading only in the part
+                // that extends below it.
+                mask = Brush.verticalGradient(0f to Color.Black, 0.78f to Color.Black, 1f to Color.Transparent)
             )
             DesignLanguage.IOS_LIQUID_GLASS -> Modifier.glass(
                 RectangleShape,
@@ -1088,13 +1104,25 @@ fun ThemedTopBar(
             )
             DesignLanguage.XIAOMI_HYPEROS -> Modifier.glass(
                 RectangleShape,
-                GlassSpec(palette.background.copy(alpha = 0.82f), palette.background.copy(alpha = 0.98f), 26.dp, GlassRim.None),
+                GlassSpec(palette.background.copy(alpha = 0.96f), palette.background.copy(alpha = 0.98f), 26.dp, GlassRim.None),
                 hazeState
             )
         }
         Box(
             modifier = Modifier
                 .matchParentSize()
+                .then(
+                    if (language == DesignLanguage.GOOGLE_EXPRESSIVE) {
+                        // Drawn taller than the bar, so its fade-out runs over the content below the bar.
+                        Modifier.layout { measurable, constraints ->
+                            val height = constraints.maxHeight + 28.dp.roundToPx()
+                            val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
+                            layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(0, 0) }
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
                 .graphicsLayer { alpha = backgroundAlpha() }
                 .then(background)
         )
@@ -1106,41 +1134,63 @@ fun ThemedTopBar(
         }
 
         Column(modifier = Modifier.fillMaxWidth()) {
-            if (language == DesignLanguage.IOS_LIQUID_GLASS) {
-                Row(
+            // HyperOS centres plain titles too ("Favorites", "Detail info").
+            if (language == DesignLanguage.IOS_LIQUID_GLASS ||
+                (language == DesignLanguage.XIAOMI_HYPEROS && subtitle == null && navigationIcon == null)
+            ) {
+                // iOS centres the title on the screen, not in the space left between the controls. The title
+                // gets the width that stays free when the wider side is mirrored onto the other side, so long
+                // titles and wide action groups shrink it instead of colliding with it.
+                Layout(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
                         .height(barHeight)
                         .padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (onBack != null) {
-                        ThemedIconButton(
-                            icon = navigationIcon ?: Icons.AutoMirrored.Rounded.ArrowBackIos,
-                            contentDescription = strings.back,
-                            onClick = onBack,
-                            hazeState = hazeState
+                    content = {
+                        Box {
+                            if (onBack != null) {
+                                ThemedIconButton(
+                                    icon = navigationIcon ?: if (language == DesignLanguage.IOS_LIQUID_GLASS) Icons.AutoMirrored.Rounded.ArrowBackIos else Icons.AutoMirrored.Rounded.ArrowBack,
+                                    contentDescription = strings.back,
+                                    onClick = onBack,
+                                    hazeState = hazeState
+                                )
+                            }
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                title,
+                                color = palette.onBackground,
+                                fontSize = if (language == DesignLanguage.XIAOMI_HYPEROS) 21.sp else 17.sp,
+                                fontWeight = if (language == DesignLanguage.XIAOMI_HYPEROS) FontWeight.Medium else FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (subtitle != null) {
+                                Text(subtitle, color = palette.textMuted, fontSize = 12.sp, maxLines = 1)
+                            }
+                        }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            content = actions
                         )
                     }
-                    // The title takes the space between the back button and the actions, so long action
-                    // labels shrink it instead of colliding with it.
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(title, color = palette.onBackground, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (subtitle != null) {
-                            Text(subtitle, color = palette.textMuted, fontSize = 12.sp, maxLines = 1)
-                        }
+                ) { measurables, constraints ->
+                    val loose = constraints.copy(minWidth = 0, minHeight = 0)
+                    val start = measurables[0].measure(loose)
+                    val end = measurables[2].measure(loose)
+                    val gap = 10.dp.roundToPx()
+                    val side = maxOf(start.width, end.width)
+                    val titleWidth = (constraints.maxWidth - 2 * (side + if (side > 0) gap else 0)).coerceAtLeast(0)
+                    val titlePlaceable = measurables[1].measure(loose.copy(maxWidth = titleWidth))
+                    val height = constraints.maxHeight
+                    layout(constraints.maxWidth, height) {
+                        start.place(0, (height - start.height) / 2)
+                        end.place(constraints.maxWidth - end.width, (height - end.height) / 2)
+                        titlePlaceable.place((constraints.maxWidth - titlePlaceable.width) / 2, (height - titlePlaceable.height) / 2)
                     }
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        content = actions
-                    )
                 }
             } else {
                 Row(
@@ -1264,15 +1314,15 @@ fun ThemedEmptyState(
         verticalArrangement = Arrangement.Center
     ) {
         when (theme.language) {
-            DesignLanguage.GOOGLE_EXPRESSIVE -> Box(
-                modifier = Modifier
-                    .size(104.dp)
-                    .clip(ExpressiveCookieShape)
-                    .background(palette.accent.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, null, tint = palette.accent, modifier = Modifier.size(46.dp))
-            }
+            // Gemini: the page's icon filled with the Gemini gradient (a heart for favourites, a bin for the trash).
+            DesignLanguage.GOOGLE_EXPRESSIVE -> GeminiIcon(
+                when (icon) {
+                    Icons.Rounded.FavoriteBorder -> Icons.Rounded.Favorite
+                    Icons.Rounded.DeleteOutline -> Icons.Rounded.Delete
+                    else -> icon
+                },
+                Modifier.size(84.dp)
+            )
             DesignLanguage.XIAOMI_HYPEROS -> Box(
                 modifier = Modifier
                     .size(92.dp)

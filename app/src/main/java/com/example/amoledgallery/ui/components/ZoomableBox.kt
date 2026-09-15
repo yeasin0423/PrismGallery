@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +33,7 @@ import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.PI
+import kotlin.math.max
 
 suspend fun PointerInputScope.detectZoomAndPan(
     shouldConsumePan: () -> Boolean,
@@ -53,7 +55,7 @@ suspend fun PointerInputScope.detectZoomAndPan(
                 val rotationChange = event.calculateRotation()
                 val panChange = event.calculatePan()
                 val centroid = event.calculateCentroid(useCurrent = false)
-                
+
                 if (!pastTouchSlop) {
                     zoom *= zoomChange
                     rotation += rotationChange
@@ -90,21 +92,50 @@ suspend fun PointerInputScope.detectZoomAndPan(
 
 /**
  * Container supporting double-tap zoom, pinch-to-zoom, panning, and single-tap callbacks.
+ *
+ * With [contentAspectRatio] (width / height of the fitted content) the zoom adapts to extreme shapes: a very tall
+ * scroll screenshot can be zoomed until it fills the width and well beyond, a double tap fills the width, and
+ * panning stops at the content's edges instead of the container's.
  */
 @Composable
 fun ZoomableBox(
     modifier: Modifier = Modifier,
     maxScale: Float = 4.0f,
+    contentAspectRatio: Float = 0f,
     onSingleTap: () -> Unit = {},
     onZoomChange: (Boolean) -> Unit = {},
     content: @Composable BoxScope.() -> Unit
 ) {
     val scope = rememberCoroutineScope()
     var size by remember { mutableStateOf(IntSize.Zero) }
+    val aspect by rememberUpdatedState(contentAspectRatio)
 
     val scaleAnim = remember { Animatable(1f) }
     val offsetXAnim = remember { Animatable(0f) }
     val offsetYAnim = remember { Animatable(0f) }
+
+    /** How much the fitted content has to grow to fill the container in its short direction. */
+    fun fillScale(): Float {
+        if (aspect <= 0f || size.width == 0 || size.height == 0) return 1f
+        val containerAspect = size.width.toFloat() / size.height
+        return max(containerAspect / aspect, aspect / containerAspect)
+    }
+
+    fun maxScaleNow(): Float = max(maxScale, fillScale() * 4f)
+
+    /** Largest offsets at [scale] that keep the content covering the container (or centred where it is smaller). */
+    fun bounds(scale: Float): Offset {
+        if (aspect <= 0f || size.width == 0 || size.height == 0) {
+            return Offset(size.width * (scale - 1f) / 2f, size.height * (scale - 1f) / 2f)
+        }
+        val containerAspect = size.width.toFloat() / size.height
+        val fitWidth = if (aspect > containerAspect) size.width.toFloat() else size.height * aspect
+        val fitHeight = fitWidth / aspect
+        return Offset(
+            ((fitWidth * scale - size.width) / 2f).coerceAtLeast(0f),
+            ((fitHeight * scale - size.height) / 2f).coerceAtLeast(0f)
+        )
+    }
 
     // Observed outside composition: reading the scale here directly recomposed the whole viewer page
     // (image included) on every frame of a pinch or double-tap zoom.
@@ -128,14 +159,13 @@ fun ZoomableBox(
                                 launch { offsetXAnim.animateTo(0f, tween(250, easing = FastOutSlowInEasing)) }
                                 launch { offsetYAnim.animateTo(0f, tween(250, easing = FastOutSlowInEasing)) }
                             } else {
-                                // Zoom in towards tap location
-                                val targetScale = 2.5f
-                                val maxX = (size.width * (targetScale - 1f)) / 2f
-                                val maxY = (size.height * (targetScale - 1f)) / 2f
+                                // Zoom in towards the tap; very narrow or wide content fills the screen instead.
+                                val targetScale = max(2.5f, fillScale()).coerceAtMost(maxScaleNow())
+                                val limit = bounds(targetScale)
 
                                 val center = Offset(size.width / 2f, size.height / 2f)
-                                val targetOffsetX = ((center.x - tapOffset.x) * (targetScale - 1f)).coerceIn(-maxX, maxX)
-                                val targetOffsetY = ((center.y - tapOffset.y) * (targetScale - 1f)).coerceIn(-maxY, maxY)
+                                val targetOffsetX = ((center.x - tapOffset.x) * (targetScale - 1f)).coerceIn(-limit.x, limit.x)
+                                val targetOffsetY = ((center.y - tapOffset.y) * (targetScale - 1f)).coerceIn(-limit.y, limit.y)
 
                                 launch { scaleAnim.animateTo(targetScale, tween(250, easing = FastOutSlowInEasing)) }
                                 launch { offsetXAnim.animateTo(targetOffsetX, tween(250, easing = FastOutSlowInEasing)) }
@@ -151,16 +181,15 @@ fun ZoomableBox(
             .pointerInput(Unit) {
                 detectZoomAndPan(shouldConsumePan = { scaleAnim.value > 1.05f }) { _, pan, zoom, _ ->
                     scope.launch {
-                        val newScale = (scaleAnim.value * zoom).coerceIn(1f, maxScale)
-                        val maxX = (size.width * (newScale - 1f)) / 2f
-                        val maxY = (size.height * (newScale - 1f)) / 2f
+                        val newScale = (scaleAnim.value * zoom).coerceIn(1f, maxScaleNow())
+                        val limit = bounds(newScale)
 
                         val newOffsetX = if (newScale > 1f) {
-                            (offsetXAnim.value + pan.x * newScale).coerceIn(-maxX, maxX)
+                            (offsetXAnim.value * (newScale / scaleAnim.value) + pan.x * newScale).coerceIn(-limit.x, limit.x)
                         } else 0f
-                        
+
                         val newOffsetY = if (newScale > 1f) {
-                            (offsetYAnim.value + pan.y * newScale).coerceIn(-maxY, maxY)
+                            (offsetYAnim.value * (newScale / scaleAnim.value) + pan.y * newScale).coerceIn(-limit.y, limit.y)
                         } else 0f
 
                         scaleAnim.snapTo(newScale)

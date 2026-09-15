@@ -1,33 +1,24 @@
 package com.example.amoledgallery.ui.screens
 import com.example.amoledgallery.ui.i18n.strings
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.DeleteOutline
-import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,24 +29,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import com.example.amoledgallery.model.MediaItem
 import com.example.amoledgallery.ui.components.MediaGridItem
 import androidx.compose.ui.draw.clipToBounds
 import com.example.amoledgallery.ui.design.DialogButton
 import com.example.amoledgallery.ui.design.DialogButtonStyle
-import com.example.amoledgallery.ui.design.ThemedButton
 import com.example.amoledgallery.ui.design.ThemedChipAction
 import com.example.amoledgallery.ui.theme.DesignLanguage
 import com.example.amoledgallery.ui.design.ThemedDialog
 import com.example.amoledgallery.ui.design.ThemedEmptyState
-import com.example.amoledgallery.ui.design.ThemedSheet
 import com.example.amoledgallery.ui.design.ThemedTopBar
 import com.example.amoledgallery.ui.theme.LocalAppTheme
 import com.example.amoledgallery.ui.theme.destructive
@@ -63,20 +48,18 @@ import dev.chrisbanes.haze.HazeState
 import com.example.amoledgallery.ui.design.HazeSource
 
 /**
- * MediaStore trash: restore or permanently delete single items (via the language's action sheet) or
- * everything at once (confirmed through the language's dialog).
+ * MediaStore trash. Tapping an item opens it in the fullscreen viewer (in its reduced trash mode, with
+ * restore and delete permanently); everything can be restored or deleted at once through the top bar.
  */
 @Composable
 fun TrashScreen(
     trashedItems: List<MediaItem>,
     onBack: () -> Unit,
-    onRestoreItem: (MediaItem) -> Unit,
+    onItemClick: (MediaItem, Int) -> Unit,
     onRestoreAll: () -> Unit,
-    onDeletePermanently: (MediaItem) -> Unit,
     onEmptyTrash: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedItem by remember { mutableStateOf<MediaItem?>(null) }
     var showEmptyConfirmDialog by remember { mutableStateOf(false) }
     val theme = LocalAppTheme.current
     val palette = theme.palette
@@ -116,12 +99,12 @@ fun TrashScreen(
                         )
                     }
 
-                    // The regular media tile: the small cached thumbnail (the full image used to be decoded
-                    // for every tile), cropped to a square, with the video badge.
+                    // The regular media tile: the small cached thumbnail, cropped to a square, with the video
+                    // badge. It records its position, so the viewer grows out of it.
                     items(trashedItems, key = { it.id }, contentType = { "media_tile" }) { item ->
                         MediaGridItem(
                             item = item,
-                            onClick = { selectedItem = item },
+                            onClick = { onItemClick(item, trashedItems.indexOf(item)) },
                             modifier = Modifier
                                 .aspectRatio(1f)
                                 .clipToBounds()
@@ -151,66 +134,6 @@ fun TrashScreen(
             if (trashedItems.isNotEmpty() && !compactActions) {
                 TopBarTextAction(strings.restore, palette.accent, onRestoreAll)
                 TopBarTextAction(strings.emptyAction, palette.destructive) { showEmptyConfirmDialog = true }
-            }
-        }
-    }
-
-    selectedItem?.let { item ->
-        ThemedSheet(
-            onDismissRequest = { selectedItem = null },
-            title = strings.deletedItem
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 22.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(200.dp)
-                        .clip(RoundedCornerShape(theme.shapes.cardCornerRadius))
-                        .background(palette.surfaceVariant)
-                ) {
-                    AsyncImage(
-                        model = item.uri,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = item.displayName.ifBlank { strings.itemFallback },
-                    color = palette.textMuted,
-                    fontSize = 14.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(20.dp))
-                ThemedButton(
-                    text = strings.restore,
-                    icon = Icons.Rounded.Restore,
-                    style = DialogButtonStyle.Primary,
-                    onClick = {
-                        selectedItem = null
-                        onRestoreItem(item)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                ThemedButton(
-                    text = strings.deletePermanently,
-                    icon = Icons.Rounded.DeleteForever,
-                    style = DialogButtonStyle.Destructive,
-                    onClick = {
-                        selectedItem = null
-                        onDeletePermanently(item)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
         }
     }

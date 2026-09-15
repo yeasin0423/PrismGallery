@@ -45,7 +45,6 @@ fun PermissionScreen(
     onRequestPermission: () -> Unit,
     modifier: Modifier = Modifier,
     missingMedia: Boolean = true,
-    missingNotifications: Boolean = false,
     onOpenSettings: () -> Unit = {}
 ) {
     val theme = LocalAppTheme.current
@@ -106,10 +105,6 @@ fun PermissionScreen(
                 if (missingMedia) {
                     Spacer(modifier = Modifier.height(10.dp))
                     MissingPermissionRow(strings.permissionMissingMedia)
-                }
-                if (missingNotifications) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    MissingPermissionRow(strings.permissionMissingNotifications)
                 }
             }
 

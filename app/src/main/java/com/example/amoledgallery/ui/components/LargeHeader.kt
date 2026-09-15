@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.example.amoledgallery.ui.design.pressScale
+import com.example.amoledgallery.ui.design.geminiChip
 import com.example.amoledgallery.ui.theme.DesignLanguage
 import com.example.amoledgallery.ui.theme.LocalAppTheme
 import com.example.amoledgallery.ui.theme.onAccent
@@ -52,6 +53,11 @@ fun LargeHeader(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     collapseFraction: () -> Float = { 0f },
+    /**
+     * One UI only: a taller expanded bar so the grid starts lower and the ⋮ button sits within reach of
+     * the thumb, like Samsung Gallery's photo and album lists.
+     */
+    tall: Boolean = false,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val theme = LocalAppTheme.current
@@ -65,7 +71,7 @@ fun LargeHeader(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height((screenHeight * 0.36f).coerceAtLeast(260.dp) - actionRowHeight)
+                        .height((screenHeight * if (tall) 0.44f else 0.36f).coerceAtLeast(260.dp) - actionRowHeight)
                         .graphicsLayer {
                             val f = collapseFraction()
                             alpha = (1f - f * 1.5f).coerceIn(0f, 1f)
@@ -103,36 +109,47 @@ fun LargeHeader(
             }
         }
 
-        DesignLanguage.GOOGLE_EXPRESSIVE -> Column(modifier = modifier.fillMaxWidth()) {
+        // Google Photos: no big title - a pill chip with the title and count on the left, actions on the right.
+        DesignLanguage.GOOGLE_EXPRESSIVE -> Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .height(76.dp)
+                .padding(start = 16.dp, end = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .height(64.dp)
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    .weight(1f, fill = false)
+                    .geminiChip(CircleShape)
+                    .padding(horizontal = 20.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    color = palette.onBackground,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        color = palette.textMuted,
+                        fontSize = 15.sp,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 10.dp)
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.padding(start = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 content = actions
             )
-            Text(
-                text = title,
-                color = palette.onBackground,
-                fontSize = theme.shapes.headerTitleSize,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = (-0.6).sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 20.dp)
-            )
-            if (subtitle != null) {
-                Text(
-                    text = subtitle,
-                    color = palette.textMuted,
-                    fontSize = 15.sp,
-                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
         }
 
         DesignLanguage.IOS_LIQUID_GLASS -> Column(modifier = modifier.fillMaxWidth()) {
@@ -167,14 +184,15 @@ fun LargeHeader(
             Spacer(modifier = Modifier.height(12.dp))
         }
 
+        // HyperOS Gallery: plain action icons on top, then a big thin title with lots of air and no subtitle.
         DesignLanguage.XIAOMI_HYPEROS -> Column(modifier = modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
                     .height(56.dp)
-                    .padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.End,
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
                 content = actions
             )
@@ -182,20 +200,15 @@ fun LargeHeader(
                 text = title,
                 color = palette.onBackground,
                 fontSize = theme.shapes.headerTitleSize,
-                fontWeight = FontWeight.Medium,
+                fontWeight = FontWeight.Light,
+                letterSpacing = (-0.5).sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 12.dp)
+                modifier = Modifier
+                    .padding(start = 28.dp, end = 28.dp, top = 30.dp)
+                    .graphicsLayer { alpha = (1f - collapseFraction() * 1.3f).coerceIn(0f, 1f) }
             )
-            if (subtitle != null) {
-                Text(
-                    text = subtitle,
-                    color = palette.textMuted,
-                    fontSize = 14.sp,
-                    modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(18.dp))
         }
     }
 }

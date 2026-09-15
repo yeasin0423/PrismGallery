@@ -70,6 +70,20 @@ import com.example.amoledgallery.ui.theme.onAccent
 private val DarkPlaceholder = ColorPainter(Color(0xFF141414))
 private val LightPlaceholder = ColorPainter(Color(0xFFE4E4E4))
 
+/**
+ * The grid tile's thumbnail request. Shared, so screens can load thumbnails into Coil's memory cache
+ * ahead of time (e.g. before an album page animates in) under exactly the key the tiles look up.
+ */
+fun thumbnailRequest(context: android.content.Context, item: MediaItem): ImageRequest {
+    val px = ThumbnailManager.getInstance(context).thumbnailPx
+    return ImageRequest.Builder(context)
+        .data(item.thumbnail)
+        .size(coil3.size.Size(px, px))
+        .precision(Precision.INEXACT)
+        .crossfade(false)
+        .build()
+}
+
 @Composable
 fun MediaGridItem(
     item: MediaItem,
@@ -92,15 +106,7 @@ fun MediaGridItem(
     // single lookup was therefore rejected as "wrong size", so the memory cache never served a hit
     // and every tile re-decoded its JPEG from disk on each scroll-in - the main cause of scroll jank.
     val quality = AmoledGalleryApp.performanceProfile
-    val imageRequest = remember(item.id, item.dateModified, quality, context) {
-        val px = ThumbnailManager.getInstance(context).thumbnailPx
-        ImageRequest.Builder(context)
-            .data(item.thumbnail)
-            .size(coil3.size.Size(px, px))
-            .precision(Precision.INEXACT)
-            .crossfade(false)
-            .build()
-    }
+    val imageRequest = remember(item.id, item.dateModified, quality, context) { thumbnailRequest(context, item) }
 
     val theme = LocalAppTheme.current
     val placeholder = if (theme.palette.isLight) LightPlaceholder else DarkPlaceholder
@@ -142,8 +148,10 @@ fun MediaGridItem(
 
         if (selected) {
             val scrim = when (theme.language) {
-                DesignLanguage.SAMSUNG_ONEUI -> Color.White.copy(alpha = 0.30f)
-                DesignLanguage.XIAOMI_HYPEROS -> Color.Black.copy(alpha = 0.18f)
+                DesignLanguage.SAMSUNG_ONEUI -> Color.Transparent
+                DesignLanguage.XIAOMI_HYPEROS -> Color.Transparent
+                // iOS Photos marks a selected photo only with the blue check; the photo itself stays untouched.
+                DesignLanguage.IOS_LIQUID_GLASS -> Color.Transparent
                 else -> Color.White.copy(alpha = 0.12f)
             }
             Box(
@@ -168,9 +176,9 @@ fun MediaGridItem(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(8.dp)
-                        .size(26.dp)
+                        .size(30.dp)
                         .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.22f))
+                        .background(Color.Black.copy(alpha = 0.12f))
                         .border(2.dp, Color.White, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
@@ -208,7 +216,33 @@ fun MediaGridItem(
                             .background(theme.palette.accent),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Rounded.Check, null, tint = Color.White, modifier = Modifier.size(15.dp))
+                        Icon(Icons.Rounded.Check, null, tint = com.example.amoledgallery.ui.design.contentOn(theme.palette.accent), modifier = Modifier.size(15.dp))
+                    }
+                }
+
+                // HyperOS: a large ring in the lower right corner that fills blue with a white check.
+                DesignLanguage.XIAOMI_HYPEROS -> Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(7.dp)
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(if (isSelected) theme.palette.accent else Color.Black.copy(alpha = 0.12f))
+                        .then(if (!isSelected) Modifier.border(1.5.dp, Color.White, CircleShape) else Modifier),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (checkScale > 0.01f) {
+                        Icon(
+                            Icons.Rounded.Check,
+                            null,
+                            tint = Color.White,
+                            modifier = Modifier
+                                .size(18.dp)
+                                .graphicsLayer {
+                                    scaleX = checkScale
+                                    scaleY = checkScale
+                                }
+                        )
                     }
                 }
 
@@ -255,15 +289,21 @@ private fun ExpressiveTile(
 ) {
     val palette = theme.palette
     val baseRadius = theme.shapes.gridItemCornerRadius
+    // Selected: the photo shrinks a little into a rounded frame with a thin accent ring, on the plain background.
     val scale by animateFloatAsState(
-        targetValue = if (selected) 0.82f else 1f,
-        animationSpec = spring(dampingRatio = 0.55f, stiffness = 480f),
+        targetValue = if (selected) 0.86f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 480f),
         label = "expressive_tile_scale"
     )
     val corner by animateDpAsState(
-        targetValue = if (selected) 28.dp else baseRadius,
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = 480f),
+        targetValue = if (selected) 18.dp else baseRadius,
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 480f),
         label = "expressive_tile_corner"
+    )
+    val ring by animateFloatAsState(
+        targetValue = if (selected) 1f else 0f,
+        animationSpec = spring(stiffness = 600f),
+        label = "expressive_tile_ring"
     )
 
     Box(
@@ -271,7 +311,6 @@ private fun ExpressiveTile(
             .fillMaxSize()
             .aspectRatio(1f)
             .clip(RoundedCornerShape(baseRadius))
-            .background(if (selected) lerp(palette.surfaceVariant, palette.accent, 0.28f) else Color.Transparent)
     ) {
         AsyncImage(
             model = imageRequest,
@@ -283,9 +322,21 @@ private fun ExpressiveTile(
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
-                    shape = RoundedCornerShape(corner)
+                    // The spring overshoots below the square resting corner; a negative corner size crashes.
+                    shape = RoundedCornerShape(corner.coerceAtLeast(0.dp))
                     clip = true
                 }
+                .then(
+                    if (ring > 0.01f) {
+                        Modifier.border(
+                            (3f * ring).dp,
+                            com.example.amoledgallery.ui.design.vividAccent(palette.accent).copy(alpha = ring),
+                            RoundedCornerShape(corner.coerceAtLeast(0.dp))
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
                 .clickable(onClick = onClick)
         )
 
@@ -314,22 +365,14 @@ private fun ExpressiveTile(
 @Composable
 private fun BoxScope.VideoBadge(item: MediaItem, language: DesignLanguage) {
     when (language) {
-        DesignLanguage.IOS_LIQUID_GLASS -> {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(28.dp)
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.45f))))
-            )
-            Text(
-                text = item.formattedDuration(),
-                style = PhotoBadgeTextStyle,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 6.dp, bottom = 4.dp)
-            )
-        }
+        // iOS Photos: just the duration, large and white in the corner, lifted off the photo by a soft shadow.
+        DesignLanguage.IOS_LIQUID_GLASS -> Text(
+            text = item.formattedDuration().removePrefix("0"),
+            style = PhotoBadgeTextStyle.copy(fontSize = PhotoBadgeTextStyle.fontSize * 1.3f),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 6.dp, bottom = 3.dp)
+        )
 
         DesignLanguage.XIAOMI_HYPEROS -> Row(
             modifier = Modifier

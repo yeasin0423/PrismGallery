@@ -92,6 +92,10 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     private val _selectedAlbum = MutableStateFlow<AlbumItem?>(null)
     val selectedAlbum: StateFlow<AlbumItem?> = _selectedAlbum.asStateFlow()
 
+    // Bucket id of the album whose media and sub-albums are currently loaded (they arrive after navigation)
+    private val _loadedAlbumKey = MutableStateFlow<String?>(null)
+    val loadedAlbumKey: StateFlow<String?> = _loadedAlbumKey.asStateFlow()
+
     // Sub-albums of currently opened album
     private val _currentSubAlbums = MutableStateFlow<List<AlbumItem>>(emptyList())
     val currentSubAlbums: StateFlow<List<AlbumItem>> = _currentSubAlbums.asStateFlow()
@@ -203,6 +207,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     // Storage free/total space, queried fresh each time the settings dialog reads them
     fun getInternalStorageSpace() = repository.getInternalStorageSpace()
     fun getSdCardStorageSpace() = repository.getSdCardStorageSpace()
+
+    /** Space used by photos, videos, the trash and each album (iOS storage page). */
+    suspend fun loadStorageStats(): MediaRepository.MediaStorageStats = repository.getMediaStorageStats()
 
     // Manual Graphics Quality tier (Low/Medium/High/Ultra), like a game's video settings
     private val _graphicsQuality = MutableStateFlow(com.example.amoledgallery.AmoledGalleryApp.performanceProfile)
@@ -546,8 +553,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     private fun loadAlbumContents(album: AlbumItem) {
         viewModelScope.launch {
-            _albumMediaState.value = withContext(Dispatchers.IO) { repository.getAllMedia(album.bucketId) }
-            _currentSubAlbums.value = withContext(Dispatchers.IO) { repository.getSubAlbums(album, _albumsState.value) }
+            val media = withContext(Dispatchers.IO) { repository.getAllMedia(album.bucketId) }
+            val subAlbums = withContext(Dispatchers.IO) { repository.getSubAlbums(album, _albumsState.value) }
+            // Sub-albums first, together with the media: arriving after the media, their rows were inserted
+            // above the photos and the grid stayed anchored on the first photo, hiding the sub-albums.
+            _currentSubAlbums.value = subAlbums
+            _albumMediaState.value = media
+            _loadedAlbumKey.value = album.bucketId
         }
     }
 
@@ -567,6 +579,31 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     fun closeTrash() {
         _isTrashOpen.value = false
+    }
+
+    // Tiles per row of the album list and of the sub-albums inside an album; null = the design's default.
+    private val gridPrefs = application.getSharedPreferences("amoled_gallery_grid_prefs", Context.MODE_PRIVATE)
+    private val _albumColumns = MutableStateFlow(gridPrefs.getInt("album_columns", 0).takeIf { it > 0 })
+    val albumColumns: StateFlow<Int?> = _albumColumns.asStateFlow()
+    private val _subAlbumColumns = MutableStateFlow(gridPrefs.getInt("sub_album_columns", 0).takeIf { it > 0 })
+    val subAlbumColumns: StateFlow<Int?> = _subAlbumColumns.asStateFlow()
+
+    fun setAlbumColumns(columns: Int) {
+        _albumColumns.value = columns.coerceIn(2, 5)
+        gridPrefs.edit().putInt("album_columns", columns.coerceIn(2, 5)).apply()
+    }
+
+    fun setSubAlbumColumns(columns: Int) {
+        _subAlbumColumns.value = columns.coerceIn(2, 5)
+        gridPrefs.edit().putInt("sub_album_columns", columns.coerceIn(2, 5)).apply()
+    }
+
+    /** Switches straight to another top-level album (One UI's album drawer), replacing the breadcrumbs. */
+    fun openRootAlbum(album: AlbumItem) {
+        clearSelection()
+        _breadcrumbStack.value = listOf(album)
+        _selectedAlbum.value = album
+        loadAlbumContents(album)
     }
 
     fun zoomIn() {

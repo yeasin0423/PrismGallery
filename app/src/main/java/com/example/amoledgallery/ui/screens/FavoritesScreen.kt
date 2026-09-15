@@ -93,7 +93,8 @@ fun FavoritesScreen(
                     contentPadding = PaddingValues(
                         start = theme.shapes.gridHorizontalPadding,
                         end = theme.shapes.gridHorizontalPadding,
-                        top = statusBarTop + 72.dp,
+                        // Gemini's bar fades out 28dp below itself; the first row starts below that fade.
+                        top = statusBarTop + if (theme.language == com.example.amoledgallery.ui.theme.DesignLanguage.GOOGLE_EXPRESSIVE) 96.dp else 72.dp,
                         bottom = navigationBottom + 24.dp
                     ),
                     horizontalArrangement = Arrangement.spacedBy(theme.shapes.gridSpacing),
@@ -120,7 +121,8 @@ fun FavoritesScreen(
 
         ThemedTopBar(
             title = strings.favorites,
-            subtitle = strings.items(favoriteItems.size),
+            // HyperOS shows just the centred title.
+            subtitle = if (theme.language == com.example.amoledgallery.ui.theme.DesignLanguage.XIAOMI_HYPEROS) null else strings.items(favoriteItems.size),
             onBack = onBack,
             hazeState = favoritesHaze,
             modifier = Modifier.align(Alignment.TopCenter)

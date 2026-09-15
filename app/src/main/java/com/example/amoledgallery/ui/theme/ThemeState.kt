@@ -96,17 +96,19 @@ object ThemeState {
 
     /** Switches the live theme immediately and (by default) persists the choice. */
     fun apply(language: DesignLanguage, newPalette: AppColorPalette, persist: Boolean = true, context: Context? = null) {
+        // The user's pick is persisted as chosen; on screen the accent is kept readable.
+        val live = newPalette.withReadableAccent()
         designLanguage = language
-        palette = newPalette
+        palette = live
         shapes = shapeTokensFor(language)
-        background = newPalette.background
-        onBackground = newPalette.onBackground
-        textMuted = newPalette.textMuted
-        surface = newPalette.surface
-        surfaceVariant = newPalette.surfaceVariant
-        accent = newPalette.accent
-        cardBorder = newPalette.cardBorder
-        overlayScrim = newPalette.overlayScrim
+        background = live.background
+        onBackground = live.onBackground
+        textMuted = live.textMuted
+        surface = live.surface
+        surfaceVariant = live.surfaceVariant
+        accent = live.accent
+        cardBorder = live.cardBorder
+        overlayScrim = live.overlayScrim
 
         if (persist && context != null) {
             persistToPrefs(context, language, newPalette)

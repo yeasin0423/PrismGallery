@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.os.Build
 import android.util.Log
 import android.util.Size
 import com.example.amoledgallery.PerformanceProfile
@@ -168,12 +167,10 @@ class ThumbnailManager private constructor(private val context: Context) {
         targetWidth: Int = thumbnailPx,
         targetHeight: Int = thumbnailPx
     ): Bitmap? {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            try {
-                return context.contentResolver.loadThumbnail(uri, Size(targetWidth, targetHeight), null)
-            } catch (_: Throwable) {
-                // Fallback below
-            }
+        try {
+            return context.contentResolver.loadThumbnail(uri, Size(targetWidth, targetHeight), null)
+        } catch (_: Throwable) {
+            // Fallback below
         }
 
         return if (isVideo) {
@@ -246,7 +243,7 @@ class ThumbnailManager private constructor(private val context: Context) {
     fun saveBitmapToCache(bitmap: Bitmap, targetFile: File): Boolean {
         return try {
             val tempFile = File.createTempFile("thumb_tmp_", ".tmp", cacheDir)
-            val compressBitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && bitmap.config == Bitmap.Config.HARDWARE) {
+            val compressBitmap = if (bitmap.config == Bitmap.Config.HARDWARE) {
                 bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: bitmap
             } else {
                 bitmap
