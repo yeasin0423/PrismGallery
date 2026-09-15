@@ -35,7 +35,7 @@ Android 10 (API 29) or newer.
 
 ## Download
 
-- **GitHub Releases:** https://github.com/YOUR_USERNAME/PrismGallery/releases <!-- TODO: replace YOUR_USERNAME once the repository exists -->
+- **GitHub Releases:** https://github.com/Soretake/PrismGallery/releases
 - **F-Droid:** coming soon
 
 ### Verifying the APK
