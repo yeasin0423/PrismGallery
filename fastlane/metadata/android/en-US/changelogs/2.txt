@@ -1,0 +1,1 @@
+Releases are now built on Linux so that F-Droid can reproduce them exactly. No changes to the app itself.

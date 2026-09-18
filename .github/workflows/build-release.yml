@@ -1,0 +1,39 @@
+name: Build release APK
+
+# Builds the unsigned release APK on Linux with the same Java version as F-Droid's build server, so the result can
+# be compared byte for byte with F-Droid's own build (reproducible build). The R8 code shrinker writes different
+# line endings on Windows, so release builds meant for publishing are made here, not on a Windows PC.
+# The APK is signed afterwards, on the maintainer's own computer; the signing key never leaves it.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build the unsigned release APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Show checksums
+        run: sha256sum app/build/outputs/apk/release/*.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PrismGallery-unsigned-${{ github.ref_name }}
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
