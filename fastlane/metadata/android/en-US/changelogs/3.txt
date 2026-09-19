@@ -1,0 +1,1 @@
+Uses a newer code shrinker so that builds are reproducible on any machine. The app is also about 4% smaller. No other changes.
