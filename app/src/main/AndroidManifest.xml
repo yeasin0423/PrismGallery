@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Permissions required for reading media files -->
+    <!-- Setting a photo as wallpaper from the viewer (a normal permission, granted at install). -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
@@ -31,10 +33,6 @@
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@style/Theme.AmoledGallery">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
             <!-- "Open with": shows a photo or video handed over by another app (file manager, chat, browser). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -45,6 +43,72 @@
                 <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
+
+        <!-- The launcher entry, one per design: only the one of the chosen design is enabled, so the
+             home-screen icon shows that design's version of the rosette (see LauncherIcon). -->
+        <activity-alias
+            android:name=".LauncherOneUi"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_oneui"
+            android:roundIcon="@mipmap/ic_launcher_oneui"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherGemini"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_gemini"
+            android:roundIcon="@mipmap/ic_launcher_gemini"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherIos"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_ios"
+            android:roundIcon="@mipmap/ic_launcher_ios"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherHyperOs"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_hyperos"
+            android:roundIcon="@mipmap/ic_launcher_hyperos"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Plays the video or GIF picked in the viewer as the home-screen wallpaper. -->
+        <service
+            android:name=".service.LiveWallpaperService"
+            android:exported="true"
+            android:label="@string/live_wallpaper_label"
+            android:directBootAware="true"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/live_wallpaper" />
+        </service>
 
     </application>
 

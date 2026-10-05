@@ -65,6 +65,8 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.Wallpaper
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Share
@@ -106,6 +108,7 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -135,6 +138,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.drawscope.Stroke
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import dev.chrisbanes.haze.HazeState
 import com.example.amoledgallery.ui.design.HazeSource
 import com.example.amoledgallery.ui.design.OverlayWindow
@@ -175,6 +181,8 @@ fun MediaDetailScreen(
     onRestoreItem: (MediaItem) -> Unit = {},
     onDeletePermanently: (MediaItem) -> Unit = {},
     viewOnly: Boolean = false,
+    /** Off for files opened from another app: renaming them needs the gallery's write-access flow. */
+    allowRename: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     if (mediaList.isEmpty()) {
@@ -209,6 +217,12 @@ fun MediaDetailScreen(
     }
 
     var showControls by remember { mutableStateOf(true) }
+    // A video's play button and scrubber are part of these controls, not a second set of their own:
+    // both fade away together while it plays and come back together on a tap. They used to keep their
+    // own visibility and ended up contradicting each other - bars without a scrubber or the other way
+    // round - which showed up most clearly in landscape.
+    var videoPlaying by remember { mutableStateOf(false) }
+    var videoScrubbing by remember { mutableStateOf(false) }
     // Hiding the controls also hides Android's status and navigation bars (a swipe from the edge shows them briefly).
     val hostView = androidx.compose.ui.platform.LocalView.current
     androidx.compose.runtime.LaunchedEffect(showControls) {
@@ -229,7 +243,15 @@ fun MediaDetailScreen(
             }
         }
     }
+    androidx.compose.runtime.LaunchedEffect(showControls, videoPlaying, videoScrubbing) {
+        if (showControls && videoPlaying && !videoScrubbing) {
+            kotlinx.coroutines.delay(2500)
+            showControls = false
+        }
+    }
     var showRenameDialog by remember { mutableStateOf(false) }
+    /** The photo whose "set as wallpaper" sheet is open. */
+    var wallpaperItem by remember { mutableStateOf<MediaItem?>(null) }
     // iOS: the ⋯ menu in the top bar.
     var showMoreMenu by remember { mutableStateOf(false) }
     var moreMenuAnchor by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
@@ -268,6 +290,17 @@ fun MediaDetailScreen(
     val infoExpandMaxPx = if (isIos) (viewerSize.height - panelHeightPx - statusBarPx).coerceAtLeast(0f) else 0f
     var infoExpand by remember { mutableFloatStateOf(0f) }
     androidx.compose.runtime.LaunchedEffect(pagerState.currentPage) { infoExpand = 0f }
+    // The other designs' panel grows upwards too, but only as far as its details need to be seen whole
+    // (what does not fit is its scroll range), and never over the top bar.
+    val infoScroll = rememberScrollState()
+    fun infoExpandMax(): Float = when {
+        isIos -> infoExpandMaxPx
+        isHyperOs -> 0f
+        else -> minOf(
+            infoScroll.maxValue + infoExpand,
+            viewerSize.height - viewerSize.height * INFO_PANEL_FRACTION - topChromePx
+        ).coerceAtLeast(0f)
+    }
     // Only read inside callbacks and small child scopes: read here, crossing the halfway point would
     // recompose the whole viewer (pager and images included) in the middle of the panel animation.
     val infoMostlyOpen by remember { derivedStateOf { infoProgress > 0.5f } }
@@ -285,13 +318,14 @@ fun MediaDetailScreen(
      * that expand before closing the panel.
      */
     fun applyInfoDrag(dy: Float): Float {
-        if (isIos && dy < 0f && infoProgress >= 1f) {
-            val take = maxOf(dy, -(infoExpandMaxPx - infoExpand))
+        val expandMax = infoExpandMax()
+        if (dy < 0f && infoProgress >= 1f && infoExpand < expandMax) {
+            val take = maxOf(dy, -(expandMax - infoExpand))
             infoExpand -= take
             return take
         }
         var rest = dy
-        if (isIos && rest > 0f && infoExpand > 0f) {
+        if (rest > 0f && infoExpand > 0f) {
             val take = minOf(rest, infoExpand)
             infoExpand -= take
             rest -= take
@@ -393,7 +427,7 @@ fun MediaDetailScreen(
         onDelete = { onTrashItem(currentItem) },
         onRestore = { onRestoreItem(currentItem) },
         onDeletePermanently = { onDeletePermanently(currentItem) },
-        showRename = !trashMode && !viewOnly,
+        showRename = !trashMode && !viewOnly && allowRename,
         onMore = { anchor ->
             moreMenuAnchor = anchor
             showMoreMenu = true
@@ -432,7 +466,8 @@ fun MediaDetailScreen(
                             infoShift = -((h - fittedHeight) / 2f) * p - infoExpand
                         } else {
                             // Details: shrink the photo just enough to fit the space above the panel and centre it there.
-                            val available = (h - panelHeightPx - topChromePx).coerceAtLeast(h * 0.2f)
+                            // A panel pulled higher leaves less room, so the photo shrinks further.
+                            val available = (h - panelHeightPx - infoExpand - topChromePx).coerceAtLeast(h * 0.2f)
                             val targetScale = (available / fittedHeight).coerceAtMost(1f)
                             infoScale = 1f + (targetScale - 1f) * p
                             infoShift = (topChromePx + available / 2f - h / 2f) * p
@@ -494,8 +529,8 @@ fun MediaDetailScreen(
                                     settleJob?.cancel()
                                     dismissing = infoProgress <= 0.001f && total.y > 0f && dismissOffset >= 0f
                                     if (isHyperOs && !dismissing) {
-                                        // HyperOS has no panel under the photo: swiping up opens its Detail info page.
-                                        if (total.y < 0f) hyperInfoOpen = true
+                                        // HyperOS has no panel under the photo, and like Xiaomi's gallery its Detail page
+                                        // opens only from More > Details: swiping up does nothing.
                                         change.consume()
                                         break
                                     }
@@ -525,7 +560,11 @@ fun MediaDetailScreen(
                     AmoledVideoPlayer(
                         item = currentMedia,
                         isActivePage = pagerState.currentPage == page,
+                        controlsVisible = showControls,
                         onTap = onPhotoTap,
+                        onShowControls = { showControls = true },
+                        onPlayingChange = { videoPlaying = it },
+                        onScrubbingChange = { videoScrubbing = it },
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
@@ -641,9 +680,11 @@ fun MediaDetailScreen(
                 onEdit = if (viewOnly) null else actions.onEdit,
                 heightDp = with(density) { panelHeightPx.toDp() },
                 progress = { infoProgress },
+                expand = { infoExpand },
+                scrollState = infoScroll,
                 onDrag = { dy ->
                     settleJob?.cancel()
-                    infoProgress = (infoProgress - dy / panelHeightPx).coerceIn(0f, 1f)
+                    applyInfoDrag(dy)
                 },
                 onSettle = { vy ->
                     settleInfo(
@@ -690,33 +731,98 @@ fun MediaDetailScreen(
                         android.content.ClipData.newUri(context.contentResolver, currentItem.displayName, currentItem.uri)
                     )
                 })
-                if (!currentItem.isVideo) {
-                    add(com.example.amoledgallery.ui.design.MenuEntry(strings.setAsWallpaper) {
-                        val intent = Intent(Intent.ACTION_ATTACH_DATA).apply {
-                            setDataAndType(currentItem.uri, "image/*")
-                            putExtra("mimeType", "image/*")
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        runCatching { context.startActivity(Intent.createChooser(intent, strings.setAsWallpaper)) }
-                    })
-                }
+                // Photos become the wallpaper; videos and GIFs become a live wallpaper (see the sheet).
+                add(com.example.amoledgallery.ui.design.MenuEntry(strings.setAsWallpaper) { wallpaperItem = currentItem })
                 if (actions.showRename) {
                     add(com.example.amoledgallery.ui.design.MenuEntry(strings.rename) { showRenameDialog = true })
                 }
             }
         } else if (isHyperOs) {
             // HyperOS: the "More" menu above the toolbar.
-            listOf(
-                com.example.amoledgallery.ui.design.MenuEntry(strings.rename) { showRenameDialog = true },
-                com.example.amoledgallery.ui.design.MenuEntry(strings.details) { hyperInfoOpen = true }
-            )
+            buildList {
+                if (actions.showRename) add(com.example.amoledgallery.ui.design.MenuEntry(strings.rename) { showRenameDialog = true })
+                // Photos become the wallpaper; videos and GIFs become a live wallpaper (see the sheet).
+                add(com.example.amoledgallery.ui.design.MenuEntry(strings.setAsWallpaper) { wallpaperItem = currentItem })
+                add(com.example.amoledgallery.ui.design.MenuEntry(strings.details) { hyperInfoOpen = true })
+            }
         } else {
-            listOf(
-                com.example.amoledgallery.ui.design.MenuEntry(strings.rename, icon = Icons.Outlined.DriveFileRenameOutline) { showRenameDialog = true },
-                com.example.amoledgallery.ui.design.MenuEntry(strings.edit, icon = Icons.Outlined.Edit) { editingItem = currentItem }
-            )
+            buildList {
+                if (actions.showRename) {
+                    add(com.example.amoledgallery.ui.design.MenuEntry(strings.rename, icon = Icons.Outlined.DriveFileRenameOutline) { showRenameDialog = true })
+                }
+                add(com.example.amoledgallery.ui.design.MenuEntry(strings.edit, icon = Icons.Outlined.Edit) { editingItem = currentItem })
+                add(com.example.amoledgallery.ui.design.MenuEntry(strings.setAsWallpaper, icon = Icons.Outlined.Wallpaper) { wallpaperItem = currentItem })
+            }
         }
     )
+
+    // Set as wallpaper: which screen, in the current design's sheet; set in-app (see setWallpaper).
+    wallpaperItem?.let { item ->
+        com.example.amoledgallery.ui.design.ThemedSheet(
+            onDismissRequest = { wallpaperItem = null },
+            title = strings.setAsWallpaper
+        ) {
+            val palette = LocalAppTheme.current.palette
+            // A GIF can be either: a still wallpaper of its first frame, or a moving one. A video can
+            // only be the moving one.
+            val movable = item.isVideo || item.mimeType.equals("image/gif", ignoreCase = true)
+            com.example.amoledgallery.ui.design.ThemedListSection(
+                inSheet = true,
+                modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 20.dp),
+                rows = buildList {
+                    if (movable) {
+                        add(
+                            com.example.amoledgallery.ui.design.ListRow(
+                                strings.liveWallpaper,
+                                icon = Icons.Outlined.Movie,
+                                iconColor = palette.accent,
+                                showChevron = false,
+                                onClick = {
+                                    val tooLong = item.isVideo &&
+                                        item.durationMs > com.example.amoledgallery.service.LiveWallpaperChoice.MAX_VIDEO_MS
+                                    if (tooLong) {
+                                        android.widget.Toast.makeText(context, strings.liveWallpaperTooLong, android.widget.Toast.LENGTH_LONG).show()
+                                    } else {
+                                        wallpaperItem = null
+                                        com.example.amoledgallery.util.setLiveWallpaper(context, item.uri, item.isVideo)
+                                    }
+                                }
+                            )
+                        )
+                    }
+                    if (!item.isVideo) {
+                        listOf(
+                            com.example.amoledgallery.util.WallpaperTarget.HOME to strings.wallpaperHome,
+                            com.example.amoledgallery.util.WallpaperTarget.LOCK to strings.wallpaperLock,
+                            com.example.amoledgallery.util.WallpaperTarget.BOTH to strings.wallpaperBoth
+                        ).forEach { (target, label) ->
+                            add(
+                                com.example.amoledgallery.ui.design.ListRow(
+                                    label,
+                                    icon = Icons.Outlined.Wallpaper,
+                                    iconColor = palette.accent,
+                                    showChevron = false,
+                                    onClick = {
+                                        wallpaperItem = null
+                                        scope.launch {
+                                            val ok = withContext(Dispatchers.IO) {
+                                                com.example.amoledgallery.util.setWallpaper(context, item.uri, target)
+                                            }
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                if (ok) strings.wallpaperSet else strings.wallpaperFailed,
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                )
+                            )
+                        }
+                    }
+                }
+            )
+        }
+    }
 
     if (showRenameDialog) {
         RenameDialog(
@@ -880,7 +986,11 @@ private fun InfoPanel(
     onEdit: (() -> Unit)?,
     heightDp: Dp,
     progress: () -> Float,
-    onDrag: (Float) -> Unit,
+    /** How far the open panel has been pulled up beyond [heightDp], in px (read at layout, not composition). */
+    expand: () -> Float,
+    scrollState: androidx.compose.foundation.ScrollState,
+    /** Applies a vertical drag (px, > 0 = down) to opening / growing the panel; returns the part it used. */
+    onDrag: (Float) -> Float,
     onSettle: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -892,18 +1002,18 @@ private fun InfoPanel(
     val connection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                // Still opening: an upward drag first opens the panel fully before the list scrolls.
-                if (available.y < 0f && progress() < 1f && source == NestedScrollSource.UserInput) {
-                    latestOnDrag(available.y)
-                    return Offset(0f, available.y)
+                // Upwards: first open the panel fully, then pull it up until all details fit, then scroll.
+                if (available.y < 0f && source == NestedScrollSource.UserInput) {
+                    val used = latestOnDrag(available.y)
+                    if (used != 0f) return Offset(0f, used)
                 }
                 return Offset.Zero
             }
 
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                // Downwards at the top of the list: lower the panel, then close it.
                 if (available.y > 0f && source == NestedScrollSource.UserInput) {
-                    latestOnDrag(available.y)
-                    return Offset(0f, available.y)
+                    return Offset(0f, latestOnDrag(available.y))
                 }
                 return Offset.Zero
             }
@@ -929,7 +1039,13 @@ private fun InfoPanel(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(heightDp)
+            // The open height plus however far it has been pulled up; measured here, so growing the panel
+            // re-lays it out without recomposing the viewer.
+            .layout { measurable, constraints ->
+                val height = (heightDp.roundToPx() + expand()).roundToInt().coerceAtMost(constraints.maxHeight)
+                val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
+                layout(placeable.width, height) { placeable.place(0, 0) }
+            }
             .graphicsLayer {
                 val p = progress()
                 translationY = (1f - p) * size.height
@@ -938,16 +1054,16 @@ private fun InfoPanel(
             }
             .clip(RoundedCornerShape(topStart = corner, topEnd = corner))
             .then(
-                // Google (Gemini): black with the accent glow rising from the bottom, like the main screens.
+                // Google (Gemini): a Gemini glass sheet with its colour glow along the edge, like the bars.
                 if (language == DesignLanguage.GOOGLE_EXPRESSIVE) {
-                    Modifier.screenBackground()
+                    Modifier.geminiGlass(RoundedCornerShape(topStart = corner, topEnd = corner), state = null, tintAlpha = 0.96f)
                 } else {
                     Modifier.background(if (palette.isLight || isOneUi) palette.background else palette.surface)
                 }
             )
             .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false) } }
             .nestedScroll(connection)
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
             .padding(horizontal = if (isOneUi) 24.dp else 16.dp)
             .padding(bottom = 24.dp)
@@ -963,13 +1079,18 @@ private fun InfoPanel(
                         .background(palette.onBackground.copy(alpha = 0.22f))
                 )
             }
-            Text(
-                text = strings.details,
-                color = palette.onBackground,
-                fontSize = if (language == DesignLanguage.GOOGLE_EXPRESSIVE) 22.sp else 20.sp,
-                fontWeight = if (language == DesignLanguage.GOOGLE_EXPRESSIVE) FontWeight.Normal else FontWeight.Bold,
-                modifier = Modifier.padding(start = 8.dp, top = 14.dp, bottom = 14.dp)
-            )
+            if (language == DesignLanguage.GOOGLE_EXPRESSIVE) {
+                // Gemini: no title - the date heading of the details leads.
+                Spacer(modifier = Modifier.height(18.dp))
+            } else {
+                Text(
+                    text = strings.details,
+                    color = palette.onBackground,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 8.dp, top = 14.dp, bottom = 14.dp)
+                )
+            }
         }
         MediaInfoContent(item = item, onEdit = onEdit)
     }
@@ -1116,7 +1237,7 @@ private fun DetailTopBar(
         ) {
             TonalCircle(Icons.AutoMirrored.Rounded.ArrowBack, strings.back, actions.onBack)
             // Balances the circles on the right so the date pill stays centred.
-            Spacer(modifier = Modifier.width(if (actions.showRename) 56.dp else 0.dp))
+            Spacer(modifier = Modifier.width(56.dp))
             Spacer(modifier = Modifier.weight(1f))
             Column(
                 modifier = Modifier
@@ -1127,10 +1248,15 @@ private fun DetailTopBar(
                 Text(dateTitle, color = palette.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
             }
             Spacer(modifier = Modifier.weight(1f))
-            if (actions.showRename) {
-                TonalCircle(Icons.Outlined.DriveFileRenameOutline, strings.rename, actions.onRename)
-                Spacer(modifier = Modifier.width(8.dp))
-            }
+            // ⋮ holds rename, edit and "set as wallpaper".
+            var moreBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+            TonalCircle(
+                Icons.Rounded.MoreVert,
+                strings.options,
+                { actions.onMore(moreBounds) },
+                Modifier.onGloballyPositioned { moreBounds = it.boundsInRoot() }
+            )
+            Spacer(modifier = Modifier.width(8.dp))
             TonalCircle(Icons.Outlined.Info, strings.details, actions.onInfo)
         }
 
@@ -1484,11 +1610,11 @@ private fun OneUiChromeCircle(icon: ImageVector, description: String, modifier: 
 }
 
 @Composable
-private fun TonalCircle(icon: ImageVector, description: String, onClick: () -> Unit) {
+private fun TonalCircle(icon: ImageVector, description: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val palette = LocalAppTheme.current.palette
     val interaction = remember { MutableInteractionSource() }
     Box(
-        modifier = Modifier
+        modifier = modifier
             .pressScale(interaction, 0.9f)
             .size(48.dp)
             .geminiChip(CircleShape)

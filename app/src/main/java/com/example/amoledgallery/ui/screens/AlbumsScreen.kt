@@ -36,12 +36,19 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.Sort
+import androidx.compose.material.icons.rounded.VerticalAlignTop
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
@@ -50,6 +57,9 @@ import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.SdCard
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.Usb
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.ZoomIn
@@ -68,6 +78,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -121,6 +136,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.rounded.AutoAwesomeMotion
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.PlayArrow
+import com.example.amoledgallery.ui.design.geminiChip
 import com.example.amoledgallery.ui.design.glass
 import com.example.amoledgallery.ui.design.pressScale
 import com.example.amoledgallery.ui.theme.DesignLanguage
@@ -230,15 +246,49 @@ fun AlbumsScreen(
     favoriteMedia: List<MediaItem> = emptyList(),
     onOpenAllPhotos: () -> Unit = {},
     onOpenVideos: () -> Unit = {},
-    onOpenFavorites: () -> Unit = {}
+    onOpenFavorites: () -> Unit = {},
+    // Album order: the sort chosen in the ⋮ menu, and moving one album from its own menu.
+    albumSort: com.example.amoledgallery.model.AlbumSort = com.example.amoledgallery.model.AlbumSort.STANDARD,
+    onSetAlbumSort: (com.example.amoledgallery.model.AlbumSort) -> Unit = {},
+    onMoveAlbum: (AlbumItem, Int, Boolean) -> Unit = { _, _, _ -> },
+    /** The album list rearranged by dragging, as bucket ids in the new order. */
+    onReorderAlbums: (List<String>) -> Unit = {},
+    /** Which external volume "move" writes to: an SD card, or USB storage when that is all there is. */
+    externalKind: com.example.amoledgallery.util.StorageKind = com.example.amoledgallery.util.StorageKind.SD_CARD,
+    /** Only the albums on this storage in the album list; null shows all. */
+    storageFilter: com.example.amoledgallery.util.StorageKind? = null,
+    onSetStorageFilter: (com.example.amoledgallery.util.StorageKind?) -> Unit = {},
+    /** How much an album holds, for the "move to..." dialog; loaded when that dialog opens. */
+    albumBytes: suspend (AlbumItem) -> Long = { 0L },
+    /** Free space per storage, for the move dialogs. */
+    freeByStorage: Map<com.example.amoledgallery.util.StorageKind, Long> = emptyMap(),
+    /** Every visible album, root and nested alike, for the name search - not just this level's. */
+    allAlbumsFlat: List<AlbumItem> = emptyList(),
+    /** Opens a search result directly, wherever it sits in the folder tree. */
+    onJumpToAlbum: (AlbumItem) -> Unit = {},
+    /** Hides every ticked album at once. */
+    onHideAlbums: (List<AlbumItem>) -> Unit = {},
+    /** Moves every ticked album to the other storage at once. */
+    onMigrateAlbums: (List<AlbumItem>, Boolean) -> Unit = { _, _ -> }
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
     var showCreateSubDialog by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
+    var showStorageMenu by remember { mutableStateOf(false) }
     var menuAnchor by remember { mutableStateOf<Rect?>(null) }
     var showSubAlbumMenu by remember { mutableStateOf(false) }
     var subAlbumMenuAnchor by remember { mutableStateOf<Rect?>(null) }
     var showManageHiddenDialog by remember { mutableStateOf(false) }
+    // Searching by name happens in the album list itself: the search icon turns into a field in the
+    // header, and the albums that do not match simply drop out of the grid below it.
+    var albumSearchOpen by remember { mutableStateOf(false) }
+    // Album selection, entered from an album's own menu ("Select") rather than by holding, so holding
+    // still arranges the list. While it is on, a tap ticks an album and holding does nothing.
+    var albumSelectMode by remember { mutableStateOf(false) }
+    var selectedAlbumIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showMoveAlbumsDialog by remember { mutableStateOf(false) }
+    var albumSearchQuery by remember { mutableStateOf("") }
     var contextMenuAlbum by remember { mutableStateOf<AlbumItem?>(null) }
     var contextAnchor by remember { mutableStateOf<Rect?>(null) }
     var albumToRename by remember { mutableStateOf<AlbumItem?>(null) }
@@ -375,6 +425,49 @@ fun AlbumsScreen(
     }
     val haptic = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
+
+    // ---- Arranging the album list by dragging ------------------------------------------------------
+    // Hold an album, then drag it where it should go: the others make room as it passes, and letting go
+    // keeps that order (as "custom order"). Held and released without moving, it opens its menu instead.
+    /** The order shown while (and just after) an album is dragged; null otherwise. */
+    var arranged by remember { mutableStateOf<List<AlbumItem>?>(null) }
+    var draggedKey by remember { mutableStateOf<String?>(null) }
+    /** The finger, in the grid's coordinates, and where on the tile it took hold. */
+    var dragPointer by remember { mutableStateOf(Offset.Zero) }
+    var dragGrab by remember { mutableStateOf(Offset.Zero) }
+    var gridOriginInRoot by remember { mutableStateOf(Offset.Zero) }
+    // Keep the dragged order on screen until the view model's list has caught up with it.
+    LaunchedEffect(albums) { if (draggedKey == null) arranged = null }
+    /** What was typed into the search field, or null while it is closed or still empty. */
+    val albumSearchTerm = albumSearchQuery.trim().takeIf { albumSearchOpen && it.isNotBlank() }
+    val shownAlbums = if (!isInsideAlbum) {
+        if (albumSearchTerm != null) {
+            // Every album of the phone, nested ones included - a name is searched for wherever it sits,
+            // not only among the albums this level happens to show.
+            remember(albumSearchTerm, allAlbumsFlat) {
+                allAlbumsFlat
+                    .filter { it.name.contains(albumSearchTerm, ignoreCase = true) }
+                    .sortedBy { it.name.lowercase() }
+            }
+        } else {
+            (arranged ?: albums).filter { storageFilter == null || it.storage == storageFilter }
+        }
+    } else {
+        albums
+    }
+    val selectedAlbums = shownAlbums.filter { it.bucketId in selectedAlbumIds }
+    /** Leaves album selection, forgetting what was ticked. */
+    val exitAlbumSelection: () -> Unit = {
+        albumSelectMode = false
+        selectedAlbumIds = emptySet()
+    }
+
+    /** Closes the search and forgets what was typed. */
+    val closeAlbumSearch: () -> Unit = {
+        albumSearchOpen = false
+        albumSearchQuery = ""
+    }
+
     // Same long-press/tap race guard as the Bilder grid: the tap that ends a long-press must not
     // immediately toggle the item it just selected.
     var lastLongPressId by remember { mutableStateOf<Long?>(null) }
@@ -450,6 +543,10 @@ fun AlbumsScreen(
     }
 
     BackHandler(enabled = drawerProgress > 0.5f) { settleDrawer(false) }
+    // Back closes the search first, rather than leaving the albums altogether.
+    BackHandler(enabled = albumSearchOpen) { closeAlbumSearch() }
+    // ... and ends the album selection before it leaves the tab.
+    BackHandler(enabled = albumSelectMode) { exitAlbumSelection() }
     // One UI with a cover header: the cover stays put and only the rows below it move aside for the drawer.
     val drawerShift = if (oneUiAlbumHero) Modifier.graphicsLayer { translationX = drawerProgress * drawerWidthPx } else Modifier
 
@@ -563,6 +660,94 @@ fun AlbumsScreen(
                                 else if (gridOptions && rootColumns < 5) onSetAlbumColumns(rootColumns + 1)
                             }
                         )
+                        .onGloballyPositioned { gridOriginInRoot = it.positionInRoot() }
+                        .then(
+                            // Holding arranges the list - but not while albums are being ticked, where a
+                            // hold would otherwise pick one up mid-selection.
+                            if (!isInsideAlbum && albums.isNotEmpty() && !albumSelectMode && albumSearchTerm == null) {
+                                Modifier.pointerInput(albums, albumGridState, albumSelectMode) {
+                                    val albumKeys = albums.map { it.bucketId }.toSet()
+                                    var startPointer = Offset.Zero
+                                    var moved = false
+                                    fun albumAt(pos: Offset) = albumGridState.layoutInfo.visibleItemsInfo.firstOrNull { info ->
+                                        info.key in albumKeys &&
+                                            pos.x >= info.offset.x && pos.x <= info.offset.x + info.size.width &&
+                                            pos.y >= info.offset.y && pos.y <= info.offset.y + info.size.height
+                                    }
+                                    fun finish() {
+                                        val key = draggedKey ?: return
+                                        val order = arranged
+                                        if (!moved) {
+                                            // Held without moving: the album's menu, as before.
+                                            arranged = null
+                                            val info = albumGridState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key }
+                                            val anchor = info?.let {
+                                                Rect(
+                                                    gridOriginInRoot + Offset(it.offset.x.toFloat(), it.offset.y.toFloat()),
+                                                    androidx.compose.ui.geometry.Size(it.size.width.toFloat(), it.size.height.toFloat())
+                                                )
+                                            }
+                                            albums.firstOrNull { it.bucketId == key }?.let { openAlbumActions(it, anchor) }
+                                        } else if (order != null) {
+                                            onReorderAlbums(order.map { it.bucketId })
+                                        }
+                                        draggedKey = null
+                                    }
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = { pos ->
+                                            val info = albumAt(pos) ?: return@detectDragGesturesAfterLongPress
+                                            draggedKey = info.key as String
+                                            arranged = albums
+                                            moved = false
+                                            startPointer = pos
+                                            dragPointer = pos
+                                            dragGrab = pos - Offset(info.offset.x.toFloat(), info.offset.y.toFloat())
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        },
+                                        onDrag = { change, amount ->
+                                            val key = draggedKey ?: return@detectDragGesturesAfterLongPress
+                                            change.consume()
+                                            dragPointer += amount
+                                            if (!moved && (dragPointer - startPointer).getDistance() > viewConfiguration.touchSlop) moved = true
+                                            if (!moved) return@detectDragGesturesAfterLongPress
+                                            // Over another album: take its place; the rest shift along.
+                                            val target = albumAt(dragPointer)?.key as? String
+                                            val current = arranged ?: return@detectDragGesturesAfterLongPress
+                                            if (target != null && target != key) {
+                                                val from = current.indexOfFirst { it.bucketId == key }
+                                                val to = current.indexOfFirst { it.bucketId == target }
+                                                if (from >= 0 && to >= 0) {
+                                                    arranged = current.toMutableList().apply { add(to, removeAt(from)) }
+                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                }
+                                            }
+                                            // Near the top or bottom edge: scroll the list along.
+                                            val edge = 90.dp.toPx()
+                                            val height = albumGridState.layoutInfo.viewportSize.height
+                                            val scroll = when {
+                                                dragPointer.y < edge -> -18f
+                                                dragPointer.y > height - edge -> 18f
+                                                else -> 0f
+                                            }
+                                            if (scroll != 0f) coroutineScope.launch { albumGridState.scrollBy(scroll) }
+                                        },
+                                        onDragEnd = { finish() },
+                                        onDragCancel = {
+                                            // Not moved yet: the tile took the release as its tap, which cancels the
+                                            // drag. That is still a plain hold, so it opens the menu.
+                                            if (!moved) {
+                                                finish()
+                                            } else {
+                                                arranged = null
+                                                draggedKey = null
+                                            }
+                                        }
+                                    )
+                                }
+                            } else {
+                                Modifier
+                            }
+                        )
                         .then(
                             if (isInsideAlbum && albumMedia.isNotEmpty()) {
                                 Modifier.detectDragSelect(
@@ -607,29 +792,46 @@ fun AlbumsScreen(
                     if (!isInsideAlbum) {
                         // iOS pins its "Alben" title bar over the list instead (see below).
                         if (language != DesignLanguage.IOS_LIQUID_GLASS) item(span = { GridItemSpan(maxLineSpan) }, key = "albums_header") {
-                            LargeHeader(
-                                title = strings.tabAlbums,
-                                subtitle = if (language == DesignLanguage.SAMSUNG_ONEUI) null else albumCountText(albums.size),
-                                collapseFraction = { rootHeaderCollapse },
-                                tall = true,
-                                modifier = if (language == DesignLanguage.XIAOMI_HYPEROS) Modifier.bleedHorizontally(outerPadding) else Modifier
-                            ) {
-                                // HyperOS creates albums with its floating + button instead.
-                                if (language != DesignLanguage.XIAOMI_HYPEROS) {
+                            // While the search is open the field takes the header's place, so the albums
+                            // below it stay on screen and thin out as the name is typed.
+                            if (albumSearchOpen) {
+                                AlbumSearchBar(
+                                    query = albumSearchQuery,
+                                    onQueryChange = { albumSearchQuery = it },
+                                    onClose = closeAlbumSearch,
+                                    hazeState = albumsHaze
+                                )
+                            } else {
+                                LargeHeader(
+                                    title = strings.tabAlbums,
+                                    subtitle = if (language == DesignLanguage.SAMSUNG_ONEUI) null else albumCountText(shownAlbums.size),
+                                    collapseFraction = { rootHeaderCollapse },
+                                    tall = true,
+                                    modifier = if (language == DesignLanguage.XIAOMI_HYPEROS) Modifier.bleedHorizontally(outerPadding) else Modifier
+                                ) {
                                     ThemedIconButton(
-                                        icon = Icons.Rounded.Add,
-                                        contentDescription = strings.newAlbum,
-                                        onClick = { showCreateDialog = true },
+                                        icon = Icons.Rounded.Search,
+                                        contentDescription = strings.searchAlbums,
+                                        onClick = { albumSearchOpen = true },
                                         hazeState = albumsHaze
                                     )
+                                    // HyperOS creates albums with its floating + button instead.
+                                    if (language != DesignLanguage.XIAOMI_HYPEROS) {
+                                        ThemedIconButton(
+                                            icon = Icons.Rounded.Add,
+                                            contentDescription = strings.newAlbum,
+                                            onClick = { showCreateDialog = true },
+                                            hazeState = albumsHaze
+                                        )
+                                    }
+                                    ThemedIconButton(
+                                        icon = if (language == DesignLanguage.IOS_LIQUID_GLASS) Icons.Rounded.MoreHoriz else Icons.Rounded.MoreVert,
+                                        contentDescription = strings.tabMenu,
+                                        onClick = { showMenu = true },
+                                        hazeState = albumsHaze,
+                                        modifier = Modifier.onGloballyPositioned { menuAnchor = it.boundsInRoot() }
+                                    )
                                 }
-                                ThemedIconButton(
-                                    icon = if (language == DesignLanguage.IOS_LIQUID_GLASS) Icons.Rounded.MoreHoriz else Icons.Rounded.MoreVert,
-                                    contentDescription = strings.tabMenu,
-                                    onClick = { showMenu = true },
-                                    hazeState = albumsHaze,
-                                    modifier = Modifier.onGloballyPositioned { menuAnchor = it.boundsInRoot() }
-                                )
                             }
                         }
 
@@ -651,19 +853,64 @@ fun AlbumsScreen(
                             }
                         }
 
-                        items(albums, key = { it.bucketId }) { album ->
+                        items(shownAlbums, key = { it.bucketId }) { album ->
+                            val dragged = album.bucketId == draggedKey
+                            val tileModifier = if (dragged) {
+                                // Follows the finger, lifted a little above the others.
+                                Modifier
+                                    .zIndex(1f)
+                                    .graphicsLayer {
+                                        val info = albumGridState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == album.bucketId }
+                                        if (info != null) {
+                                            translationX = dragPointer.x - dragGrab.x - info.offset.x
+                                            translationY = dragPointer.y - dragGrab.y - info.offset.y
+                                        }
+                                        scaleX = 1.06f
+                                        scaleY = 1.06f
+                                    }
+                            } else {
+                                Modifier.animateItem()
+                            }
+                            Box(modifier = tileModifier) {
                             AlbumTile(
                                 album = album,
-                                onClick = { onAlbumClick(album) },
-                                onLongClick = { anchor -> openAlbumActions(album, anchor) },
+                                // The release that ends a hold (picked up to drag) is not a tap: the grid handles it.
+                                onClick = {
+                                    if (draggedKey != null) return@AlbumTile
+                                    if (albumSelectMode) {
+                                        selectedAlbumIds = if (album.bucketId in selectedAlbumIds) {
+                                            selectedAlbumIds - album.bucketId
+                                        } else {
+                                            selectedAlbumIds + album.bucketId
+                                        }
+                                        return@AlbumTile
+                                    }
+                                    if (albumSearchTerm != null) {
+                                        // A hit may sit several folders deep, where tapping through to it is
+                                        // not possible from here: it is opened directly, breadcrumbs and all.
+                                        closeAlbumSearch()
+                                        onJumpToAlbum(album)
+                                    } else {
+                                        onAlbumClick(album)
+                                    }
+                                },
+                                // Long press is the grid's: it picks the album up to drag (or opens the menu).
+                                onLongClick = null,
                                 compact = rootColumns >= 4
                             )
+                            if (albumSelectMode) {
+                                AlbumTick(
+                                    ticked = album.bucketId in selectedAlbumIds,
+                                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                                )
+                            }
+                            }
                         }
 
-                        if (albums.isEmpty()) {
+                        if (shownAlbums.isEmpty()) {
                             item(span = { GridItemSpan(maxLineSpan) }, key = "albums_empty") {
                                 Text(
-                                    text = strings.noAlbums,
+                                    text = if (albumSearchTerm != null) strings.noAlbumsFound(albumSearchTerm) else strings.noAlbums,
                                     color = palette.textMuted,
                                     fontSize = 15.sp,
                                     textAlign = TextAlign.Center,
@@ -819,6 +1066,54 @@ fun AlbumsScreen(
                 }
             }
 
+            // Albums being ticked: the bar the photos use, and the two things that can be done to several
+            // albums at once underneath it.
+            if (!isInsideAlbum && albumSelectMode) {
+                SelectionTopBar(
+                    selectedCount = selectedAlbumIds.size,
+                    totalCount = shownAlbums.size,
+                    onToggleSelectAll = {
+                        selectedAlbumIds = if (selectedAlbumIds.size == shownAlbums.size) {
+                            emptySet()
+                        } else {
+                            shownAlbums.map { it.bucketId }.toSet()
+                        }
+                    },
+                    onClose = exitAlbumSelection,
+                    hazeState = albumsHaze,
+                    modifier = Modifier.align(Alignment.TopCenter)
+                )
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .padding(bottom = bottomBarContentPadding(20.dp)),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ThemedButton(
+                        text = strings.hideSelected,
+                        icon = Icons.Rounded.VisibilityOff,
+                        onClick = {
+                            val picked = selectedAlbums
+                            exitAlbumSelection()
+                            onHideAlbums(picked)
+                        },
+                        enabled = selectedAlbumIds.isNotEmpty(),
+                        modifier = Modifier.weight(1f)
+                    )
+                    ThemedButton(
+                        text = strings.moveSelected,
+                        icon = Icons.Rounded.SdCard,
+                        onClick = { showMoveAlbumsDialog = true },
+                        // Nowhere to move to: no card in the phone, and nothing ticked that sits on one.
+                        enabled = selectedAlbumIds.isNotEmpty() &&
+                            (isSdCardAvailable || selectedAlbums.any { it.isSdCard }),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
             if (isInsideAlbum && currentAlbum != null && isSelectionMode) {
                 SelectionTopBar(
                     // Set lookup: scanning the album for every selected id was quadratic, which froze the
@@ -906,7 +1201,19 @@ fun AlbumsScreen(
             }
 
             // iOS "Alben": the centred title stays pinned over the list, + and ⋯ share one glass capsule.
-            if (!isInsideAlbum && language == DesignLanguage.IOS_LIQUID_GLASS) {
+            // With the search open the capsule gives way to the field, in the same spot over the list.
+            if (!isInsideAlbum && language == DesignLanguage.IOS_LIQUID_GLASS && albumSearchOpen) {
+                AlbumSearchBar(
+                    query = albumSearchQuery,
+                    onQueryChange = { albumSearchQuery = it },
+                    onClose = closeAlbumSearch,
+                    hazeState = albumsHaze,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .albumNavTransition(language, { navProgress.value }, { navDirection[0] }, forcedNavProgress)
+                )
+            }
+            if (!isInsideAlbum && language == DesignLanguage.IOS_LIQUID_GLASS && !albumSearchOpen) {
                 ThemedTopBar(
                     title = strings.tabAlbums,
                     hazeState = albumsHaze,
@@ -921,6 +1228,15 @@ fun AlbumsScreen(
                             .padding(horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .size(width = 50.dp, height = 44.dp)
+                                .clip(CircleShape)
+                                .clickable { albumSearchOpen = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Rounded.Search, strings.searchAlbums, tint = palette.onBackground, modifier = Modifier.size(24.dp))
+                        }
                         Box(
                             modifier = Modifier
                                 .size(width = 50.dp, height = 44.dp)
@@ -1014,7 +1330,51 @@ fun AlbumsScreen(
                 add(MenuEntry(strings.largerThumbnails, icon = Icons.Rounded.ZoomIn) { if (rootColumns > 2) onSetAlbumColumns(rootColumns - 1) })
                 add(MenuEntry(strings.smallerThumbnails, icon = Icons.Rounded.ZoomOut) { if (rootColumns < 5) onSetAlbumColumns(rootColumns + 1) })
             }
+            add(MenuEntry(strings.sortAlbums, icon = Icons.AutoMirrored.Rounded.Sort) { showSortMenu = true })
+            // Only offered when the albums really are spread over more than one storage.
+            if (albums.map { it.storage }.distinct().size > 1 || storageFilter != null) {
+                add(MenuEntry(strings.showAlbums, icon = Icons.Rounded.Storage) { showStorageMenu = true })
+            }
             add(MenuEntry(strings.hiddenAlbums, icon = Icons.Rounded.VisibilityOff) { showManageHiddenDialog = true })
+        }
+    )
+
+    // Which storage's albums the list shows: all, or only those on internal storage / the SD card / USB
+    // storage (the ones that actually hold albums). Opened from "Show albums" at the same spot.
+    ThemedPopupMenu(
+        expanded = showStorageMenu,
+        onDismissRequest = { showStorageMenu = false },
+        anchorBounds = menuAnchor,
+        entries = buildList {
+            add(MenuEntry(strings.showAll, checked = storageFilter == null) { onSetStorageFilter(null) })
+            val present = albums.map { it.storage }.toSet()
+            com.example.amoledgallery.util.StorageKind.entries
+                .filter { it in present || it == storageFilter }
+                .forEach { kind ->
+                    add(
+                        MenuEntry(
+                            com.example.amoledgallery.ui.i18n.storageLabel(kind),
+                            checked = storageFilter == kind
+                        ) { onSetStorageFilter(kind) }
+                    )
+                }
+        }
+    )
+
+    // The album order, opened from "Sort albums" at the same spot. "Custom" is the order arranged by
+    // hand from the albums' own menus; it keeps that arrangement when picked again later.
+    ThemedPopupMenu(
+        expanded = showSortMenu,
+        onDismissRequest = { showSortMenu = false },
+        anchorBounds = menuAnchor,
+        entries = listOf(
+            com.example.amoledgallery.model.AlbumSort.STANDARD to strings.sortStandard,
+            com.example.amoledgallery.model.AlbumSort.NAME_ASC to strings.sortNameAsc,
+            com.example.amoledgallery.model.AlbumSort.NAME_DESC to strings.sortNameDesc,
+            com.example.amoledgallery.model.AlbumSort.MOST_ITEMS to strings.sortMostItems,
+            com.example.amoledgallery.model.AlbumSort.CUSTOM to strings.sortCustom
+        ).map { (sort, label) ->
+            MenuEntry(label, checked = sort == albumSort) { onSetAlbumSort(sort) }
         }
     )
 
@@ -1042,16 +1402,37 @@ fun AlbumsScreen(
     // Album actions: a popup anchored on the tile for One UI / iOS, an action sheet elsewhere.
     contextMenuAlbum?.let { album ->
         val canMigrate = album.isSdCard || isSdCardAvailable
-        val migrateLabel = if (album.isSdCard) strings.moveToInternal else strings.moveToSd
+        val migrateLabel = when {
+            album.isSdCard -> strings.moveToInternal
+            externalKind == com.example.amoledgallery.util.StorageKind.USB -> strings.moveToUsb
+            else -> strings.moveToSd
+        }
+        val migrateIcon = when {
+            album.isSdCard -> Icons.Rounded.PhoneAndroid
+            externalKind == com.example.amoledgallery.util.StorageKind.USB -> Icons.Rounded.Usb
+            else -> Icons.Rounded.SdCard
+        }
+        // Only the top-level list has an order to arrange (by dragging, or straight to the top from here);
+        // sub-albums stay alphabetical.
+        val canArrange = !isInsideAlbum
         if (language == DesignLanguage.SAMSUNG_ONEUI || language == DesignLanguage.IOS_LIQUID_GLASS) {
             ThemedPopupMenu(
                 expanded = true,
                 onDismissRequest = { contextMenuAlbum = null },
                 anchorBounds = contextAnchor,
                 entries = buildList {
+                    if (canArrange) {
+                        // Selecting albums starts here rather than from a hold, which stays the way to
+                        // arrange the list.
+                        add(MenuEntry(strings.selectAlbums, icon = Icons.Rounded.Check) {
+                            albumSelectMode = true
+                            selectedAlbumIds = setOf(album.bucketId)
+                        })
+                        add(MenuEntry(strings.moveAlbumToTop, icon = Icons.Rounded.VerticalAlignTop) { onMoveAlbum(album, 0, true) })
+                    }
                     add(MenuEntry(strings.rename, icon = Icons.Rounded.Edit) { albumToRename = album })
                     if (canMigrate) {
-                        add(MenuEntry(migrateLabel, icon = if (album.isSdCard) Icons.Rounded.PhoneAndroid else Icons.Rounded.SdCard) { albumToMigrate = album })
+                        add(MenuEntry(migrateLabel, icon = migrateIcon) { albumToMigrate = album })
                     }
                     add(MenuEntry(strings.hide, icon = Icons.Rounded.VisibilityOff) { albumToHide = album })
                     add(MenuEntry(strings.delete, icon = Icons.Rounded.Delete, destructive = true) { albumToDelete = album })
@@ -1068,7 +1449,7 @@ fun AlbumsScreen(
                         .padding(bottom = 20.dp)
                 ) {
                     Text(
-                        text = strings.items(album.count) + " · " + (if (album.isSdCard) strings.sdCard else strings.internal),
+                        text = strings.items(album.count) + " · " + (if (album.isSdCard) com.example.amoledgallery.ui.i18n.storageLabel(album.storage) else strings.internal),
                         color = palette.textMuted,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
@@ -1076,6 +1457,17 @@ fun AlbumsScreen(
                     ThemedListSection(
                         inSheet = true,
                         rows = buildList {
+                            if (canArrange) {
+                                add(ListRow(strings.selectAlbums, icon = Icons.Rounded.Check, iconColor = palette.accent, showChevron = false, onClick = {
+                                    contextMenuAlbum = null
+                                    albumSelectMode = true
+                                    selectedAlbumIds = setOf(album.bucketId)
+                                }))
+                                add(ListRow(strings.moveAlbumToTop, icon = Icons.Rounded.VerticalAlignTop, iconColor = palette.accent, showChevron = false, onClick = {
+                                    contextMenuAlbum = null
+                                    onMoveAlbum(album, 0, true)
+                                }))
+                            }
                             add(ListRow(strings.renameAlbum, icon = Icons.Rounded.Edit, iconColor = palette.accent, showChevron = false, onClick = {
                                 contextMenuAlbum = null
                                 albumToRename = album
@@ -1083,7 +1475,7 @@ fun AlbumsScreen(
                             add(ListRow(
                                 migrateLabel,
                                 subtitle = if (!canMigrate) strings.noSdCard else null,
-                                icon = if (album.isSdCard) Icons.Rounded.PhoneAndroid else Icons.Rounded.SdCard,
+                                icon = migrateIcon,
                                 iconColor = Color(0xFF34C759),
                                 showChevron = false,
                                 onClick = if (canMigrate) {
@@ -1110,10 +1502,46 @@ fun AlbumsScreen(
         }
     }
 
+    // Where the ticked albums should go. Only the storage they are not already on is worth offering.
+    if (showMoveAlbumsDialog) {
+        val anyInternal = selectedAlbums.any { !it.isSdCard }
+        val anyExternal = selectedAlbums.any { it.isSdCard }
+        ThemedDialog(
+            onDismissRequest = { showMoveAlbumsDialog = false },
+            title = strings.moveAlbumsTitle,
+            message = strings.selectionTitle(selectedAlbumIds.size),
+            buttons = buildList {
+                add(DialogButton(strings.cancel, DialogButtonStyle.Cancel) { showMoveAlbumsDialog = false })
+                if (anyInternal && isSdCardAvailable) {
+                    add(
+                        DialogButton(
+                            if (externalKind == com.example.amoledgallery.util.StorageKind.USB) strings.moveToUsb else strings.moveToSd
+                        ) {
+                            val picked = selectedAlbums
+                            showMoveAlbumsDialog = false
+                            exitAlbumSelection()
+                            onMigrateAlbums(picked, true)
+                        }
+                    )
+                }
+                if (anyExternal) {
+                    add(DialogButton(strings.moveToInternal) {
+                        val picked = selectedAlbums
+                        showMoveAlbumsDialog = false
+                        exitAlbumSelection()
+                        onMigrateAlbums(picked, false)
+                    })
+                }
+            }
+        )
+    }
+
     // Create Root Album Dialog
     if (showCreateDialog) {
         CreateAlbumDialog(
             isSdCardAvailable = isSdCardAvailable,
+            externalKind = externalKind,
+            freeByStorage = freeByStorage,
             onDismiss = { showCreateDialog = false },
             onCreate = { name, onSdCard ->
                 showCreateDialog = false
@@ -1182,10 +1610,22 @@ fun AlbumsScreen(
     albumToMigrate?.let { album ->
         val toSdCard = !album.isSdCard
         val destName = toSdCard
+        // What the album takes and what is free where it is going.
+        val albumSize by androidx.compose.runtime.produceState(0L, album) { value = albumBytes(album) }
+        val targetKind = if (toSdCard) externalKind else com.example.amoledgallery.util.StorageKind.INTERNAL
+        val sizeLine = if (albumSize > 0L) {
+            "\n\n" + strings.moveSizeInfo(
+                com.example.amoledgallery.ui.i18n.readableSize(albumSize),
+                com.example.amoledgallery.ui.i18n.storageLabel(targetKind),
+                com.example.amoledgallery.ui.i18n.readableSize(freeByStorage[targetKind] ?: 0L)
+            )
+        } else {
+            ""
+        }
         ThemedDialog(
             onDismissRequest = { albumToMigrate = null },
             title = strings.changeLocationTitle,
-            message = strings.migrateMessage(album.name, album.count, destName),
+            message = strings.migrateMessage(album.name, album.count, destName) + sizeLine,
             buttons = listOf(
                 DialogButton(strings.cancel, DialogButtonStyle.Cancel) { albumToMigrate = null },
                 DialogButton(strings.move, DialogButtonStyle.Primary) {
@@ -1637,12 +2077,121 @@ private fun AlbumDrawer(
     }
 }
 
+/** The tick on an album while albums are being selected: filled when it is one of them. */
+@Composable
+private fun AlbumTick(ticked: Boolean, modifier: Modifier = Modifier) {
+    val palette = LocalAppTheme.current.palette
+    Box(
+        modifier = modifier
+            .size(26.dp)
+            .clip(CircleShape)
+            .background(if (ticked) palette.accent else Color.Black.copy(alpha = 0.45f))
+            .border(1.5.dp, if (ticked) Color.Transparent else Color.White.copy(alpha = 0.8f), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (ticked) {
+            Icon(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = null,
+                tint = palette.onAccent,
+                modifier = Modifier.size(17.dp)
+            )
+        }
+    }
+}
+
+/**
+ * The album search, grown out of the header's magnifier and standing where the title was: a field in
+ * each language's own bar shape - One UI's and HyperOS's filled rounded box, Gemini's chip, iOS's glass
+ * capsule. The albums keep their place underneath and thin out as the name is typed.
+ *
+ * The cross clears what was typed, and closes the search once there is nothing left to clear.
+ */
+@Composable
+private fun AlbumSearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onClose: () -> Unit,
+    hazeState: HazeState,
+    modifier: Modifier = Modifier
+) {
+    val theme = LocalAppTheme.current
+    val palette = theme.palette
+    val language = theme.language
+    val shape = when (language) {
+        DesignLanguage.GOOGLE_EXPRESSIVE, DesignLanguage.IOS_LIQUID_GLASS -> CircleShape
+        else -> RoundedCornerShape(theme.shapes.cardCornerRadius)
+    }
+    val focusRequester = remember { FocusRequester() }
+    // The field is what the search is for: it takes the cursor as soon as the bar appears.
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(120)
+        runCatching { focusRequester.requestFocus() }
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .height(54.dp)
+            .then(
+                when (language) {
+                    DesignLanguage.GOOGLE_EXPRESSIVE -> Modifier.geminiChip(shape)
+                    DesignLanguage.IOS_LIQUID_GLASS -> Modifier.glass(shape, barGlass(), hazeState)
+                    else -> Modifier.clip(shape).background(palette.surface)
+                }
+            )
+            .padding(start = 18.dp, end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Search,
+            contentDescription = null,
+            tint = palette.textMuted,
+            modifier = Modifier.size(21.dp)
+        )
+        BasicTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(color = palette.onBackground, fontSize = 17.sp),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(palette.accent),
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                imeAction = androidx.compose.ui.text.input.ImeAction.Search
+            ),
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 14.dp)
+                .focusRequester(focusRequester),
+            decorationBox = { inner ->
+                if (query.isEmpty()) {
+                    Text(
+                        text = strings.searchAlbumsPlaceholder,
+                        color = palette.textMuted,
+                        fontSize = 17.sp,
+                        maxLines = 1
+                    )
+                }
+                inner()
+            }
+        )
+        ThemedIconButton(
+            icon = Icons.Rounded.Close,
+            contentDescription = strings.close,
+            onClick = { if (query.isEmpty()) onClose() else onQueryChange("") },
+            hazeState = hazeState
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AlbumTile(
     album: AlbumItem,
     onClick: () -> Unit,
-    onLongClick: (Rect?) -> Unit,
+    /** Null where the grid handles the long press itself (the album list, which arranges by dragging). */
+    onLongClick: ((Rect?) -> Unit)?,
     modifier: Modifier = Modifier,
     compact: Boolean = false
 ) {
@@ -1661,7 +2210,7 @@ private fun AlbumTile(
             interactionSource = interaction,
             indication = if (language == DesignLanguage.SAMSUNG_ONEUI) ripple() else null,
             onClick = onClick,
-            onLongClick = { onLongClick(bounds) }
+            onLongClick = onLongClick?.let { handler -> { handler(bounds) } }
         )
     val nameSize = if (compact) 13.sp else 15.sp
     val countSize = if (compact) 11.sp else 13.sp
@@ -1819,7 +2368,12 @@ private fun AlbumCover(album: AlbumItem, shape: Shape) {
                     .background(Color.Black.copy(alpha = 0.5f))
                     .padding(4.dp)
             ) {
-                Icon(Icons.Rounded.SdCard, strings.sdCard, tint = Color.White, modifier = Modifier.size(12.dp))
+                Icon(
+                    if (album.storage == com.example.amoledgallery.util.StorageKind.USB) Icons.Rounded.Usb else Icons.Rounded.SdCard,
+                    com.example.amoledgallery.ui.i18n.storageLabel(album.storage),
+                    tint = Color.White,
+                    modifier = Modifier.size(12.dp)
+                )
             }
         }
     }
@@ -1977,7 +2531,7 @@ private fun CreateSubAlbumDialog(
     onCreate: (String) -> Unit
 ) {
     var subAlbumName by remember { mutableStateOf("") }
-    val location = if (parentAlbum.isSdCard) strings.sdCard else strings.internal
+    val location = if (parentAlbum.isSdCard) com.example.amoledgallery.ui.i18n.storageLabel(parentAlbum.storage) else strings.internal
     ThemedDialog(
         onDismissRequest = onDismiss,
         title = strings.newSubAlbum,
@@ -2001,6 +2555,8 @@ private fun CreateSubAlbumDialog(
 @Composable
 fun CreateAlbumDialog(
     isSdCardAvailable: Boolean,
+    externalKind: com.example.amoledgallery.util.StorageKind = com.example.amoledgallery.util.StorageKind.SD_CARD,
+    freeByStorage: Map<com.example.amoledgallery.util.StorageKind, Long> = emptyMap(),
     onDismiss: () -> Unit,
     onCreate: (String, Boolean) -> Unit
 ) {
@@ -2026,13 +2582,19 @@ fun CreateAlbumDialog(
         Spacer(modifier = Modifier.height(14.dp))
         StorageOption(
             title = strings.internalStorage,
-            subtitle = "Pictures/${albumName.ifBlank { "…" }}",
+            subtitle = listOfNotNull(
+                "Pictures/${albumName.ifBlank { "…" }}",
+                freeByStorage[com.example.amoledgallery.util.StorageKind.INTERNAL]?.let { strings.freeSpace(com.example.amoledgallery.ui.i18n.readableSize(it)) }
+            ).joinToString("  ·  "),
             selected = !onSdCard,
             enabled = true
         ) { onSdCard = false }
         StorageOption(
-            title = if (isSdCardAvailable) strings.sdCard else strings.sdCardUnavailable,
-            subtitle = strings.externalStorage,
+            title = if (isSdCardAvailable) com.example.amoledgallery.ui.i18n.storageLabel(externalKind) else strings.sdCardUnavailable,
+            subtitle = listOfNotNull(
+                strings.externalStorage,
+                freeByStorage[externalKind]?.let { strings.freeSpace(com.example.amoledgallery.ui.i18n.readableSize(it)) }
+            ).joinToString("  ·  "),
             selected = onSdCard,
             enabled = isSdCardAvailable
         ) { onSdCard = true }

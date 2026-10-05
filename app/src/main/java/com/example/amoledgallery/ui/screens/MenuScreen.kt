@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -52,6 +53,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.toArgb
+import com.example.amoledgallery.util.WallpaperAccents
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -124,6 +127,7 @@ fun MenuScreen(
     onSetGraphicsQuality: (PerformanceProfile) -> Unit = {},
     onOpenFavorites: () -> Unit,
     onOpenTrash: () -> Unit,
+    onOpenDuplicates: () -> Unit = {},
     modifier: Modifier = Modifier,
     // iOS settings pages
     loadStorageStats: suspend () -> com.example.amoledgallery.data.MediaRepository.MediaStorageStats? = { null },
@@ -252,6 +256,7 @@ fun MenuScreen(
                             appVersionName = appVersionName,
                             onOpenFavorites = onOpenFavorites,
                             onOpenTrash = onOpenTrash,
+                            onOpenDuplicates = onOpenDuplicates,
                             onOpenDesign = openDesign,
                             onOpenSettings = openSettings,
                             onOpenStorage = openStorage,
@@ -272,6 +277,7 @@ fun MenuScreen(
                             appVersionName = appVersionName,
                             onOpenFavorites = onOpenFavorites,
                             onOpenTrash = onOpenTrash,
+                            onOpenDuplicates = onOpenDuplicates,
                             onOpenDesign = openDesign,
                             onOpenSettings = openSettings,
                             onOpenStorage = openStorage,
@@ -283,7 +289,8 @@ fun MenuScreen(
                             ThemedListSection(
                                 rows = listOf(
                                     ListRow(strings.favorites, icon = Icons.Rounded.Favorite, value = "$favoriteCount", onClick = onOpenFavorites),
-                                    ListRow(strings.recentlyDeleted, icon = Icons.Rounded.Delete, value = "$trashedCount", onClick = onOpenTrash)
+                                    ListRow(strings.recentlyDeleted, icon = Icons.Rounded.Delete, value = "$trashedCount", onClick = onOpenTrash),
+                                    ListRow(strings.duplicates, icon = Icons.Rounded.ContentCopy, onClick = onOpenDuplicates)
                                 )
                             )
                             ThemedListSection(
@@ -303,6 +310,7 @@ fun MenuScreen(
                             appVersionName = appVersionName,
                             onOpenFavorites = onOpenFavorites,
                             onOpenTrash = onOpenTrash,
+                            onOpenDuplicates = onOpenDuplicates,
                             onOpenDesign = openDesign,
                             onOpenSettings = openSettings,
                             onOpenStorage = openStorage,
@@ -629,6 +637,7 @@ internal fun PaletteRow(
     val theme = LocalAppTheme.current
     val palette = theme.palette
     val swatchShape = CircleShape
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(14.dp)
@@ -658,7 +667,9 @@ internal fun PaletteRow(
                 )
             }
         }
-        val isCustomSelected = currentPaletteId == CUSTOM_PALETTE_ID
+        val context = LocalContext.current
+        // A wallpaper colour is stored as a custom accent too; then its swatch below is the selected one.
+        val isCustomSelected = currentPaletteId == CUSTOM_PALETTE_ID && pickedWallpaperAccent(context) == null
         Box(
             modifier = Modifier
                 .selectionPop(isCustomSelected, fromScale = 0.72f, dampingRatio = 0.4f, stiffness = 600f)
@@ -677,6 +688,8 @@ internal fun PaletteRow(
                 Icon(Icons.Rounded.Add, strings.customColor, tint = palette.textMuted, modifier = Modifier.size(20.dp))
             }
         }
+    }
+    WallpaperAccentRow(currentPaletteId)
     }
 }
 
@@ -725,6 +738,69 @@ internal fun applyCustomAccent(context: android.content.Context, language: Desig
     val base = presetsFor(language, lightMode).first()
     val custom = base.copy(id = CUSTOM_PALETTE_ID, label = "Eigene Palette", accent = accent)
     ThemeState.apply(language, custom, context = context)
+    wallpaperAccentPrefs(context).edit().remove(KEY_WALLPAPER_ACCENT).apply()
+}
+
+private const val KEY_WALLPAPER_ACCENT = "wallpaper_accent"
+
+private fun wallpaperAccentPrefs(context: android.content.Context) =
+    context.getSharedPreferences("prism_wallpaper_accent", android.content.Context.MODE_PRIVATE)
+
+/** The wallpaper colour the current custom accent was taken from, or null if it was picked by hand. */
+internal fun pickedWallpaperAccent(context: android.content.Context): Color? =
+    wallpaperAccentPrefs(context).takeIf { it.contains(KEY_WALLPAPER_ACCENT) }
+        ?.let { Color(it.getInt(KEY_WALLPAPER_ACCENT, 0)) }
+
+/** Takes one of the wallpaper's colours as the accent (stored as a custom accent, remembered as from the wallpaper). */
+internal fun applyWallpaperAccent(context: android.content.Context, language: DesignLanguage, lightMode: Boolean, color: Color) {
+    applyCustomAccent(context, language, lightMode, color)
+    wallpaperAccentPrefs(context).edit().putInt(KEY_WALLPAPER_ACCENT, color.toArgb()).apply()
+}
+
+/**
+ * The colours Android took from the home-screen wallpaper, as accent swatches (as in Prism Camera).
+ * Left out entirely when the phone reports none.
+ */
+@Composable
+private fun WallpaperAccentRow(currentPaletteId: String) {
+    val context = LocalContext.current
+    val palette = LocalAppTheme.current.palette
+    val lightMode = palette.isLight
+    val colors = remember(lightMode) { WallpaperAccents.read(context, lightMode) }
+    if (colors.isEmpty()) return
+    val picked = if (currentPaletteId == CUSTOM_PALETTE_ID) pickedWallpaperAccent(context) else null
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(strings.fromWallpaper, color = palette.textMuted, fontSize = 14.sp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            colors.forEach { color ->
+                val isSelected = picked == color
+                Box(
+                    modifier = Modifier
+                        .selectionPop(isSelected, fromScale = 0.72f, dampingRatio = 0.4f, stiffness = 600f)
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(palette.background)
+                        .border(
+                            width = if (isSelected) 2.5.dp else 1.dp,
+                            color = if (isSelected) palette.accent else palette.onBackground.copy(alpha = 0.15f),
+                            shape = CircleShape
+                        )
+                        .clickable { applyWallpaperAccent(context, ThemeState.designLanguage, lightMode, color) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(color)
+                    )
+                }
+            }
+        }
+    }
 }
 
 internal fun graphicsQualityLabel(tier: PerformanceProfile): String = when (tier) {

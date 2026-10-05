@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Prism rosette for the oneui design: the same petals as ic_launcher_foreground, recoloured. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:rotation="0" android:pivotX="54" android:pivotY="54">
+        <path android:pathData="M54,54 C62,46 62,32 54,24 C46,32 46,46 54,54 Z" android:fillColor="#00000000"
+            android:strokeColor="#FF4E6A" android:strokeWidth="5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    </group>
+    <group android:rotation="45" android:pivotX="54" android:pivotY="54">
+        <path android:pathData="M54,54 C62,46 62,32 54,24 C46,32 46,46 54,54 Z" android:fillColor="#00000000"
+            android:strokeColor="#FF5A66" android:strokeWidth="5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    </group>
+    <group android:rotation="90" android:pivotX="54" android:pivotY="54">
+        <path android:pathData="M54,54 C62,46 62,32 54,24 C46,32 46,46 54,54 Z" android:fillColor="#00000000"
+            android:strokeColor="#FF6862" android:strokeWidth="5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    </group>
+    <group android:rotation="135" android:pivotX="54" android:pivotY="54">
+        <path android:pathData="M54,54 C62,46 62,32 54,24 C46,32 46,46 54,54 Z" android:fillColor="#00000000"
+            android:strokeColor="#FF775E" android:strokeWidth="5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    </group>
+    <group android:rotation="180" android:pivotX="54" android:pivotY="54">
+        <path android:pathData="M54,54 C62,46 62,32 54,24 C46,32 46,46 54,54 Z" android:fillColor="#00000000"
+            android:strokeColor="#FF855B" android:strokeWidth="5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    </group>
+    <group android:rotation="225" android:pivotX="54" android:pivotY="54">
+        <path android:pathData="M54,54 C62,46 62,32 54,24 C46,32 46,46 54,54 Z" android:fillColor="#00000000"
+            android:strokeColor="#FF775E" android:strokeWidth="5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    </group>
+    <group android:rotation="270" android:pivotX="54" android:pivotY="54">
+        <path android:pathData="M54,54 C62,46 62,32 54,24 C46,32 46,46 54,54 Z" android:fillColor="#00000000"
+            android:strokeColor="#FF6862" android:strokeWidth="5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    </group>
+    <group android:rotation="315" android:pivotX="54" android:pivotY="54">
+        <path android:pathData="M54,54 C62,46 62,32 54,24 C46,32 46,46 54,54 Z" android:fillColor="#00000000"
+            android:strokeColor="#FF5A66" android:strokeWidth="5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    </group>
+    <path android:pathData="M54,54 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" android:fillColor="#FFFFFF" />
+</vector>

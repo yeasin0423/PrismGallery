@@ -426,6 +426,11 @@ fun <T> ThemedSegmentedControl(
                                 .background(Color.White.copy(alpha = 0.20f))
                                 .glassRim(thumbShape, GlassRim.Liquid, light = false)
                         }
+                        // Gemini: the chosen segment darker than the track, as Prism Camera's pills.
+                        DesignLanguage.GOOGLE_EXPRESSIVE -> Modifier
+                            .clip(thumbShape)
+                            .background(geminiSelectionFill(palette.isLight))
+                            .border(0.8.dp, geminiSelectionEdge(palette.isLight), thumbShape)
                         else -> Modifier
                             .shadow(2.dp, thumbShape)
                             .clip(thumbShape)

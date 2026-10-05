@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.SdCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,6 +45,7 @@ import com.example.amoledgallery.ui.design.ThemedSheet
 import com.example.amoledgallery.ui.theme.DesignLanguage
 import com.example.amoledgallery.ui.theme.LocalAppTheme
 import com.example.amoledgallery.ui.theme.onAccent
+import com.example.amoledgallery.ui.theme.destructive
 
 /**
  * Sheet for moving the current selection into an album (or a new one), drawn as the active design
@@ -54,9 +56,46 @@ fun MoveToAlbumBottomSheet(
     albums: List<AlbumItem>,
     onDismiss: () -> Unit,
     onSelectAlbum: (AlbumItem) -> Unit,
-    onCreateNewAlbum: () -> Unit
+    onCreateNewAlbum: () -> Unit,
+    /** How many items are being moved and how much they take, shown under the title. */
+    selectionCount: Int = 0,
+    selectionBytes: Long = 0L,
+    /** Free space per storage, so each album says what is left where it lies. */
+    freeByStorage: Map<com.example.amoledgallery.util.StorageKind, Long> = emptyMap(),
+    /** Every album there is, so sub-albums can be moved into too; empty offers [albums] alone. */
+    allAlbums: List<AlbumItem> = emptyList()
 ) {
+    // Each album followed by the albums inside it, so a sub-album is a target of its own instead of
+    // somewhere nothing could be put. [albums] keeps its order (the one chosen for the album list).
+    val targets = remember(albums, allAlbums) {
+        if (allAlbums.isEmpty()) {
+            albums.map { it to 0 }
+        } else {
+            val byParent = allAlbums.groupBy { it.parentDirectoryPath.trimEnd('/', '\\').lowercase() }
+            val listed = LinkedHashSet<String>()
+            val out = ArrayList<Pair<AlbumItem, Int>>()
+            fun add(album: AlbumItem, depth: Int) {
+                if (!listed.add(album.bucketId)) return
+                out += album to depth
+                byParent[album.directoryPath.trimEnd('/', '\\').lowercase()]
+                    .orEmpty()
+                    .sortedBy { it.name.lowercase() }
+                    .forEach { add(it, depth + 1) }
+            }
+            albums.forEach { add(it, 0) }
+            out
+        }
+    }
     ThemedSheet(onDismissRequest = onDismiss, title = strings.moveToAlbum) {
+        val palette = LocalAppTheme.current.palette
+        if (selectionCount > 0) {
+            Text(
+                text = strings.selectionSize(selectionCount, com.example.amoledgallery.ui.i18n.readableSize(selectionBytes)),
+                color = palette.textMuted,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 8.dp)
+            )
+        }
         LazyColumn(
             modifier = Modifier.weight(1f, fill = false),
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 20.dp),
@@ -70,13 +109,15 @@ fun MoveToAlbumBottomSheet(
                     icon = Icons.Rounded.Add,
                     highlighted = true,
                     isSdCard = false,
+                    note = null,
+                    tooBig = false,
                     onClick = {
                         onDismiss()
                         onCreateNewAlbum()
                     }
                 )
             }
-            items(albums, key = { it.bucketId }) { album ->
+            items(targets, key = { it.first.bucketId }) { (album, depth) ->
                 MoveTargetRow(
                     title = album.name,
                     subtitle = strings.albumTargetSubtitle(album.isSdCard, album.count),
@@ -84,6 +125,12 @@ fun MoveToAlbumBottomSheet(
                     icon = Icons.Rounded.Folder,
                     highlighted = false,
                     isSdCard = album.isSdCard,
+                    // A sub-album sits indented under the album it belongs to.
+                    depth = depth,
+                    // What is left where this album lies, and whether the selection would even fit.
+                    note = freeByStorage[album.storage]?.let { com.example.amoledgallery.ui.i18n.readableSize(it) }
+                        ?.let { strings.freeSpace(it) },
+                    tooBig = freeByStorage[album.storage]?.let { selectionBytes > it } ?: false,
                     onClick = { onSelectAlbum(album) }
                 )
             }
@@ -99,7 +146,11 @@ private fun MoveTargetRow(
     icon: ImageVector,
     highlighted: Boolean,
     isSdCard: Boolean,
-    onClick: () -> Unit
+    note: String?,
+    tooBig: Boolean,
+    onClick: () -> Unit,
+    /** How deep the album sits; each level is indented a little further. */
+    depth: Int = 0
 ) {
     val theme = LocalAppTheme.current
     val palette = theme.palette
@@ -113,6 +164,7 @@ private fun MoveTargetRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(start = (depth.coerceAtMost(3) * 20).dp)
             .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp),
@@ -154,7 +206,13 @@ private fun MoveTargetRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(text = subtitle, color = palette.textMuted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                text = listOfNotNull(subtitle, note).joinToString("  ·  "),
+                color = if (tooBig) palette.destructive else palette.textMuted,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
         if (language == DesignLanguage.IOS_LIQUID_GLASS || language == DesignLanguage.XIAOMI_HYPEROS) {
             Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = palette.textMuted.copy(alpha = 0.6f), modifier = Modifier.size(22.dp))

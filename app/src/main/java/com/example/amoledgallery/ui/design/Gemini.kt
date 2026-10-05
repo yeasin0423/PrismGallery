@@ -497,3 +497,17 @@ fun GeminiStorageRing(
         content()
     }
 }
+
+/**
+ * Gemini's selected pill on a glass bar: darker than the bar around it (as in Prism Camera), rather
+ * than a lighter lozenge. [geminiSelectionEdge] keeps it visible where the scene behind is dark too.
+ */
+fun geminiSelectionFill(light: Boolean): Color =
+    if (light) Color.Black.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.38f)
+
+fun geminiSelectionEdge(light: Boolean): Color =
+    if (light) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.10f)
+
+/** The same selection on the plain background, where darker than black is not possible: the dark chip grey. */
+fun geminiSelectionOnBackground(light: Boolean): Color =
+    if (light) Color.Black.copy(alpha = 0.08f) else Color(0xFF1E1F20)

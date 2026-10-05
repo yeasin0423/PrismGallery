@@ -45,6 +45,7 @@ import com.example.amoledgallery.AmoledGalleryApp
 import com.example.amoledgallery.ui.design.ThemedSegmentedControl
 import com.example.amoledgallery.ui.theme.DesignLanguage
 import com.example.amoledgallery.ui.theme.LocalAppTheme
+import com.example.amoledgallery.ui.theme.isLight
 import com.example.amoledgallery.ui.theme.designTween
 import com.example.amoledgallery.ui.viewmodel.MediaFilter
 
@@ -86,7 +87,8 @@ fun FilterChips(
             MediaFilter.entries.forEach { filter ->
                 val selected = filter == selectedFilter
                 val container by animateColorAsState(
-                    targetValue = if (selected) lerp(palette.surfaceVariant, palette.accent, 0.38f) else palette.background.copy(alpha = 0f),
+                    // Selected: the dark chip grey with a hairline edge, not an accent-tinted lozenge.
+                    targetValue = if (selected) com.example.amoledgallery.ui.design.geminiSelectionOnBackground(palette.isLight) else palette.background.copy(alpha = 0f),
                     label = "chip_container"
                 )
                 val shape = RoundedCornerShape(10.dp)
@@ -95,7 +97,7 @@ fun FilterChips(
                         .height(36.dp)
                         .clip(shape)
                         .background(container)
-                        .then(if (!selected) Modifier.border(1.dp, palette.cardBorder, shape) else Modifier)
+                        .border(1.dp, if (selected) com.example.amoledgallery.ui.design.geminiSelectionEdge(palette.isLight) else palette.cardBorder, shape)
                         .clickable { onFilterSelected(filter) }
                         .padding(horizontal = 14.dp),
                     verticalAlignment = Alignment.CenterVertically

@@ -14,6 +14,8 @@ import com.example.amoledgallery.data.MoveResult
 import com.example.amoledgallery.data.RenameResult
 import com.example.amoledgallery.data.ThumbnailManager
 import com.example.amoledgallery.model.AlbumItem
+import com.example.amoledgallery.model.AlbumSort
+import com.example.amoledgallery.model.sortAlbums
 import com.example.amoledgallery.model.MediaItem
 import com.example.amoledgallery.service.MoveMediaService
 import com.example.amoledgallery.service.MoveProgressHolder
@@ -108,6 +110,23 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     private val _isTrashOpen = MutableStateFlow(false)
     val isTrashOpen: StateFlow<Boolean> = _isTrashOpen.asStateFlow()
 
+    // ---- Duplicates: files that are byte for byte the same -----------------------------------------
+    private val duplicateFinder = com.example.amoledgallery.data.DuplicateFinder(application)
+    private val _isDuplicatesOpen = MutableStateFlow(false)
+    val isDuplicatesOpen: StateFlow<Boolean> = _isDuplicatesOpen.asStateFlow()
+    private val _duplicateGroups = MutableStateFlow<List<com.example.amoledgallery.data.DuplicateGroup>>(emptyList())
+    val duplicateGroups: StateFlow<List<com.example.amoledgallery.data.DuplicateGroup>> = _duplicateGroups.asStateFlow()
+    /** How far the scan has got; null when none is running. */
+    private val _duplicateProgress = MutableStateFlow<com.example.amoledgallery.data.DuplicateProgress?>(null)
+    val duplicateProgress: StateFlow<com.example.amoledgallery.data.DuplicateProgress?> = _duplicateProgress.asStateFlow()
+    /** True once a scan has finished, so "nothing found" can be told apart from "not looked yet". */
+    private val _duplicatesScanned = MutableStateFlow(false)
+    val duplicatesScanned: StateFlow<Boolean> = _duplicatesScanned.asStateFlow()
+    /** The copies ticked for deletion, by media id. */
+    private val _duplicateSelection = MutableStateFlow<Set<Long>>(emptySet())
+    val duplicateSelection: StateFlow<Set<Long>> = _duplicateSelection.asStateFlow()
+    private var duplicateJob: Job? = null
+
     // Raw unfiltered media items
     private val _rawMedia = MutableStateFlow<List<MediaItem>>(emptyList())
 
@@ -123,10 +142,85 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     private val _albumsState = MutableStateFlow<List<AlbumItem>>(emptyList())
     val albumsState: StateFlow<List<AlbumItem>> = _albumsState.asStateFlow()
 
-    // Root-level albums (not contained within another album folder)
-    val rootAlbums: StateFlow<List<AlbumItem>> = _albumsState
-        .map { repository.getRootAlbums(it) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    // How the album list is ordered, and the user's own order once they have moved albums by hand.
+    private val albumOrderPrefs = application.getSharedPreferences("amoled_gallery_album_order", Context.MODE_PRIVATE)
+    private val _albumSort = MutableStateFlow(
+        albumOrderPrefs.getString("sort", null)?.let { runCatching { AlbumSort.valueOf(it) }.getOrNull() } ?: AlbumSort.STANDARD
+    )
+    val albumSort: StateFlow<AlbumSort> = _albumSort.asStateFlow()
+    /** Bucket ids in the user's order (for [AlbumSort.CUSTOM]); albums not in it follow in the standard order. */
+    private val _albumOrder = MutableStateFlow(
+        albumOrderPrefs.getString("order", null)?.split('\n')?.filter { it.isNotBlank() } ?: emptyList()
+    )
+
+    // Root-level albums (not contained within another album folder), in the chosen order
+    val rootAlbums: StateFlow<List<AlbumItem>> = combine(_albumsState, _albumSort, _albumOrder) { albums, sort, order ->
+        sortAlbums(repository.getRootAlbums(albums), sort, order)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun setAlbumSort(sort: AlbumSort) {
+        _albumSort.value = sort
+        albumOrderPrefs.edit().putString("sort", sort.name).apply()
+    }
+
+    /**
+     * Moves [album] in the album list: [steps] places later (negative: earlier), or to the very top
+     * with [toTop]. Switches to the user's own order, starting from the order shown right now.
+     */
+    fun moveAlbum(album: AlbumItem, steps: Int, toTop: Boolean = false) {
+        val shown = rootAlbums.value.map { it.bucketId }.toMutableList()
+        val from = shown.indexOf(album.bucketId)
+        if (from < 0) return
+        shown.removeAt(from)
+        val to = if (toTop) 0 else (from + steps).coerceIn(0, shown.size)
+        shown.add(to, album.bucketId)
+        _albumOrder.value = shown
+        albumOrderPrefs.edit().putString("order", shown.joinToString("\n")).apply()
+        setAlbumSort(AlbumSort.CUSTOM)
+    }
+
+    /** The album list arranged by dragging: [order] is every album's bucket id, in its new place. */
+    fun reorderAlbums(order: List<String>) {
+        // Dragged while the list showed only one storage: the albums that were filtered out keep their
+        // places, and the dragged ones are slotted back into the places they occupied.
+        val shown = rootAlbums.value.map { it.bucketId }
+        val merged = if (order.size < shown.size) {
+            val slots = shown.withIndex().filter { it.value in order }.map { it.index }
+            shown.toMutableList().apply { slots.forEachIndexed { i, slot -> this[slot] = order[i] } }
+        } else {
+            order
+        }
+        _albumOrder.value = merged
+        albumOrderPrefs.edit().putString("order", merged.joinToString("\n")).apply()
+        setAlbumSort(AlbumSort.CUSTOM)
+    }
+
+    /** The album list shows only this storage's albums; null shows all. Not persisted - it is a quick look. */
+    private val _albumStorageFilter = MutableStateFlow<com.example.amoledgallery.util.StorageKind?>(null)
+    val albumStorageFilter: StateFlow<com.example.amoledgallery.util.StorageKind?> = _albumStorageFilter.asStateFlow()
+
+    fun setAlbumStorageFilter(kind: com.example.amoledgallery.util.StorageKind?) {
+        _albumStorageFilter.value = kind
+    }
+
+    /** SD card or USB storage, whichever "move to..." would write to (SD card when both are plugged in). */
+    val externalTargetKind: com.example.amoledgallery.util.StorageKind
+        get() = repository.externalTarget()?.kind ?: com.example.amoledgallery.util.StorageKind.SD_CARD
+
+    /** Free space on internal storage and on every mounted SD card / USB drive, for the move screens. */
+    fun freeByStorage(): Map<com.example.amoledgallery.util.StorageKind, Long> = buildMap {
+        put(com.example.amoledgallery.util.StorageKind.INTERNAL, repository.getInternalStorageSpace().freeBytes)
+        repository.externalVolumes().forEach { volume ->
+            // Two cards of the same kind would be rare; the one with less room decides.
+            val free = volume.freeBytes()
+            put(volume.kind, minOf(get(volume.kind) ?: Long.MAX_VALUE, free))
+        }
+    }
+
+    /** What an album holds altogether, in bytes (read when a move dialog opens). */
+    suspend fun albumBytes(album: AlbumItem): Long = withContext(Dispatchers.IO) {
+        repository.getAllMedia(album.bucketId, includeHidden = true).sumOf { it.size }
+    }
 
     // Trashed media items
     private val _trashedMediaState = MutableStateFlow<List<MediaItem>>(emptyList())
@@ -169,6 +263,12 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     private val _selectedIds = MutableStateFlow<Set<Long>>(emptySet())
     val selectedIds: StateFlow<Set<Long>> = _selectedIds.asStateFlow()
 
+    /** What the selected items take altogether, in bytes. */
+    val selectionBytes: StateFlow<Long> = combine(_selectedIds, _rawMedia) { ids, media ->
+        media.filter { it.id in ids }.sumOf { it.size }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
+
+
     // Move to album bottom sheet state
     private val _isMoveSheetOpen = MutableStateFlow(false)
     val isMoveSheetOpen: StateFlow<Boolean> = _isMoveSheetOpen.asStateFlow()
@@ -194,8 +294,26 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     // Album rename whose items of other apps await write permission
     private var pendingAlbumRename: AlbumRenameOutcome? = null
 
+    // Album deletion whose items await the confirmation of the trash request
+    private var pendingAlbumDelete: AlbumItem? = null
+
     // The running media reload; a newer reload request replaces it instead of scanning in parallel.
     private var loadJob: Job? = null
+
+    /**
+     * Fires whenever MediaStore changes, so a photo or video added while the app is open shows up by
+     * itself - a download that finishes in the background used to stay invisible until the app was
+     * reopened. Emissions are collapsed: a move that touches hundreds of files causes one reload.
+     */
+    private val mediaChanges = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
+    private val mediaObserver = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            mediaChanges.tryEmit(Unit)
+        }
+    }
 
     // Move Progress state
     data class MoveProgress(val isMoving: Boolean = false, val current: Int = 0, val total: Int = 0)
@@ -224,6 +342,27 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     init {
         loadFavorites()
         ThumbnailManager.getInstance(application).quality = _graphicsQuality.value
+
+        // Everything under content://media, so changes on the SD card and on USB storage count too.
+        application.contentResolver.registerContentObserver(
+            android.provider.MediaStore.AUTHORITY_URI, true, mediaObserver
+        )
+        viewModelScope.launch {
+            mediaChanges.collect {
+                // Let a burst of changes settle, and stay out of the way of a running move, which
+                // reloads by itself once it is through.
+                kotlinx.coroutines.delay(1000)
+                if (!moveProgress.value.isMoving) {
+                    // A file another app writes straight to disk (a download, a file manager) becomes a
+                    // "pending" row in MediaStore, which no other app is allowed to see - that is why a
+                    // downloaded video could sit there for hours while the file manager showed it all
+                    // along. Scanning finalises the row; the scan's own notification then brings it in.
+                    withContext(Dispatchers.IO) { repository.rescanMediaFolders(minIntervalMs = 20_000L) }
+                    loadMedia()
+                    _selectedAlbum.value?.let { loadAlbumContents(it) }
+                }
+            }
+        }
 
         // Listen for MediaStore Scoped Storage write permission requests and progress from MoveMediaService
         viewModelScope.launch {
@@ -481,7 +620,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
     fun hideAlbum(album: AlbumItem) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { repository.setAlbumHidden(album.bucketId, true) }
+            withContext(Dispatchers.IO) { repository.setAlbumHidden(album.bucketId, true, album.directoryPath) }
             _userMessage.emit(strings.albumHidden(album.name))
             // loadMedia also rebuilds the visible and the hidden album lists.
             loadMedia()
@@ -581,6 +720,106 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         _isTrashOpen.value = false
     }
 
+    // ---- Duplicates --------------------------------------------------------------------------------
+
+    fun openDuplicates() {
+        clearSelection()
+        _isDuplicatesOpen.value = true
+        if (_duplicateGroups.value.isEmpty() && !_duplicatesScanned.value) scanDuplicates()
+    }
+
+    fun closeDuplicates() {
+        _isDuplicatesOpen.value = false
+        cancelDuplicateScan()
+    }
+
+    /**
+     * Looks through every photo and video for files that are byte for byte the same.
+     *
+     * Hidden albums are searched too: a copy there is still a copy, and leaving them out would report
+     * space as free that is not.
+     */
+    fun scanDuplicates() {
+        duplicateJob?.cancel()
+        _duplicateSelection.value = emptySet()
+        _duplicateGroups.value = emptyList()
+        _duplicatesScanned.value = false
+        duplicateJob = viewModelScope.launch {
+            try {
+                val media = withContext(Dispatchers.IO) { repository.getAllMedia(includeHidden = true) }
+                _duplicateProgress.value = com.example.amoledgallery.data.DuplicateProgress(0, media.size)
+                val found = duplicateFinder.find(media) { progress -> _duplicateProgress.value = progress }
+                _duplicateGroups.value = found
+                // Everything but the newest copy of each set is ticked, which is what is wanted nearly
+                // always; the ticks can be changed before anything is deleted.
+                _duplicateSelection.value = found.flatMap { group -> group.items.drop(1).map { it.id } }.toSet()
+                _duplicatesScanned.value = true
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                // Leaving the screen stops the scan; nothing is reported, and it starts afresh next time.
+                throw cancelled
+            } catch (e: Exception) {
+                _duplicatesScanned.value = true
+            } finally {
+                _duplicateProgress.value = null
+            }
+        }
+    }
+
+    fun cancelDuplicateScan() {
+        duplicateJob?.cancel()
+        duplicateJob = null
+        _duplicateProgress.value = null
+    }
+
+    fun toggleDuplicateSelection(id: Long) {
+        val current = _duplicateSelection.value
+        _duplicateSelection.value = if (id in current) current - id else current + id
+    }
+
+    /** How much deleting the ticked copies would free. */
+    fun duplicateSelectionBytes(): Long {
+        val selected = _duplicateSelection.value
+        return _duplicateGroups.value
+            .flatMap { it.items }
+            .filter { it.id in selected }
+            .sumOf { it.size }
+    }
+
+    /** Moves the ticked copies to the trash; the originals they duplicate stay where they are. */
+    fun trashDuplicateSelection() {
+        viewModelScope.launch {
+            val selected = _duplicateSelection.value
+            if (selected.isEmpty()) return@launch
+            val items = _duplicateGroups.value.flatMap { it.items }.filter { it.id in selected }
+            if (items.isEmpty()) return@launch
+            pendingDuplicateTrash = items.map { it.id }.toSet()
+            val pendingIntent = withContext(Dispatchers.IO) {
+                repository.createTrashRequest(items.map { it.uri }, trash = true)
+            }
+            if (pendingIntent != null) {
+                _pendingIntentSender.emit(pendingIntent)
+            } else {
+                pendingDuplicateTrash = null
+                _userMessage.emit(strings.movedToTrash(items.size))
+                dropTrashedDuplicates(items.map { it.id }.toSet())
+                loadMedia()
+                loadTrash()
+            }
+        }
+    }
+
+    /** Ids awaiting the user's confirmation of the trash request, so the list can be pruned after it. */
+    private var pendingDuplicateTrash: Set<Long>? = null
+
+    /** Takes the deleted copies out of the groups, dropping any set that no longer has a double. */
+    private fun dropTrashedDuplicates(ids: Set<Long>) {
+        _duplicateGroups.value = _duplicateGroups.value.mapNotNull { group ->
+            val left = group.items.filterNot { it.id in ids }
+            if (left.size < 2) null else group.copy(items = left, wastedBytes = left.first().size * (left.size - 1))
+        }
+        _duplicateSelection.value = _duplicateSelection.value - ids
+    }
+
     // Tiles per row of the album list and of the sub-albums inside an album; null = the design's default.
     private val gridPrefs = application.getSharedPreferences("amoled_gallery_grid_prefs", Context.MODE_PRIVATE)
     private val _albumColumns = MutableStateFlow(gridPrefs.getInt("album_columns", 0).takeIf { it > 0 })
@@ -602,6 +841,19 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     fun openRootAlbum(album: AlbumItem) {
         clearSelection()
         _breadcrumbStack.value = listOf(album)
+        _selectedAlbum.value = album
+        loadAlbumContents(album)
+    }
+
+    /**
+     * Opens [album] directly, however deep it sits - a search result found by name, not by tapping
+     * through its parents. The breadcrumb trail is rebuilt from its actual ancestors, so the back
+     * button and the breadcrumbs above the album still walk out through them normally.
+     */
+    fun jumpToAlbum(album: AlbumItem) {
+        clearSelection()
+        val ancestors = repository.ancestorsOf(album, _albumsState.value)
+        _breadcrumbStack.value = ancestors + album
         _selectedAlbum.value = album
         loadAlbumContents(album)
     }
@@ -644,13 +896,17 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     allMediaIncludingHidden.filter { it.bucketId !in hiddenBuckets }
                 }
 
-                val visibleAlbums = repository.groupIntoAlbums(visibleMedia, includeHidden = false)
                 val hiddenAlbums = if (hiddenBuckets.isEmpty()) {
                     emptyList()
                 } else {
                     repository.groupIntoAlbums(allMediaIncludingHidden, includeHidden = true)
                         .filter { it.bucketId in hiddenBuckets }
                 }
+                // Before the visible list is built, so an album hidden before its folder was recorded
+                // does not come back as an empty copy of itself even on this very first pass.
+                repository.rememberHiddenAlbumDirs(hiddenAlbums)
+
+                val visibleAlbums = repository.groupIntoAlbums(visibleMedia, includeHidden = false)
 
                 _rawMedia.value = visibleMedia
                 _albumsState.value = visibleAlbums
@@ -806,13 +1062,33 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     /**
      * Called when the system ActivityResultLauncher completes with RESULT_OK.
      */
+    /** The user declined a write, trash or delete request: nothing of it may carry over to the next one. */
+    fun onIntentSenderCancelled() {
+        pendingRename = null
+        pendingMove = null
+        pendingAlbumRename = null
+        pendingAlbumDelete = null
+        pendingDuplicateTrash = null
+    }
+
     fun onIntentSenderSuccess() {
         viewModelScope.launch {
             val rename = pendingRename
             val move = pendingMove
             val albumRename = pendingAlbumRename
+            val albumDelete = pendingAlbumDelete
 
-            if (albumRename != null) {
+            if (albumDelete != null) {
+                pendingAlbumDelete = null
+                // MediaStore commits the trashed rows shortly after RESULT_OK.
+                kotlinx.coroutines.delay(300)
+                withContext(Dispatchers.IO) { repository.finishAlbumDeletion(albumDelete) }
+                _userMessage.emit(strings.albumDeleted(albumDelete.name))
+                if (_selectedAlbum.value?.bucketId == albumDelete.bucketId) {
+                    closeAlbum()
+                }
+                loadTrash()
+            } else if (albumRename != null) {
                 pendingAlbumRename = null
                 val stillDenied = repository.moveToRelativePath(albumRename.deniedItems, albumRename.relativePath)
                 if (stillDenied.isNotEmpty()) {
@@ -862,6 +1138,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 // underlying row changes shortly after RESULT_OK, so a brief delay avoids
                 // refreshing on stale data (e.g. a just-migrated album still showing its old location).
                 kotlinx.coroutines.delay(300)
+                // Copies the user had ticked in the duplicates list are gone now: take them out of it
+                // rather than leaving sets behind that have nothing left to compare.
+                pendingDuplicateTrash?.let { trashed ->
+                    pendingDuplicateTrash = null
+                    dropTrashedDuplicates(trashed)
+                    loadTrash()
+                }
             }
 
             clearSelection()
@@ -939,6 +1222,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             val result = repository.deleteAlbum(album)
             result.onSuccess { pendingIntent ->
                 if (pendingIntent != null) {
+                    // onIntentSenderSuccess finishes it: the folder is only forgotten and removed once
+                    // the user has confirmed, otherwise the album comes back as an empty one.
+                    pendingAlbumDelete = album
                     _pendingIntentSender.emit(pendingIntent)
                 } else {
                     _userMessage.emit(strings.albumDeleted(album.name))
@@ -958,6 +1244,66 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     /**
      * Migrates an album between Internal storage and MicroSD card.
      */
+    /** Hides several albums at once, from the album list's selection mode. */
+    fun hideAlbums(albums: List<AlbumItem>) {
+        if (albums.isEmpty()) return
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                albums.forEach { repository.setAlbumHidden(it.bucketId, true, it.directoryPath) }
+            }
+            _userMessage.emit(
+                if (albums.size == 1) strings.albumHidden(albums.first().name) else strings.albumsHidden(albums.size)
+            )
+            loadMedia()
+        }
+    }
+
+    /**
+     * Moves several albums to the other storage, one after another, under a single progress bar.
+     *
+     * Albums already on the target are skipped rather than copied onto themselves.
+     */
+    fun migrateAlbums(albums: List<AlbumItem>, toSdCard: Boolean) {
+        val todo = albums.filter { it.isSdCard != toSdCard }
+        if (todo.isEmpty()) return
+        viewModelScope.launch {
+            _userMessage.emit(strings.migratingAlbums(todo.size, toSdCard))
+            val total = todo.sumOf { it.count }
+            moveProgress.value = MoveProgress(isMoving = true, current = 0, total = total)
+            var done = 0
+            var moved = 0
+            var failed = 0
+            val deleteRequests = ArrayList<android.app.PendingIntent>()
+
+            // NonCancellable for the same reason one album is: stopping halfway would leave an album
+            // with part of itself on each storage.
+            withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+                for (album in todo) {
+                    val before = done
+                    val result = repository.migrateAlbumStorage(album, toSdCard) { current, _ ->
+                        moveProgress.value = moveProgress.value.copy(current = before + current, total = total)
+                    }
+                    done = before + album.count
+                    result.onSuccess { outcome ->
+                        moved += outcome.moved
+                        failed += outcome.failed
+                        outcome.deleteRequest?.let { deleteRequests.add(it) }
+                    }.onFailure { failed += album.count }
+                }
+            }
+
+            moveProgress.value = moveProgress.value.copy(isMoving = false)
+            _userMessage.emit(
+                if (failed > 0) strings.migratedAlbumsPartly(moved, failed) else strings.migratedAlbums(todo.size, toSdCard)
+            )
+            // Originals owned by other apps still need the user's go-ahead; they come one after another.
+            deleteRequests.firstOrNull()?.let { _pendingIntentSender.emit(it) }
+            loadAlbums()
+            loadMedia()
+            if (todo.any { it.bucketId == _selectedAlbum.value?.bucketId }) closeAlbum()
+        }
+    }
+
     fun migrateAlbum(album: AlbumItem, toSdCard: Boolean) {
         viewModelScope.launch {
             val destName = toSdCard
@@ -966,7 +1312,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             moveProgress.value = MoveProgress(isMoving = true, current = 0, total = album.count)
 
             var lastUpdate = System.currentTimeMillis()
-            val result = withContext(Dispatchers.IO) {
+            // NonCancellable: a big album takes a while, and leaving the screen (which clears this
+            // ViewModel) must not stop it halfway, with part of the album on each volume.
+            val result = withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
                 repository.migrateAlbumStorage(album, toSdCard) { current, totalCount ->
                     val now = System.currentTimeMillis()
                     if (current == totalCount || now - lastUpdate >= 200 || current % maxOf(1, totalCount / 20) == 0) {
@@ -978,16 +1326,17 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
             moveProgress.value = moveProgress.value.copy(isMoving = false)
 
-            result.onSuccess { pendingIntent ->
-                if (pendingIntent != null) {
-                    _pendingIntentSender.emit(pendingIntent)
-                } else {
-                    _userMessage.emit(strings.migrated(album.name, destName))
-                    loadAlbums()
-                    loadMedia()
-                    if (_selectedAlbum.value?.bucketId == album.bucketId) {
-                        closeAlbum()
-                    }
+            result.onSuccess { outcome ->
+                when {
+                    outcome.failed > 0 -> _userMessage.emit(strings.migratedPartly(album.name, destName, outcome.moved, outcome.failed))
+                    outcome.deleteRequest == null -> _userMessage.emit(strings.migrated(album.name, destName))
+                }
+                // Originals owned by other apps still need the user's go-ahead to be removed.
+                outcome.deleteRequest?.let { _pendingIntentSender.emit(it) }
+                loadAlbums()
+                loadMedia()
+                if (outcome.failed == 0 && _selectedAlbum.value?.bucketId == album.bucketId) {
+                    closeAlbum()
                 }
             }.onFailure { err ->
                 _userMessage.emit(strings.migrationError(err.localizedMessage))
@@ -995,8 +1344,18 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /**
+     * Has Android index files that were written without telling MediaStore. Called when the app comes
+     * to the front; the scan itself runs in MediaStore's own process and reports back through
+     * [mediaObserver], which then refreshes the library.
+     */
+    fun rescanMediaFolders() {
+        viewModelScope.launch(Dispatchers.IO) { repository.rescanMediaFolders() }
+    }
+
     override fun onCleared() {
         super.onCleared()
+        getApplication<android.app.Application>().contentResolver.unregisterContentObserver(mediaObserver)
         ThumbnailManager.getInstance(getApplication()).stopPreindexing()
     }
 }

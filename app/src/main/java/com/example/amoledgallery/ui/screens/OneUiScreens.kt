@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SmartDisplay
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Info
@@ -207,6 +208,7 @@ internal fun OneUiMenuContent(
     appVersionName: String,
     onOpenFavorites: () -> Unit,
     onOpenTrash: () -> Unit,
+    onOpenDuplicates: () -> Unit,
     onOpenDesign: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenStorage: () -> Unit,
@@ -217,6 +219,8 @@ internal fun OneUiMenuContent(
             IconRow(Icons.Rounded.Favorite, Color(0xFFF2586E), strings.favorites, strings.items(favoriteCount), onOpenFavorites)
             Divider(start = 78.dp)
             IconRow(Icons.Rounded.Delete, Color(0xFFF4731F), strings.trash, strings.items(trashedCount), onOpenTrash)
+            Divider(start = 78.dp)
+            IconRow(Icons.Rounded.ContentCopy, Color(0xFF00A9A5), strings.duplicates, strings.duplicatesSubtitle, onOpenDuplicates)
         }
         Card {
             IconRow(Icons.Rounded.Palette, Color(0xFF7B61F0), strings.appearance, ThemeState.designLanguage.displayName, onOpenDesign)

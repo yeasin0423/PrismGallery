@@ -16,12 +16,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,7 +33,10 @@ data class VolumeUsage(
     val totalBytes: Long,
     val photos: Long,
     val videos: Long,
-    val trash: Long
+    val trash: Long,
+    /** SD card or USB storage (for the external volumes); INTERNAL for the phone's own storage. */
+    val kind: com.example.amoledgallery.util.StorageKind =
+        if (isSdCard) com.example.amoledgallery.util.StorageKind.SD_CARD else com.example.amoledgallery.util.StorageKind.INTERNAL
 ) {
     val total: Long get() = totalBytes.coerceAtLeast(1L)
     val used: Long get() = (totalBytes - freeBytes).coerceIn(0L, total)
@@ -68,7 +65,17 @@ internal fun storageVolumes(
         strings.internalStorage, false, internalFreeBytes, internalTotalBytes,
         stats?.photoBytes ?: 0L, stats?.videoBytes ?: 0L, stats?.trashBytes ?: 0L
     )
-    if (sdCardFreeBytes != null && sdCardTotalBytes != null && sdCardTotalBytes > 0L) {
+    // Every SD card and USB drive on its own page once the stats have counted them; before that the
+    // external volume the app writes to, as one page.
+    val externals = stats?.externals.orEmpty().filter { it.totalBytes > 0L }
+    if (externals.isNotEmpty()) {
+        externals.forEach { ext ->
+            list += volume(
+                com.example.amoledgallery.ui.i18n.storageLabel(ext.kind), true, ext.freeBytes, ext.totalBytes,
+                ext.photoBytes, ext.videoBytes, ext.trashBytes
+            ).copy(kind = ext.kind)
+        }
+    } else if (sdCardFreeBytes != null && sdCardTotalBytes != null && sdCardTotalBytes > 0L) {
         list += volume(
             strings.sdCard, true, sdCardFreeBytes, sdCardTotalBytes,
             stats?.sdPhotoBytes ?: 0L, stats?.sdVideoBytes ?: 0L, stats?.sdTrashBytes ?: 0L
@@ -94,13 +101,10 @@ internal fun StorageVolumePager(
     }
     val palette = LocalAppTheme.current.palette
     val pagerState = rememberPagerState(pageCount = { volumes.size })
-    // Every time a page is swiped to, it is rebuilt, so its fill animation plays again from 0.
-    val visits = remember { mutableStateMapOf<Int, Int>() }
-    LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.settledPage }.drop(1).collect { settled ->
-            visits[settled] = (visits[settled] ?: 0) + 1
-        }
-    }
+    // A page off screen is dropped and built again when it comes back, so its fill animation plays
+    // from 0 on every visit by itself. It must not be rebuilt on top of that (it used to be keyed on
+    // a visit counter): the swipe builds the page, the counter then rebuilt it once the swipe settled,
+    // and the fill restarted halfway through - the bar appeared to fill twice.
     Column(modifier = modifier) {
         HorizontalPager(
             state = pagerState,
@@ -108,9 +112,7 @@ internal fun StorageVolumePager(
             verticalAlignment = Alignment.Top,
             modifier = Modifier.fillMaxWidth()
         ) { index ->
-            key(visits[index] ?: 0) {
-                page(volumes[index])
-            }
+            page(volumes[index])
         }
         Row(
             modifier = Modifier

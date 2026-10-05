@@ -10,6 +10,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -307,7 +308,9 @@ fun BottomNavigationBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             val pill = RoundedCornerShape(percent = 50)
-            val activeFill = if (palette.isLight) Color.Black.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.14f)
+            // The open tab: darker than the glass bar, with a hairline edge (as in Prism Camera).
+            val activeFill = com.example.amoledgallery.ui.design.geminiSelectionFill(palette.isLight)
+            val activeEdge = com.example.amoledgallery.ui.design.geminiSelectionEdge(palette.isLight)
             val barScale by animateFloatAsState(if (pressed) 0.98f else 1f, label = "google_bar_press")
             Row(
                 modifier = Modifier
@@ -335,6 +338,7 @@ fun BottomNavigationBar(
                             .height(52.dp)
                             .clip(pill)
                             .background(container)
+                            .border(0.8.dp, activeEdge.copy(alpha = activeEdge.alpha * (container.alpha / activeFill.alpha.coerceAtLeast(0.01f))), pill)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = ripple(color = palette.onBackground)

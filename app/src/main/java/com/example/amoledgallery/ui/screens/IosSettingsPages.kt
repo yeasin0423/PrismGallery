@@ -239,9 +239,18 @@ private fun ColumnScope.StorageContent(
 
     // Short label like the iPhone's "iPhone", so the used-of-total text next to it fits.
     StorageCard(strings.internal, internalFreeBytes, internalTotalBytes, current, current?.photoBytes, current?.videoBytes)
-    if (sdCardFreeBytes != null && sdCardTotalBytes != null && sdCardTotalBytes > 0) {
+    // Each SD card and USB drive gets its own card, with its own photo and video sizes, once counted.
+    val externals = current?.externals.orEmpty().filter { it.totalBytes > 0L }
+    if (externals.isNotEmpty()) {
+        externals.forEach { ext ->
+            Spacer(modifier = Modifier.height(16.dp))
+            StorageCard(
+                com.example.amoledgallery.ui.i18n.storageLabel(ext.kind), ext.freeBytes, ext.totalBytes,
+                current, ext.photoBytes, ext.videoBytes
+            )
+        }
+    } else if (sdCardFreeBytes != null && sdCardTotalBytes != null && sdCardTotalBytes > 0) {
         Spacer(modifier = Modifier.height(16.dp))
-        // The SD card gets its own photo and video sizes (they used to be left out, so it only showed "other").
         StorageCard(strings.sdCard, sdCardFreeBytes, sdCardTotalBytes, current, current?.sdPhotoBytes, current?.sdVideoBytes)
     }
 

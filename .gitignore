@@ -20,3 +20,8 @@ keystore.properties
 /.kotlin/
 /.claude/
 /Reference Images/
+
+# Local debugging dumps (logcat captures, pulled prefs)
+/log.txt
+/logcat*.txt
+/xml.xml

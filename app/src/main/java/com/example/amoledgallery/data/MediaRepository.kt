@@ -93,6 +93,10 @@ class MediaRepository(private val context: Context) {
     private val hiddenPrefs = context.getSharedPreferences("amoled_gallery_hidden_prefs", Context.MODE_PRIVATE)
     private val KEY_HIDDEN_BUCKETS = "hidden_bucket_ids"
     private val KEY_CREATED_SUB_ALBUM_DIRS = "created_sub_album_dirs"
+    /** Exact paths of top-level album folders created in this app, so they show while still empty. */
+    private val KEY_CREATED_ALBUM_DIRS = "created_album_dirs"
+    /** "<bucket id>|<folder>" of the hidden albums, so a hidden one created here does not come back empty. */
+    private val KEY_HIDDEN_ALBUM_DIRS = "hidden_album_dirs"
 
     /**
      * Gets set of persistently hidden album BUCKET_IDs.
@@ -101,17 +105,48 @@ class MediaRepository(private val context: Context) {
         return hiddenPrefs.getStringSet(KEY_HIDDEN_BUCKETS, emptySet()) ?: emptySet()
     }
 
+    /** The folders of the albums that are hidden right now. */
+    private fun hiddenAlbumDirs(): Set<String> =
+        (hiddenPrefs.getStringSet(KEY_HIDDEN_ALBUM_DIRS, emptySet()) ?: emptySet())
+            .mapNotNull { it.substringAfter('|', "").takeIf(String::isNotBlank) }
+            .toSet()
+
     /**
      * Toggles an album's hidden state and persists to SharedPreferences.
+     *
+     * [directoryPath] is kept with it: an album created in this app is remembered by its folder and is
+     * listed even while empty, so hiding one without this left an empty copy of it behind in the list.
      */
-    fun setAlbumHidden(bucketId: String, hidden: Boolean) {
+    fun setAlbumHidden(bucketId: String, hidden: Boolean, directoryPath: String = "") {
         val current = getHiddenBucketIds().toMutableSet()
+        val dirs = (hiddenPrefs.getStringSet(KEY_HIDDEN_ALBUM_DIRS, emptySet()) ?: emptySet())
+            .filterNot { it.substringBefore('|') == bucketId }
+            .toMutableSet()
         if (hidden) {
             current.add(bucketId)
+            if (directoryPath.isNotBlank()) dirs.add("$bucketId|${normalizeDirPath(directoryPath)}")
         } else {
             current.remove(bucketId)
         }
-        hiddenPrefs.edit().putStringSet(KEY_HIDDEN_BUCKETS, current).apply()
+        hiddenPrefs.edit()
+            .putStringSet(KEY_HIDDEN_BUCKETS, current)
+            .putStringSet(KEY_HIDDEN_ALBUM_DIRS, dirs)
+            .apply()
+    }
+
+    /**
+     * Notes the folders of albums hidden before this was recorded (or hidden from somewhere that did not
+     * know the folder), so they stop reappearing as empty albums. Only ever adds.
+     */
+    fun rememberHiddenAlbumDirs(hiddenAlbums: List<AlbumItem>) {
+        val stored = (hiddenPrefs.getStringSet(KEY_HIDDEN_ALBUM_DIRS, emptySet()) ?: emptySet()).toMutableSet()
+        val known = stored.map { it.substringBefore('|') }.toSet()
+        val missing = hiddenAlbums
+            .filter { it.bucketId !in known && it.directoryPath.isNotBlank() }
+            .map { "${it.bucketId}|${normalizeDirPath(it.directoryPath)}" }
+        if (missing.isEmpty()) return
+        stored.addAll(missing)
+        hiddenPrefs.edit().putStringSet(KEY_HIDDEN_ALBUM_DIRS, stored).apply()
     }
 
     /**
@@ -139,7 +174,8 @@ class MediaRepository(private val context: Context) {
             MediaStore.MediaColumns.DATE_TAKEN,
             MediaStore.MediaColumns.WIDTH,
             MediaStore.MediaColumns.HEIGHT,
-            MediaStore.MediaColumns.ORIENTATION
+            MediaStore.MediaColumns.ORIENTATION,
+            MediaStore.MediaColumns.SIZE
         )
 
         val selection = if (bucketId != null) "${MediaStore.Images.Media.BUCKET_ID} = ?" else null
@@ -175,7 +211,8 @@ class MediaRepository(private val context: Context) {
             MediaStore.MediaColumns.DATE_TAKEN,
             MediaStore.MediaColumns.WIDTH,
             MediaStore.MediaColumns.HEIGHT,
-            MediaStore.MediaColumns.ORIENTATION
+            MediaStore.MediaColumns.ORIENTATION,
+            MediaStore.MediaColumns.SIZE
         )
 
         val videoSelection = if (bucketId != null) "${MediaStore.Video.Media.BUCKET_ID} = ?" else null
@@ -231,6 +268,7 @@ class MediaRepository(private val context: Context) {
         val widthColumn = cursor.getColumnIndex(MediaStore.MediaColumns.WIDTH)
         val heightColumn = cursor.getColumnIndex(MediaStore.MediaColumns.HEIGHT)
         val orientationColumn = cursor.getColumnIndex(MediaStore.MediaColumns.ORIENTATION)
+        val sizeColumn = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
         val mountedRoots = mountedStorageRoots()
 
         while (cursor.moveToNext()) {
@@ -267,7 +305,8 @@ class MediaRepository(private val context: Context) {
                     dateTaken = dateTaken,
                     width = if (widthColumn != -1) cursor.getInt(widthColumn) else 0,
                     height = if (heightColumn != -1) cursor.getInt(heightColumn) else 0,
-                    orientation = if (orientationColumn != -1) cursor.getInt(orientationColumn) else 0
+                    orientation = if (orientationColumn != -1) cursor.getInt(orientationColumn) else 0,
+                    size = if (sizeColumn != -1) cursor.getLong(sizeColumn) else 0L
                 )
             )
         }
@@ -288,9 +327,11 @@ class MediaRepository(private val context: Context) {
      * this directly instead of [getAlbums] to avoid redundant ContentResolver round-trips.
      */
     fun groupIntoAlbums(allMedia: List<MediaItem>, includeHidden: Boolean = false): List<AlbumItem> {
-        if (allMedia.isEmpty()) return emptyList()
+        if (allMedia.isEmpty()) return emptyCreatedAlbums(emptyList())
 
         val hiddenBuckets = if (!includeHidden) getHiddenBucketIds() else emptySet()
+        // Which removable volumes are SD cards and which USB storage, to tell the albums apart.
+        val externals = com.example.amoledgallery.util.ExternalStorage.volumes(context)
 
         // Group media by BUCKET_ID
         val bucketGroups = allMedia.groupBy { it.bucketId }
@@ -315,6 +356,12 @@ class MediaRepository(private val context: Context) {
                     count = items.size,
                     coverUri = firstItem.uri,
                     isSdCard = isSdCard,
+                    storage = if (isSdCard) {
+                        com.example.amoledgallery.util.ExternalStorage.volumeOfPath(externals, dataPath)?.kind
+                            ?: com.example.amoledgallery.util.StorageKind.SD_CARD
+                    } else {
+                        com.example.amoledgallery.util.StorageKind.INTERNAL
+                    },
                     relativePath = firstItem.relativePath,
                     directoryPath = directoryPath,
                     parentDirectoryPath = parentDirectoryPath
@@ -322,16 +369,18 @@ class MediaRepository(private val context: Context) {
             )
         }
 
-        // Calculate subAlbumCount for each album
+        // Calculate subAlbumCount for each album; a media container (Pictures and the like) counts none,
+        // since the albums inside it stand on their own in the list.
+        val containerDirs = mediaContainerDirs()
         val albumsWithSubCount = rawAlbums.map { album ->
-            val subCount = if (album.directoryPath.isNotBlank()) {
+            val subCount = if (album.directoryPath.isNotBlank() && normalizeDirPath(album.directoryPath) !in containerDirs) {
                 rawAlbums.count { other ->
                     other.directoryPath != album.directoryPath &&
                     normalizeDirPath(other.parentDirectoryPath) == normalizeDirPath(album.directoryPath)
                 }
             } else 0
             album.copy(subAlbumCount = subCount)
-        }
+        } + emptyCreatedAlbums(rawAlbums)
 
         // Sort: Camera / DCIM / Screenshots first, then alphabetically
         return albumsWithSubCount.sortedWith(
@@ -358,17 +407,71 @@ class MediaRepository(private val context: Context) {
     }
 
     /**
+     * The folders Android hands out for media - DCIM, Pictures, Movies, Download - on every volume,
+     * plus the volumes' own roots.
+     *
+     * They are where albums live, not albums that hold other albums. A phone that keeps loose files in
+     * one of them (a browser saving downloads straight into Pictures, say) makes it an album in its own
+     * right, and every real album beneath it would otherwise disappear into it - including albums this
+     * app had just created, which is where this came up.
+     */
+    private fun mediaContainerDirs(): Set<String> {
+        val roots = ArrayList<File>()
+        runCatching { Environment.getExternalStorageDirectory() }.getOrNull()?.let { roots.add(it) }
+        runCatching { com.example.amoledgallery.util.ExternalStorage.volumes(context) }
+            .getOrDefault(emptyList())
+            .forEach { roots.add(it.root) }
+        val folders = listOf(
+            Environment.DIRECTORY_DCIM,
+            Environment.DIRECTORY_PICTURES,
+            Environment.DIRECTORY_MOVIES,
+            Environment.DIRECTORY_DOWNLOADS,
+            Environment.DIRECTORY_DOCUMENTS
+        )
+        return roots.flatMapTo(HashSet()) { root ->
+            folders.map { normalizeDirPath(File(root, it).absolutePath) } + normalizeDirPath(root.absolutePath)
+        }
+    }
+
+    /**
      * Filters top-level root albums (albums that do not have a parent album in the gallery).
+     *
+     * An album sitting directly in one of [mediaContainerDirs] is always one of these, whether or not
+     * that folder holds loose files of its own.
      */
     fun getRootAlbums(allAlbums: List<AlbumItem>): List<AlbumItem> {
+        val containers = mediaContainerDirs()
         val allDirPaths = allAlbums.mapNotNull { it.directoryPath.takeIf { p -> p.isNotBlank() } }
             .map { normalizeDirPath(it) }
             .toSet()
 
         return allAlbums.filter { album ->
             val parent = normalizeDirPath(album.parentDirectoryPath)
-            parent.isBlank() || !allDirPaths.contains(parent)
+            parent.isBlank() || parent in containers || !allDirPaths.contains(parent)
         }
+    }
+
+    /**
+     * The chain of parent albums above [album], root first - what jumping straight into a search
+     * result (however deeply nested) needs for the breadcrumb trail. Walks [AlbumItem.parentDirectoryPath]
+     * up through [allAlbums] the same way [getRootAlbums] and [getSubAlbums] already do; stops once a
+     * level has no matching parent (it is a root album) or after a generous depth, in case two folders
+     * ever pointed at each other.
+     */
+    fun ancestorsOf(album: AlbumItem, allAlbums: List<AlbumItem>): List<AlbumItem> {
+        val byPath = allAlbums.associateBy { normalizeDirPath(it.directoryPath) }
+        val containers = mediaContainerDirs()
+        val chain = ArrayList<AlbumItem>()
+        var current = album
+        repeat(32) {
+            val parentPath = normalizeDirPath(current.parentDirectoryPath)
+            // A media container is where the trail ends: what sits in it is a top-level album.
+            if (parentPath.isBlank() || parentPath in containers) return chain.asReversed()
+            val parent = byPath[parentPath] ?: return chain.asReversed()
+            chain += parent
+            current = parent
+        }
+        return chain.asReversed()
     }
 
     /**
@@ -377,6 +480,9 @@ class MediaRepository(private val context: Context) {
      */
     fun getSubAlbums(parentAlbum: AlbumItem, allAlbums: List<AlbumItem>): List<AlbumItem> {
         val parentNormalized = normalizeDirPath(parentAlbum.directoryPath)
+        // DCIM, Pictures and the like hold the albums themselves: what sits in them is listed in the
+        // album list, so nothing hangs underneath them here (it would only be shown twice).
+        if (parentNormalized in mediaContainerDirs()) return emptyList()
         val subAlbums = allAlbums.filter { other ->
             other.directoryPath != parentAlbum.directoryPath &&
             normalizeDirPath(other.parentDirectoryPath) == parentNormalized
@@ -414,7 +520,37 @@ class MediaRepository(private val context: Context) {
         return subAlbums.sortedBy { it.name.lowercase() }
     }
 
+    /**
+     * Finishes deleting an album once the user has confirmed the trash request.
+     *
+     * Its media are in the trash by then, but the folder is not gone: the trashed files still lie in
+     * it under their .trashed- names until the trash is emptied. An album created in this app is
+     * remembered by its folder, so without forgetting it here it came straight back into the list as
+     * an empty album - the toast said it was deleted and it stayed. The folder itself is removed as
+     * soon as nothing but empty folders is left in it.
+     */
+    fun finishAlbumDeletion(album: AlbumItem) {
+        if (album.directoryPath.isBlank()) return
+        val normalized = normalizeDirPath(album.directoryPath)
+        val saved = hiddenPrefs.getStringSet(KEY_CREATED_ALBUM_DIRS, emptySet()) ?: emptySet()
+        val keep = saved.filterNot { normalizeDirPath(it) == normalized }.toSet()
+        if (keep.size != saved.size) {
+            hiddenPrefs.edit().putStringSet(KEY_CREATED_ALBUM_DIRS, keep).apply()
+        }
+        // Sub-albums created inside it go with it.
+        val savedSubs = getCreatedSubAlbumDirs()
+        val keepSubs = savedSubs.filterNot {
+            val sub = normalizeDirPath(it)
+            sub == normalized || sub.startsWith("$normalized/")
+        }.toSet()
+        if (keepSubs.size != savedSubs.size) {
+            hiddenPrefs.edit().putStringSet(KEY_CREATED_SUB_ALBUM_DIRS, keepSubs).apply()
+        }
+        removeDirectoryIfEmpty(album.directoryPath)
+    }
+
     private fun normalizeDirPath(path: String): String {
+
         return path.trimEnd('/', '\\').lowercase()
     }
 
@@ -591,6 +727,42 @@ class MediaRepository(private val context: Context) {
     }
 
     /** Deletes [path] if it is a directory without any files left in it (empty sub-folders included). */
+    /** When the folders were last handed to the scanner; scanning them again right away is pointless. */
+    private var lastFolderScan = 0L
+
+    /**
+     * Has Android scan the folders new files land in (DCIM, Pictures, Movies, Download) on every volume.
+     *
+     * An app that writes a file without telling MediaStore - plenty of downloaders and file managers do -
+     * leaves it invisible to every gallery until MediaStore notices by itself, which can take until its
+     * nightly housekeeping: a video downloaded in the evening turned up the next day, while the file
+     * manager had been showing it all along. The scanner skips files it already knows unchanged, so this
+     * only costs something when there is really something new; [minIntervalMs] keeps it from running on
+     * every single resume.
+     */
+    fun rescanMediaFolders(minIntervalMs: Long = 60_000L) {
+        val now = System.currentTimeMillis()
+        if (now - lastFolderScan < minIntervalMs) return
+        lastFolderScan = now
+        try {
+            val roots = ArrayList<File>()
+            Environment.getExternalStorageDirectory()?.let { roots.add(it) }
+            com.example.amoledgallery.util.ExternalStorage.volumes(context).forEach { roots.add(it.root) }
+            val folders = listOf(
+                Environment.DIRECTORY_DCIM,
+                Environment.DIRECTORY_PICTURES,
+                Environment.DIRECTORY_MOVIES,
+                Environment.DIRECTORY_DOWNLOADS
+            )
+            val paths = roots
+                .flatMap { root -> folders.map { File(root, it) } }
+                .filter { it.isDirectory }
+                .map { it.absolutePath }
+            if (paths.isEmpty()) return
+            android.media.MediaScannerConnection.scanFile(context, paths.toTypedArray(), null, null)
+        } catch (_: Exception) {}
+    }
+
     fun removeDirectoryIfEmpty(path: String) {
         if (path.isBlank()) return
         val dir = File(path)
@@ -791,6 +963,7 @@ class MediaRepository(private val context: Context) {
                     return@withContext Result.failure(IllegalStateException(strings.folderCreateFailed))
                 }
             }
+            rememberCreatedAlbumDir(targetDir)
 
             Result.success(targetDir)
         } catch (e: Exception) {
@@ -802,9 +975,93 @@ class MediaRepository(private val context: Context) {
     private fun getCreatedSubAlbumDirs(): Set<String> =
         hiddenPrefs.getStringSet(KEY_CREATED_SUB_ALBUM_DIRS, emptySet()) ?: emptySet()
 
+    private fun rememberCreatedAlbumDir(dir: File) {
+        val current = hiddenPrefs.getStringSet(KEY_CREATED_ALBUM_DIRS, emptySet()) ?: emptySet()
+        hiddenPrefs.edit().putStringSet(KEY_CREATED_ALBUM_DIRS, current + dir.absolutePath).apply()
+    }
+
+    /**
+     * Albums created in this app that hold nothing yet. MediaStore only knows folders with media in
+     * them, so a freshly created album would otherwise not appear until something is moved into it.
+     * Folders deleted since, or that have media now (then they come from [withMedia]), are left out;
+     * deleted ones are also forgotten.
+     */
+    private fun emptyCreatedAlbums(withMedia: List<AlbumItem>): List<AlbumItem> {
+        val saved = hiddenPrefs.getStringSet(KEY_CREATED_ALBUM_DIRS, emptySet()) ?: emptySet()
+        // Sub-albums created here belong in this list too: without them an empty one existed only while
+        // its parent album was open - it could not be searched for, and nothing could be moved into it.
+        val savedSubs = getCreatedSubAlbumDirs()
+        if (saved.isEmpty() && savedSubs.isEmpty()) return emptyList()
+        // A hidden album stays hidden even though its folder is remembered here.
+        val hiddenDirs = hiddenAlbumDirs()
+        val known = withMedia.map { normalizeDirPath(it.directoryPath) }.toSet() + hiddenDirs
+        val gone = saved.filter { resolveExistingDir(it) == null }.toSet()
+        if (gone.isNotEmpty()) {
+            hiddenPrefs.edit().putStringSet(KEY_CREATED_ALBUM_DIRS, saved - gone).apply()
+        }
+        return (saved + savedSubs - gone)
+            .mapNotNull { resolveExistingDir(it)?.absolutePath }
+            .distinctBy { normalizeDirPath(it) }
+            .filter { normalizeDirPath(it) !in known }
+            .map { path ->
+                val dir = File(path)
+                val onSd = isPathOnSdCard(path)
+                val root = if (onSd) getSdCardRootDirectory() else Environment.getExternalStorageDirectory()
+                val relative = root?.absolutePath?.let { rootPath ->
+                    path.removePrefix(rootPath).trimStart('/').trimEnd('/') + "/"
+                } ?: "${Environment.DIRECTORY_PICTURES}/${dir.name}/"
+                AlbumItem(
+                    bucketId = "disk_${path.hashCode()}",
+                    name = dir.name,
+                    count = 0,
+                    coverUri = null,
+                    isSdCard = onSd,
+                    storage = com.example.amoledgallery.util.ExternalStorage.kindOfPath(
+                        com.example.amoledgallery.util.ExternalStorage.volumes(context), path
+                    ),
+                    relativePath = relative,
+                    directoryPath = path,
+                    parentDirectoryPath = dir.parent ?: "",
+                    subAlbumCount = 0
+                )
+            }
+    }
+
     private fun rememberCreatedSubAlbumDir(dir: File) {
-        val updated = getCreatedSubAlbumDirs() + normalizeDirPath(dir.absolutePath)
+        // The path as it really is on disk. It used to be stored lower-cased, which no longer finds the
+        // folder on a card (/storage/A28E-16F9 is a real name, and that part of the path is case
+        // sensitive); [resolveExistingDir] still finds those older entries.
+        val updated = getCreatedSubAlbumDirs() + dir.absolutePath
         hiddenPrefs.edit().putStringSet(KEY_CREATED_SUB_ALBUM_DIRS, updated).apply()
+    }
+
+    /**
+     * The folder at [path] as it is actually spelled on disk, or null when there is none.
+     *
+     * Paths remembered earlier were lower-cased, which the card's own mount point does not answer to;
+     * each step of the path is matched without regard to case so those still resolve.
+     */
+    private fun resolveExistingDir(path: String): File? {
+        if (path.isBlank()) return null
+        if (!File(path).isDirectory && !File(path).parentFile.let { it != null && it.isDirectory }) {
+            // Not even the parent is there under this spelling: walking it would list nothing.
+            if (!path.startsWith("/storage/") && !path.startsWith("/sdcard")) return null
+        }
+        val parts = path.trim('/').split('/').filter { it.isNotBlank() }
+        var current = File("/")
+        for (part in parts) {
+            // The exact spelling first, then the same name in any case - which is what an entry
+            // remembered in lower case needs, and what gives the folder's real name back.
+            val exact = File(current, part)
+            val match = if (exact.isDirectory && current.list()?.contains(part) != false) {
+                exact
+            } else {
+                current.listFiles()?.firstOrNull { it.isDirectory && it.name.equals(part, ignoreCase = true) }
+                    ?: exact.takeIf { it.isDirectory }
+            }
+            current = match ?: return null
+        }
+        return current.takeIf { it.isDirectory }
     }
 
     /**
@@ -857,16 +1114,25 @@ class MediaRepository(private val context: Context) {
     }
 
     /**
-     * Resolves the MediaStore volume name of the mounted removable SD card, for use with
-     * [MediaStore.Images.Media.getContentUri]/[MediaStore.Video.Media.getContentUri] so inserts
-     * physically land on the SD card instead of silently defaulting to the primary volume.
+     * The removable volume that "move to SD card" (or USB storage) writes to: the SD card when there is
+     * one, otherwise a USB drive. Only a writable (mounted read-write) volume counts.
      */
-    private fun getSdCardVolumeName(): String? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
-        val storageManager = context.getSystemService(Context.STORAGE_SERVICE) as? StorageManager
-        val sdVolume = storageManager?.storageVolumes?.firstOrNull { it.isRemovable && it.state == Environment.MEDIA_MOUNTED }
-        return sdVolume?.mediaStoreVolumeName
-    }
+    fun externalTarget(): com.example.amoledgallery.util.ExternalVolume? =
+        com.example.amoledgallery.util.ExternalStorage.volumes(context)
+            .filter { !it.readOnly }
+            .sortedBy { if (it.kind == com.example.amoledgallery.util.StorageKind.SD_CARD) 0 else 1 }
+            .firstOrNull()
+
+    /** Every mounted removable volume, SD cards and USB storage alike (for the storage pages). */
+    fun externalVolumes(): List<com.example.amoledgallery.util.ExternalVolume> =
+        com.example.amoledgallery.util.ExternalStorage.volumes(context)
+
+    /**
+     * The MediaStore volume name of [externalTarget], for [MediaStore.Images.Media.getContentUri] /
+     * [MediaStore.Video.Media.getContentUri], so inserts physically land on that volume instead of silently
+     * defaulting to the primary one.
+     */
+    private fun getSdCardVolumeName(): String? = externalTarget()?.mediaStoreName
 
     private fun getSdCardPicturesDirectory(): File? {
         val root = getSdCardRootDirectory() ?: return null
@@ -875,26 +1141,8 @@ class MediaRepository(private val context: Context) {
         return pictures
     }
 
-    /**
-     * Resolves the SD card's root directory (not a specific subfolder), used both by
-     * [getSdCardPicturesDirectory] and for free-space queries where any path on the volume works.
-     */
-    private fun getSdCardRootDirectory(): File? {
-        val storageManager = context.getSystemService(Context.STORAGE_SERVICE) as? StorageManager
-        if (storageManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val sdVolume = storageManager.storageVolumes.firstOrNull { it.isRemovable && it.state == Environment.MEDIA_MOUNTED }
-            sdVolume?.directory?.let { return it }
-        }
-
-        // Fallback check through external files dirs
-        val externalDirs = ContextCompat.getExternalFilesDirs(context, null)
-        for (dir in externalDirs) {
-            if (dir != null && Environment.isExternalStorageRemovable(dir)) {
-                return dir
-            }
-        }
-        return null
-    }
+    /** The root directory of [externalTarget], for its Pictures folder and free-space queries. */
+    private fun getSdCardRootDirectory(): File? = externalTarget()?.root
 
     private fun isPathOnSdCard(path: String): Boolean {
         return path.contains("/storage/") && !path.contains("/emulated/")
@@ -916,7 +1164,19 @@ class MediaRepository(private val context: Context) {
         val sdVideoBytes: Long = 0L,
         val sdTrashBytes: Long = 0L,
         /** Largest first. */
-        val albums: List<AlbumStorage>
+        val albums: List<AlbumStorage>,
+        /** Each mounted SD card and USB drive on its own (the sd* fields above add them all up). */
+        val externals: List<ExternalUsage> = emptyList()
+    )
+
+    /** One removable volume's space and what the photos, videos and trash take of it. */
+    data class ExternalUsage(
+        val kind: com.example.amoledgallery.util.StorageKind,
+        val freeBytes: Long,
+        val totalBytes: Long,
+        val photoBytes: Long,
+        val videoBytes: Long,
+        val trashBytes: Long
     )
 
     suspend fun getMediaStorageStats(): MediaStorageStats = withContext(Dispatchers.IO) {
@@ -932,10 +1192,9 @@ class MediaRepository(private val context: Context) {
         val albums = HashMap<String, AlbumTotal>()
         val mountedRoots = mountedStorageRoots()
 
-        /** Sums of [uri] as (internal, SD card): anything not on the primary volume is on the SD card. */
-        fun sumOf(uri: Uri): Pair<Long, Long> {
-            var internal = 0L
-            var sd = 0L
+        /** Sums of [uri] per MediaStore volume name (null for internal storage). */
+        fun sumOf(uri: Uri): Map<String?, Long> {
+            val sums = HashMap<String?, Long>()
             try {
                 contentResolver.query(uri, projection, null, null, "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { cursor ->
                     val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
@@ -948,7 +1207,8 @@ class MediaRepository(private val context: Context) {
                         if (dataColumn >= 0 && isOnMissingVolume(cursor.getString(dataColumn), mountedRoots)) continue
                         val size = cursor.getLong(sizeColumn)
                         val volume = if (volumeColumn >= 0) cursor.getString(volumeColumn) else null
-                        if (volume == null || volume == MediaStore.VOLUME_EXTERNAL_PRIMARY) internal += size else sd += size
+                        val key = volume?.takeIf { it != MediaStore.VOLUME_EXTERNAL_PRIMARY }
+                        sums[key] = (sums[key] ?: 0L) + size
                         val bucket = cursor.getString(bucketColumn) ?: continue
                         val album = albums.getOrPut(bucket) { AlbumTotal(cursor.getString(nameColumn) ?: strings.unknown) }
                         album.count++
@@ -959,16 +1219,14 @@ class MediaRepository(private val context: Context) {
             } catch (e: Exception) {
                 e.printStackTrace()
             }
-            return internal to sd
+            return sums
         }
 
         val imagesUri = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
         val videosUri = MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-        val (photoBytes, sdPhotoBytes) = sumOf(imagesUri)
-        val (videoBytes, sdVideoBytes) = sumOf(videosUri)
-
-        var trashBytes = 0L
-        var sdTrashBytes = 0L
+        val photoSums = sumOf(imagesUri)
+        val videoSums = sumOf(videosUri)
+        val trashSums = HashMap<String?, Long>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val bundle = Bundle().apply { putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY) }
             listOf(imagesUri, videosUri).forEach { uri ->
@@ -980,11 +1238,8 @@ class MediaRepository(private val context: Context) {
                         while (cursor.moveToNext()) {
                             if (dataColumn >= 0 && isOnMissingVolume(cursor.getString(dataColumn), mountedRoots)) continue
                             val volume = if (volumeColumn >= 0) cursor.getString(volumeColumn) else null
-                            if (volume == null || volume == MediaStore.VOLUME_EXTERNAL_PRIMARY) {
-                                trashBytes += cursor.getLong(sizeColumn)
-                            } else {
-                                sdTrashBytes += cursor.getLong(sizeColumn)
-                            }
+                            val key = volume?.takeIf { it != MediaStore.VOLUME_EXTERNAL_PRIMARY }
+                            trashSums[key] = (trashSums[key] ?: 0L) + cursor.getLong(sizeColumn)
                         }
                     }
                 } catch (e: Exception) {
@@ -993,13 +1248,26 @@ class MediaRepository(private val context: Context) {
             }
         }
 
+        fun externalSum(sums: Map<String?, Long>) = sums.filterKeys { it != null }.values.sum()
+        val externals = externalVolumes().map { volume ->
+            val name = volume.mediaStoreName
+            ExternalUsage(
+                kind = volume.kind,
+                freeBytes = volume.freeBytes(),
+                totalBytes = volume.totalBytes(),
+                photoBytes = photoSums[name] ?: 0L,
+                videoBytes = videoSums[name] ?: 0L,
+                trashBytes = trashSums[name] ?: 0L
+            )
+        }
         MediaStorageStats(
-            photoBytes = photoBytes,
-            videoBytes = videoBytes,
-            trashBytes = trashBytes,
-            sdPhotoBytes = sdPhotoBytes,
-            sdVideoBytes = sdVideoBytes,
-            sdTrashBytes = sdTrashBytes,
+            photoBytes = photoSums[null] ?: 0L,
+            videoBytes = videoSums[null] ?: 0L,
+            trashBytes = trashSums[null] ?: 0L,
+            sdPhotoBytes = externalSum(photoSums),
+            sdVideoBytes = externalSum(videoSums),
+            sdTrashBytes = externalSum(trashSums),
+            externals = externals,
             albums = albums.map { (bucketId, album) -> AlbumStorage(bucketId, album.name, album.count, album.bytes, album.cover) }
                 .sortedByDescending { it.bytes }
         )
@@ -1102,15 +1370,10 @@ class MediaRepository(private val context: Context) {
                 }
             }
 
-            // Remove the folder on disk only if nothing but empty folders is left in it. It can still hold
-            // sub-albums, other files MediaStore doesn't index, or media of another volume - a recursive
-            // delete would silently destroy those.
-            if (album.directoryPath.isNotBlank()) {
-                val dir = File(album.directoryPath)
-                if (dir.exists() && dir.walkBottomUp().all { it.isDirectory }) {
-                    dir.walkBottomUp().forEach { it.delete() }
-                }
-            }
+            // Nothing had to be trashed (an album that only held empty folders, or one created here and
+            // never filled): forget it and take its folder with it. Only folders are removed, never files
+            // MediaStore doesn't index - a recursive delete would silently destroy those.
+            finishAlbumDeletion(album)
 
             Result.success(null)
         } catch (e: Exception) {
@@ -1118,89 +1381,123 @@ class MediaRepository(private val context: Context) {
         }
     }
 
+    /** How an album migration went: [moved] files are on the other volume, [failed] stayed where they were. */
+    data class MigrationResult(
+        /** The user has to confirm deleting originals owned by other apps; null when nothing is left. */
+        val deleteRequest: PendingIntent?,
+        val moved: Int,
+        val failed: Int
+    )
+
     /**
      * Physically migrates all files of an album between Internal Storage and MicroSD card.
-     * Updates the MediaStore index and invalidates thumbnail caches.
+     *
+     * Every file is copied on its own, through MediaStore onto the target volume (as a cross-volume
+     * move does), and only then is the original removed. A file that cannot be copied - unreadable,
+     * a name the storage refuses, the card filling up - is left in place and counted in
+     * [MigrationResult.failed] instead of aborting the rest, which used to leave big albums half
+     * moved with only an error to show for it. Space is checked before anything is copied.
      */
     suspend fun migrateAlbumStorage(
         album: AlbumItem,
         toSdCard: Boolean,
         onProgress: ((current: Int, total: Int) -> Unit)? = null
-    ): Result<PendingIntent?> = withContext(Dispatchers.IO) {
+    ): Result<MigrationResult> = withContext(Dispatchers.IO) {
         try {
-            val targetDir: File = if (toSdCard) {
-                val sdDir = getSdCardPicturesDirectory()
-                    ?: return@withContext Result.failure(IllegalStateException(strings.sdCardNotAvailable))
-                File(sdDir, album.name)
+            val targetVolume = if (toSdCard) {
+                getSdCardVolumeName() ?: return@withContext Result.failure(IllegalStateException(strings.sdCardNotAvailable))
             } else {
-                val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-                File(picturesDir, album.name)
+                MediaStore.VOLUME_EXTERNAL_PRIMARY
             }
-
-            if (!targetDir.exists()) {
-                targetDir.mkdirs()
-            }
+            val targetRelPath = "${Environment.DIRECTORY_PICTURES}/${album.name}/"
 
             val items = getAllMedia(album.bucketId, includeHidden = true)
-            val thumbnailManager = ThumbnailManager.getInstance(context)
-            val securityExceptionUris = mutableListOf<Uri>()
             val total = items.size
 
+            // Refuse up front rather than fill the card and stop halfway; 50 MB kept as headroom.
+            val needed = items.sumOf { item -> runCatching { File(item.dataPath).length() }.getOrDefault(0L) }
+            val free = if (toSdCard) getSdCardStorageSpace()?.freeBytes else getInternalStorageSpace().freeBytes
+            if (free != null && needed > 0L && needed + 50L * 1024 * 1024 > free) {
+                return@withContext Result.failure(IllegalStateException(strings.notEnoughSpace(needed, free)))
+            }
+
+            val thumbnailManager = ThumbnailManager.getInstance(context)
+            val securityExceptionUris = mutableListOf<Uri>()
+            var moved = 0
+            var failed = 0
+
             for ((index, item) in items.withIndex()) {
-                val fileName = item.displayName.ifBlank { "media_${item.id}.jpg" }
-                var destFile = File(targetDir, fileName)
-                if (destFile.exists()) {
-                    val base = fileName.substringBeforeLast(".")
-                    val ext = fileName.substringAfterLast(".", "")
-                    val extSuffix = if (ext.isNotBlank()) ".$ext" else ""
-                    destFile = File(targetDir, "${base}_${System.currentTimeMillis()}$extSuffix")
+                // Already on the target volume (an album spread over both): nothing to do.
+                if (isPathOnSdCard(item.dataPath) == toSdCard) {
+                    onProgress?.invoke(index + 1, total)
+                    continue
                 }
-
-                var copied = false
-                contentResolver.openInputStream(item.uri)?.use { input ->
-                    FileOutputStream(destFile).use { output ->
-                        input.copyTo(output)
-                        output.flush()
-                        copied = true
-                    }
-                }
-
-                if (copied && destFile.exists() && destFile.length() > 0L) {
-                    // Keep the original's modification time; a plain copy is "modified" right now.
-                    if (item.dateModified > 0L) destFile.setLastModified(item.dateModified * 1000L)
-                    MediaScannerConnection.scanFile(
-                        context,
-                        arrayOf(destFile.absolutePath),
-                        if (item.mimeType.isNotBlank()) arrayOf(item.mimeType) else null
-                    ) { _, _ -> }
-
+                val copy = copyToVolume(item, targetVolume, targetRelPath)
+                if (copy != null) {
+                    moved++
                     try {
-                        contentResolver.delete(item.uri, null, null)
-                    } catch (e: SecurityException) {
+                        if (contentResolver.delete(item.uri, null, null) == 0) securityExceptionUris.add(item.uri)
+                    } catch (_: SecurityException) {
                         securityExceptionUris.add(item.uri)
                     } catch (_: Exception) {}
-
                     thumbnailManager.getThumbnailFile(item).delete()
+                } else {
+                    failed++
                 }
                 onProgress?.invoke(index + 1, total)
             }
 
-            // Remove old folder if empty
-            if (album.directoryPath.isNotBlank()) {
-                val oldDir = File(album.directoryPath)
-                if (oldDir.exists() && oldDir.listFiles().isNullOrEmpty()) {
-                    oldDir.delete()
-                }
-            }
+            // Remove the old folder once nothing is left in it.
+            if (album.directoryPath.isNotBlank()) removeDirectoryIfEmpty(album.directoryPath)
 
-            if (securityExceptionUris.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val pendingIntent = createDeleteRequest(securityExceptionUris)
-                return@withContext Result.success(pendingIntent)
+            val deleteRequest = if (securityExceptionUris.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                createDeleteRequest(securityExceptionUris)
+            } else {
+                null
             }
-
-            Result.success(null)
+            Result.success(MigrationResult(deleteRequest, moved, failed))
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    /**
+     * Copies [item] into [relativePath] on [volume] through MediaStore (which picks a free name if one
+     * is taken) and keeps its modification time. Returns the copy, or null - with any half-written
+     * copy removed - when it could not be made.
+     */
+    private fun copyToVolume(item: MediaItem, volume: String, relativePath: String): Uri? {
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, item.displayName.ifBlank { "media_${item.id}" })
+            if (item.mimeType.isNotBlank()) put(MediaStore.MediaColumns.MIME_TYPE, item.mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val collection = if (item.isVideo) {
+            MediaStore.Video.Media.getContentUri(volume)
+        } else {
+            MediaStore.Images.Media.getContentUri(volume)
+        }
+        val dest = try {
+            contentResolver.insert(collection, values)
+        } catch (_: Exception) {
+            null
+        } ?: return null
+        val copied = try {
+            contentResolver.openInputStream(item.uri)?.use { input ->
+                contentResolver.openOutputStream(dest)?.use { output -> input.copyTo(output, 256 * 1024) }
+            } != null
+        } catch (_: Exception) {
+            false
+        }
+        if (!copied) {
+            runCatching { contentResolver.delete(dest, null, null) }
+            return null
+        }
+        runCatching {
+            contentResolver.update(dest, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+        }
+        preserveModifiedTime(dest, item)
+        return dest
     }
 }

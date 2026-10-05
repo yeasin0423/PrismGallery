@@ -182,14 +182,16 @@ fun ZoomableBox(
                 detectZoomAndPan(shouldConsumePan = { scaleAnim.value > 1.05f }) { _, pan, zoom, _ ->
                     scope.launch {
                         val newScale = (scaleAnim.value * zoom).coerceIn(1f, maxScaleNow())
+                        // The offset is in screen pixels whatever the zoom, so the photo follows the finger
+                        // 1:1. (It used to be multiplied by the scale: at 4x a small move flung it across.)
                         val limit = bounds(newScale)
 
                         val newOffsetX = if (newScale > 1f) {
-                            (offsetXAnim.value * (newScale / scaleAnim.value) + pan.x * newScale).coerceIn(-limit.x, limit.x)
+                            (offsetXAnim.value * (newScale / scaleAnim.value) + pan.x).coerceIn(-limit.x, limit.x)
                         } else 0f
 
                         val newOffsetY = if (newScale > 1f) {
-                            (offsetYAnim.value * (newScale / scaleAnim.value) + pan.y * newScale).coerceIn(-limit.y, limit.y)
+                            (offsetYAnim.value * (newScale / scaleAnim.value) + pan.y).coerceIn(-limit.y, limit.y)
                         } else 0f
 
                         scaleAnim.snapTo(newScale)

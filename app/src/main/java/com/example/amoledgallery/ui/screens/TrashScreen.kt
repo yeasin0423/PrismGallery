@@ -155,7 +155,7 @@ fun TrashScreen(
 }
 
 @Composable
-private fun TopBarTextAction(text: String, color: Color, onClick: () -> Unit) {
+internal fun TopBarTextAction(text: String, color: Color, onClick: () -> Unit) {
     Text(
         text = text,
         color = color,

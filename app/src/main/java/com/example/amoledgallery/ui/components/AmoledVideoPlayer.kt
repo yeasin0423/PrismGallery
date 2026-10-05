@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -35,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,7 +69,8 @@ import java.util.Locale
  * - Direct hardware decoding via Media3
  * - Minimalist center Play/Pause control
  * - Minimalist bottom scrubber and timestamp overlay
- * - Auto-hides controls after 2 seconds of playback
+ * - Plays as soon as it opens; stays paused only when paused with the button
+  * - Controls that belong to the viewer's: they appear and fade with its top and bottom bars
  * - Proper lifecycle cleanup
  */
 @OptIn(UnstableApi::class)
@@ -75,7 +78,13 @@ import java.util.Locale
 fun AmoledVideoPlayer(
     item: MediaItem,
     isActivePage: Boolean,
+    /** Play button and scrubber follow the viewer's bars, so everything fades together. */
+    controlsVisible: Boolean,
     onTap: () -> Unit,
+    /** Pausing brings the controls back, however they were hidden. */
+    onShowControls: () -> Unit,
+    onPlayingChange: (Boolean) -> Unit,
+    onScrubbingChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (!isActivePage) {
@@ -98,7 +107,11 @@ fun AmoledVideoPlayer(
 
     ActiveVideoPlayer(
         item = item,
+        controlsVisible = controlsVisible,
         onTap = onTap,
+        onShowControls = onShowControls,
+        onPlayingChange = onPlayingChange,
+        onScrubbingChange = onScrubbingChange,
         modifier = modifier
     )
 }
@@ -107,7 +120,11 @@ fun AmoledVideoPlayer(
 @Composable
 private fun ActiveVideoPlayer(
     item: MediaItem,
+    controlsVisible: Boolean,
     onTap: () -> Unit,
+    onShowControls: () -> Unit,
+    onPlayingChange: (Boolean) -> Unit,
+    onScrubbingChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -116,16 +133,24 @@ private fun ActiveVideoPlayer(
     var isFirstFrameRendered by remember { mutableStateOf(false) }
     var currentPositionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(item.durationMs) }
-    var showPlayerControls by remember { mutableStateOf(true) }
     var isScrubbing by remember { mutableStateOf(false) }
+    /** Paused with the button: then it stays paused, also after coming back to the app. */
+    var pausedByUser by remember { mutableStateOf(false) }
 
     val exoPlayer = remember(item.uri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(Media3Item.fromUri(item.uri))
             repeatMode = Player.REPEAT_MODE_ONE
+            // Opening a video in the viewer plays it straight away.
+            playWhenReady = true
             prepare()
         }
     }
+
+    LaunchedEffect(isPlaying) { onPlayingChange(isPlaying) }
+    LaunchedEffect(isScrubbing) { onScrubbingChange(isScrubbing) }
+    val reportStopped by rememberUpdatedState(onPlayingChange)
+    DisposableEffect(Unit) { onDispose { reportStopped(false) } }
 
     // Attach listener for playback state changes
     DisposableEffect(exoPlayer) {
@@ -158,7 +183,12 @@ private fun ActiveVideoPlayer(
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, exoPlayer) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) exoPlayer.pause()
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> exoPlayer.pause()
+                // Back in the app: carry on, unless the user had paused it themselves.
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> if (!pausedByUser) exoPlayer.play()
+                else -> Unit
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -172,24 +202,13 @@ private fun ActiveVideoPlayer(
         }
     }
 
-    // Auto-hide controls after 2 seconds of active playback
-    LaunchedEffect(showPlayerControls, isPlaying, isScrubbing) {
-        if (showPlayerControls && isPlaying && !isScrubbing) {
-            delay(2000)
-            showPlayerControls = false
-        }
-    }
-
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(androidx.compose.ui.graphics.Color.Black)
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = {
-                        showPlayerControls = !showPlayerControls
-                        onTap()
-                    }
+                    onTap = { onTap() }
                 )
             },
         contentAlignment = Alignment.Center
@@ -224,7 +243,7 @@ private fun ActiveVideoPlayer(
 
         // Overlay Controls (Center Play/Pause + Bottom Scrubber)
         AnimatedVisibility(
-            visible = showPlayerControls,
+            visible = controlsVisible,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize()
@@ -239,8 +258,10 @@ private fun ActiveVideoPlayer(
                     onClick = {
                         if (isPlaying) {
                             exoPlayer.pause()
-                            showPlayerControls = true
+                            pausedByUser = true
+                            onShowControls()
                         } else {
+                            pausedByUser = false
                             exoPlayer.play()
                         }
                     },
@@ -258,11 +279,13 @@ private fun ActiveVideoPlayer(
                     )
                 }
 
-                // Bottom Scrubber Bar & Time Info (Positioned above Detail Bar)
+                // Bottom Scrubber Bar & Time Info (Positioned above Detail Bar). Capped in width so it
+                // does not stretch across the whole screen in landscape.
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
                         .align(Alignment.BottomCenter)
+                        .widthIn(max = 560.dp)
+                        .fillMaxWidth()
                         .padding(bottom = 76.dp)
                         .navigationBarsPadding()
                         .padding(horizontal = 20.dp)

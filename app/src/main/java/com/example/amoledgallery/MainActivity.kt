@@ -71,6 +71,7 @@ import com.example.amoledgallery.ui.screens.GalleryScreen
 import com.example.amoledgallery.ui.screens.MediaDetailScreen
 import com.example.amoledgallery.ui.screens.MenuScreen
 import com.example.amoledgallery.ui.screens.PermissionScreen
+import com.example.amoledgallery.ui.screens.DuplicatesScreen
 import com.example.amoledgallery.ui.screens.TrashScreen
 import com.example.amoledgallery.ui.theme.AmoledGalleryTheme
 import com.example.amoledgallery.ui.theme.LocalAppTheme
@@ -103,14 +104,14 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import com.example.amoledgallery.ui.editor.LocalOnMediaEdited
 import com.example.amoledgallery.ui.screens.ExternalMediaViewer
 import com.example.amoledgallery.ui.screens.ExternalViewRequest
-import com.example.amoledgallery.ui.screens.externalMediaItem
+import com.example.amoledgallery.ui.screens.loadExternalRequest
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Screens pushed over the main tabs. */
-private enum class PushedScreen { FAVORITES, TRASH }
+private enum class PushedScreen { FAVORITES, TRASH, DUPLICATES }
 
 class MainActivity : ComponentActivity() {
 
@@ -136,6 +137,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * The home-screen icon follows the design, but only once the gallery is out of sight: Android closes
+     * a task whose launcher entry gets disabled, so switching it while the app is open would shut the app
+     * in front of the user. (A rotation also stops the activity; that is left alone.)
+     */
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            com.example.amoledgallery.util.LauncherIcon.apply(applicationContext, com.example.amoledgallery.ui.theme.ThemeState.designLanguage)
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -145,11 +158,16 @@ class MainActivity : ComponentActivity() {
     private fun handleViewIntent(intent: Intent?) {
         if (intent?.action != Intent.ACTION_VIEW) return
         val uri = intent.data ?: return
-        val request = ExternalViewRequest(uri)
+        // A camera may attach every shot of its session as ClipData, so they can be swiped through. The
+        // opened file is always part of the list, even if the sender left it out.
+        val clip = intent.clipData
+        val attached = if (clip != null) (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri } else emptyList()
+        val uris = (if (uri in attached) attached else listOf(uri) + attached).distinct()
+        val request = ExternalViewRequest(uri, uris)
         viewRequest.value = request
         val typeHint = intent.type
         lifecycleScope.launch {
-            request.item.value = withContext(Dispatchers.IO) { externalMediaItem(applicationContext, uri, typeHint) }
+            withContext(Dispatchers.IO) { loadExternalRequest(applicationContext, request, typeHint) }
         }
     }
 }
@@ -188,7 +206,13 @@ fun GalleryApp(
                 Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(sideInsets)) {
                     // Opened with "Open with": only that file, and no gallery (or permission request) behind it.
                     if (viewRequest != null) {
-                        ExternalMediaViewer(viewRequest, onClose = onCloseViewRequest)
+                        val favoriteIds by viewModel.favoriteIds.collectAsStateWithLifecycle()
+                        ExternalMediaViewer(
+                            viewRequest,
+                            onClose = onCloseViewRequest,
+                            favoriteIds = favoriteIds,
+                            onToggleFavorite = { viewModel.toggleFavorite(it) }
+                        )
                     } else {
                         GalleryAppContent(viewModel, contentHaze)
                     }
@@ -205,9 +229,16 @@ fun GalleryApp(
 private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeState) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val appVersionName = remember {
-        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
+    // "1.1", plus what kind of build it is: a debug build, or a release build of a version still in testing.
+    val appVersionName = remember(strings) {
+        val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
             .getOrNull() ?: ""
+        when {
+            version.isBlank() -> ""
+            BuildConfig.DEBUG -> "$version ${strings.debugBuild}"
+            BuildConfig.PRERELEASE -> "$version ${strings.prereleaseBuild}"
+            else -> version
+        }
     }
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -215,9 +246,21 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
     val selectedAlbum by viewModel.selectedAlbum.collectAsStateWithLifecycle()
     val breadcrumbStack by viewModel.breadcrumbStack.collectAsStateWithLifecycle()
     val rootAlbums by viewModel.rootAlbums.collectAsStateWithLifecycle()
+    // Every visible album, root and nested, for the album search (which finds subfolders too).
+    val allAlbumsFlat by viewModel.albumsState.collectAsStateWithLifecycle()
+    val albumSort by viewModel.albumSort.collectAsStateWithLifecycle()
+    val albumStorageFilter by viewModel.albumStorageFilter.collectAsStateWithLifecycle()
+    val selectionBytes by viewModel.selectionBytes.collectAsStateWithLifecycle()
+    // Re-read whenever the selection changes, so the sheets show what is free right now.
+    val freeByStorage = remember(selectionBytes) { viewModel.freeByStorage() }
     val currentSubAlbums by viewModel.currentSubAlbums.collectAsStateWithLifecycle()
     val selectedFilter by viewModel.selectedFilter.collectAsStateWithLifecycle()
     val isTrashOpen by viewModel.isTrashOpen.collectAsStateWithLifecycle()
+    val isDuplicatesOpen by viewModel.isDuplicatesOpen.collectAsStateWithLifecycle()
+    val duplicateGroups by viewModel.duplicateGroups.collectAsStateWithLifecycle()
+    val duplicateSelection by viewModel.duplicateSelection.collectAsStateWithLifecycle()
+    val duplicateProgress by viewModel.duplicateProgress.collectAsStateWithLifecycle()
+    val duplicatesScanned by viewModel.duplicatesScanned.collectAsStateWithLifecycle()
     val selectedItemIndex by viewModel.selectedItemIndex.collectAsStateWithLifecycle()
     val detailSource by viewModel.detailSource.collectAsStateWithLifecycle()
     val columnCount by viewModel.columnCount.collectAsStateWithLifecycle()
@@ -257,6 +300,8 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             viewModel.onIntentSenderSuccess()
+        } else {
+            viewModel.onIntentSenderCancelled()
         }
     }
 
@@ -296,6 +341,9 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
             if (event == Lifecycle.Event.ON_RESUME) {
                 val hasPerm = hasMediaPermission(context)
                 viewModel.updatePermissionState(hasPerm)
+                // Files other apps wrote past MediaStore (downloads, file managers) are indexed now
+                // instead of whenever the system next gets round to it.
+                if (hasPerm) viewModel.rescanMediaFolders()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -340,6 +388,7 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
         val pushedScreen = when {
             isFavoritesOpen -> PushedScreen.FAVORITES
             isTrashOpen -> PushedScreen.TRASH
+            isDuplicatesOpen -> PushedScreen.DUPLICATES
             else -> null
         }
         // Opening a tab or a pushed screen lets the Gemini glass surfaces on it play their animation once.
@@ -445,6 +494,10 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                         onZoomIn = { viewModel.zoomIn() },
                                         onZoomOut = { viewModel.zoomOut() },
                                         onOpenRootAlbum = { album -> viewModel.openRootAlbum(album) },
+                                        allAlbumsFlat = allAlbumsFlat,
+                                        onJumpToAlbum = { album -> viewModel.jumpToAlbum(album) },
+                                        onHideAlbums = { albums -> viewModel.hideAlbums(albums) },
+                                        onMigrateAlbums = { albums, toSd -> viewModel.migrateAlbums(albums, toSd) },
                                         isSdCardAvailable = viewModel.isSdCardAvailable,
                                         graphicsQuality = graphicsQuality,
                                         onAlbumClick = { album -> viewModel.openAlbum(album) },
@@ -497,7 +550,16 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                             viewModel.selectFilter(com.example.amoledgallery.ui.viewmodel.MediaFilter.VIDEOS)
                                             viewModel.selectTab(GalleryTab.BILDER)
                                         },
-                                        onOpenFavorites = { isFavoritesOpen = true }
+                                        onOpenFavorites = { isFavoritesOpen = true },
+                                        albumSort = albumSort,
+                                        onSetAlbumSort = { viewModel.setAlbumSort(it) },
+                                        onMoveAlbum = { album, steps, toTop -> viewModel.moveAlbum(album, steps, toTop) },
+                                        onReorderAlbums = { viewModel.reorderAlbums(it) },
+                                        externalKind = viewModel.externalTargetKind,
+                                        storageFilter = albumStorageFilter,
+                                        onSetStorageFilter = { viewModel.setAlbumStorageFilter(it) },
+                                        albumBytes = { viewModel.albumBytes(it) },
+                                        freeByStorage = freeByStorage
                                     )
                                 }
 
@@ -518,6 +580,7 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                         onSetGraphicsQuality = { viewModel.setGraphicsQuality(it) },
                                         onOpenFavorites = { isFavoritesOpen = true },
                                         onOpenTrash = { viewModel.openTrash() },
+                                        onOpenDuplicates = { viewModel.openDuplicates() },
                                         loadStorageStats = { viewModel.loadStorageStats() },
                                         onEmptyTrash = { viewModel.emptyTrash() },
                                         onOpenLibrary = { viewModel.selectTab(GalleryTab.BILDER) },
@@ -626,9 +689,13 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
             if (isMoveSheetOpen) {
                 MoveToAlbumBottomSheet(
                     albums = rootAlbums,
+                    allAlbums = allAlbumsFlat,
                     onDismiss = { viewModel.closeMoveSheet() },
                     onSelectAlbum = { targetAlbum -> viewModel.moveSelectedItems(targetAlbum) },
-                    onCreateNewAlbum = { showCreateAlbumFromMove = true }
+                    onCreateNewAlbum = { showCreateAlbumFromMove = true },
+                    selectionCount = selectedIds.size,
+                    selectionBytes = selectionBytes,
+                    freeByStorage = freeByStorage
                 )
             }
 
@@ -636,6 +703,8 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
             if (showCreateAlbumFromMove) {
                 CreateAlbumDialog(
                     isSdCardAvailable = viewModel.isSdCardAvailable,
+                    externalKind = viewModel.externalTargetKind,
+                    freeByStorage = freeByStorage,
                     onDismiss = { showCreateAlbumFromMove = false },
                     onCreate = { name, onSdCard ->
                         showCreateAlbumFromMove = false
@@ -700,6 +769,23 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                 )
                             }
                         }
+                    }
+
+                    PushedScreen.DUPLICATES -> {
+                        BackHandler(enabled = isDuplicatesOpen) { viewModel.closeDuplicates() }
+                        DuplicatesScreen(
+                            groups = duplicateGroups,
+                            selection = duplicateSelection,
+                            progress = duplicateProgress,
+                            scanned = duplicatesScanned,
+                            onBack = { viewModel.closeDuplicates() },
+                            onToggle = { id -> viewModel.toggleDuplicateSelection(id) },
+                            onRescan = { viewModel.scanDuplicates() },
+                            onDelete = { viewModel.trashDuplicateSelection() },
+                            selectionBytes = remember(duplicateSelection, duplicateGroups) {
+                                viewModel.duplicateSelectionBytes()
+                            }
+                        )
                     }
                 }
             }

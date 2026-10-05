@@ -149,10 +149,23 @@ interface AppStrings {
     val newAlbum: String
     val newSubAlbum: String
     val hiddenAlbums: String
+    val sortAlbums: String
+    val sortStandard: String
+    val sortNameAsc: String
+    val sortNameDesc: String
+    val sortMostItems: String
+    val sortCustom: String
+    val moveAlbumToTop: String
     val noHiddenAlbums: String
     val unhide: String
     val moveToInternal: String
     val moveToSd: String
+    val moveToUsb: String
+    val usbStorage: String
+    val showAlbums: String
+    val showAll: String
+    fun freeSpace(size: String): String
+    fun selectionSize(count: Int, size: String): String
     val sdCard: String
     val internal: String
     val noSdCard: String
@@ -161,11 +174,15 @@ interface AppStrings {
     val deleteAlbum: String
     val hideAlbumTitle: String
     fun hideAlbumMessage(name: String): String
+    val searchAlbums: String
+    val searchAlbumsPlaceholder: String
+    fun noAlbumsFound(query: String): String
     fun deleteAlbumTitle(name: String): String
     fun deleteAlbumMessage(count: Int): String
     fun deleteEmptyAlbumMessage(name: String): String
     val changeLocationTitle: String
     fun migrateMessage(name: String, count: Int, toSdCard: Boolean): String
+    fun moveSizeInfo(size: String, target: String, free: String): String
     fun subAlbumSuffix(count: Int): String
     fun inAlbum(name: String, location: String): String
     val subAlbumName: String
@@ -190,6 +207,24 @@ interface AppStrings {
     val trashEmpty: String
     val trashEmptyMessage: String
     val trashInfo: String
+    // Duplicates: files that are byte for byte the same.
+    val duplicates: String
+    val duplicatesSubtitle: String
+    val duplicatesScanning: String
+    fun duplicatesScanProgress(checked: Int, total: Int): String
+    val noDuplicates: String
+    val noDuplicatesMessage: String
+    val rescan: String
+    fun duplicateSets(count: Int): String
+    fun duplicatesSummary(sets: Int, size: String): String
+    fun duplicateCopies(count: Int): String
+    fun duplicateWastes(size: String): String
+    val duplicateKept: String
+    fun deleteCopies(count: Int): String
+    val deleteCopiesTitle: String
+    fun deleteCopiesMessage(count: Int, size: String): String
+    fun deleteCopiesMessageAll(count: Int, sets: Int): String
+    fun duplicatesFrees(count: Int, size: String): String
     val deletedItem: String
     val itemFallback: String
     val deletePermanently: String
@@ -210,6 +245,10 @@ interface AppStrings {
     val filePath: String
     val cameraModel: String
     val captureSettings: String
+    val infoAperture: String
+    val infoShutter: String
+    val infoFocalLength: String
+    val infoExposure: String
     val captureLocation: String
     val map: String
     val gallery: String
@@ -237,6 +276,8 @@ interface AppStrings {
     val light: String
     val dark: String
     val appVersion: String
+    val debugBuild: String
+    val prereleaseBuild: String
     val customColor: String
     val customAccentTitle: String
     fun customAccentMessage(lightMode: Boolean, designName: String): String
@@ -262,6 +303,7 @@ interface AppStrings {
     val designFooterText: String
     val appearanceModeHeader: String
     val accentColorHeader: String
+    val fromWallpaper: String
     val accentFooterText: String
     val languageFooterText: String
     val appNameLabel: String
@@ -285,6 +327,13 @@ interface AppStrings {
     // One UI
     val copyToClipboard: String
     val setAsWallpaper: String
+    val wallpaperHome: String
+    val wallpaperLock: String
+    val wallpaperBoth: String
+    val wallpaperSet: String
+    val liveWallpaper: String
+    val liveWallpaperTooLong: String
+    val wallpaperFailed: String
     val imageInfo: String
     val recent: String
     val manageStorage: String
@@ -311,6 +360,14 @@ interface AppStrings {
     fun moveStarted(albumName: String): String
     fun movedItems(count: Int, albumName: String): String
     fun albumHidden(name: String): String
+    fun albumsHidden(count: Int): String
+    fun migratingAlbums(count: Int, toSdCard: Boolean): String
+    fun migratedAlbums(count: Int, toSdCard: Boolean): String
+    fun migratedAlbumsPartly(moved: Int, failed: Int): String
+    val selectAlbums: String
+    val hideSelected: String
+    val moveSelected: String
+    val moveAlbumsTitle: String
     val albumUnhidden: String
     val itemTrashed: String
     val restored: String
@@ -328,6 +385,8 @@ interface AppStrings {
     fun migrating(name: String, toSdCard: Boolean): String
     fun migrated(name: String, toSdCard: Boolean): String
     fun migrationError(message: String?): String
+    fun migratedPartly(name: String, toSdCard: Boolean, moved: Int, failed: Int): String
+    fun notEnoughSpace(neededBytes: Long, freeBytes: Long): String
     val movingMediaTitle: String
     fun progressOf(current: Int, total: Int): String
 
@@ -425,24 +484,41 @@ object GermanStrings : AppStrings {
     override val newAlbum = "Neues Album"
     override val newSubAlbum = "Neues Unteralbum"
     override val hiddenAlbums = "Ausgeblendete Alben"
+    override val sortAlbums = "Alben sortieren"
+    override val sortStandard = "Standard"
+    override val sortNameAsc = "Name (A–Z)"
+    override val sortNameDesc = "Name (Z–A)"
+    override val sortMostItems = "Meiste Elemente"
+    override val sortCustom = "Eigene Reihenfolge"
+    override val moveAlbumToTop = "An den Anfang"
     override val noHiddenAlbums = "Keine ausgeblendeten Alben vorhanden"
     override val unhide = "Wieder einblenden"
     override val moveToInternal = "Auf internen Speicher verschieben"
     override val moveToSd = "Auf SD-Karte verschieben"
+    override val moveToUsb = "Auf USB-Speicher verschieben"
+    override val usbStorage = "USB-Speicher"
+    override val showAlbums = "Alben anzeigen"
+    override val showAll = "Alle"
+    override fun freeSpace(size: String) = "$size frei"
+    override fun selectionSize(count: Int, size: String) = "$count Element(e) · $size"
     override val sdCard = "SD-Karte"
     override val internal = "Intern"
-    override val noSdCard = "Keine SD-Karte verfügbar"
+    override val noSdCard = "Keine SD-Karte eingelegt"
     override val renameAlbum = "Album umbenennen"
     override val hideAlbum = "Album ausblenden"
     override val deleteAlbum = "Album löschen"
     override val hideAlbumTitle = "Album ausblenden?"
     override fun hideAlbumMessage(name: String) =
         "„$name“ und seine Inhalte werden in der Galerie und in den Alben ausgeblendet. Über „Ausgeblendete Alben“ kannst du es jederzeit wieder einblenden."
+    override val searchAlbums = "Alben durchsuchen"
+    override val searchAlbumsPlaceholder = "Albumname"
+    override fun noAlbumsFound(query: String) = "Keine Alben für „$query“ gefunden"
     override fun deleteAlbumTitle(name: String) = "„$name“ löschen?"
     override fun deleteAlbumMessage(count: Int) =
         "Alle $count Medien in diesem Album werden in den Papierkorb verschoben und der Ordner wird entfernt."
     override fun deleteEmptyAlbumMessage(name: String) = "Der leere Ordner „$name“ wird dauerhaft gelöscht."
     override val changeLocationTitle = "Speicherort ändern?"
+    override fun moveSizeInfo(size: String, target: String, free: String) = "Größe: $size · Frei auf $target: $free"
     override fun migrateMessage(name: String, count: Int, toSdCard: Boolean) =
         "„$name“ mit $count Element(en) wird auf ${if (toSdCard) "die SD-Karte" else "den internen Speicher"} verschoben. Die Dateien werden physisch verschoben und der Medienindex sofort aktualisiert."
     override fun subAlbumSuffix(count: Int) = " · $count Unteralben"
@@ -451,7 +527,7 @@ object GermanStrings : AppStrings {
     override val albumName = "Albumname"
     override val newAlbumName = "Neuer Albumname"
     override val internalStorage = "Interner Speicher"
-    override val sdCardUnavailable = "SD-Karte (nicht verfügbar)"
+    override val sdCardUnavailable = "SD-Karte (keine eingelegt)"
     override val externalStorage = "Externer Speicher"
 
     override val moveToAlbum = "In Album verschieben"
@@ -468,6 +544,26 @@ object GermanStrings : AppStrings {
     override val trashEmpty = "Papierkorb ist leer"
     override val trashEmptyMessage = "Gelöschte Medien werden hier 30 Tage aufbewahrt."
     override val trashInfo = "Elemente im Papierkorb werden nach 30 Tagen endgültig gelöscht."
+    override val duplicates = "Doppelte Dateien"
+    override val duplicatesSubtitle = "Dateien finden, die es mehrfach gibt"
+    override val duplicatesScanning = "Dateien werden verglichen …"
+    override fun duplicatesScanProgress(checked: Int, total: Int) = "$checked von $total geprüft"
+    override val noDuplicates = "Keine Doppelten"
+    override val noDuplicatesMessage = "Keine Datei liegt mehrfach auf diesem Gerät."
+    override val rescan = "Neu suchen"
+    override fun duplicateSets(count: Int) = if (count == 1) "1 Gruppe" else "$count Gruppen"
+    override fun duplicatesSummary(sets: Int, size: String) =
+        "${if (sets == 1) "Eine Datei liegt" else "$sets Dateien liegen"} mehrfach vor. Die zusätzlichen Kopien belegen $size."
+    override fun duplicateCopies(count: Int) = "$count× dieselbe Datei"
+    override fun duplicateWastes(size: String) = "$size doppelt"
+    override val duplicateKept = "Bleibt"
+    override fun deleteCopies(count: Int) = "$count Kopie(n) löschen"
+    override val deleteCopiesTitle = "Kopien löschen?"
+    override fun deleteCopiesMessage(count: Int, size: String) =
+        "$count Kopie(n) wandern in den Papierkorb und geben $size frei. Von jeder Datei bleibt mindestens eine erhalten."
+    override fun deleteCopiesMessageAll(count: Int, sets: Int) =
+        "$count Kopie(n) wandern in den Papierkorb. Achtung: bei $sets Gruppe(n) ist jede Kopie ausgewählt – dort bleibt nichts übrig."
+    override fun duplicatesFrees(count: Int, size: String) = "$count ausgewählt · gibt $size frei"
     override val deletedItem = "Gelöschtes Element"
     override val itemFallback = "Medium"
     override val deletePermanently = "Endgültig löschen"
@@ -487,6 +583,10 @@ object GermanStrings : AppStrings {
     override val filePath = "Dateipfad"
     override val cameraModel = "Kameramodell"
     override val captureSettings = "Aufnahmeparameter"
+    override val infoAperture = "Blende"
+    override val infoShutter = "Belichtung"
+    override val infoFocalLength = "Brennweite"
+    override val infoExposure = "Korrektur"
     override val captureLocation = "Aufnahmeort"
     override val map = "Karte"
     override val gallery = "Galerie"
@@ -517,6 +617,7 @@ object GermanStrings : AppStrings {
     override val designFooterText = "Das Design bestimmt Leisten, Dialoge, Listen und Animationen der gesamten App."
     override val appearanceModeHeader = "Erscheinungsbild"
     override val accentColorHeader = "Akzentfarbe"
+    override val fromWallpaper = "Vom Hintergrundbild"
     override val accentFooterText = "Die Akzentfarbe wird für Symbole, Auswahlen und hervorgehobene Texte verwendet."
     override val languageFooterText = "Die Sprache der App, unabhängig von der Systemsprache."
     override val appNameLabel = "Name"
@@ -536,6 +637,13 @@ object GermanStrings : AppStrings {
     override val moreActions = "Mehr"
     override val copyToClipboard = "In Ablage kopieren"
     override val setAsWallpaper = "Als Hintergrund festlegen"
+    override val wallpaperHome = "Startbildschirm"
+    override val wallpaperLock = "Sperrbildschirm"
+    override val wallpaperBoth = "Start- und Sperrbildschirm"
+    override val wallpaperSet = "Hintergrund festgelegt"
+    override val liveWallpaper = "Als Live-Hintergrund festlegen"
+    override val liveWallpaperTooLong = "Nur Videos bis 15 Sekunden können Live-Hintergrund werden."
+    override val wallpaperFailed = "Hintergrund konnte nicht festgelegt werden"
     override val imageInfo = "Bild-Info"
     override val recent = "Aktuell"
     override val manageStorage = "Speicher verwalten"
@@ -557,6 +665,8 @@ object GermanStrings : AppStrings {
     override val light = "Hell"
     override val dark = "Dunkel"
     override val appVersion = "App-Version"
+    override val debugBuild = "Debug"
+    override val prereleaseBuild = "Vorabversion"
     override val customColor = "Eigene Farbe"
     override val customAccentTitle = "Eigene Akzentfarbe"
     override fun customAccentMessage(lightMode: Boolean, designName: String) =
@@ -596,6 +706,17 @@ object GermanStrings : AppStrings {
     override fun moveStarted(albumName: String) = "Verschieben nach '$albumName' gestartet..."
     override fun movedItems(count: Int, albumName: String) = "$count Element(e) erfolgreich nach '$albumName' verschoben"
     override fun albumHidden(name: String) = "Album '$name' ausgeblendet"
+    override fun albumsHidden(count: Int) = "$count Alben ausgeblendet"
+    override fun migratingAlbums(count: Int, toSdCard: Boolean) =
+        "$count Alben werden auf ${if (toSdCard) "die SD-Karte" else "den internen Speicher"} verschoben …"
+    override fun migratedAlbums(count: Int, toSdCard: Boolean) =
+        "$count Alben auf ${if (toSdCard) "die SD-Karte" else "den internen Speicher"} verschoben"
+    override fun migratedAlbumsPartly(moved: Int, failed: Int) =
+        "$moved Dateien verschoben, $failed konnten nicht verschoben werden"
+    override val selectAlbums = "Auswählen"
+    override val hideSelected = "Ausblenden"
+    override val moveSelected = "Verschieben"
+    override val moveAlbumsTitle = "Wohin verschieben?"
     override val albumUnhidden = "Album wieder eingeblendet"
     override val itemTrashed = "In Papierkorb verschoben"
     override val restored = "Wiederhergestellt"
@@ -616,6 +737,10 @@ object GermanStrings : AppStrings {
     override fun migrated(name: String, toSdCard: Boolean) =
         "Album '$name' erfolgreich auf ${if (toSdCard) "SD-Karte" else "internen Speicher"} verschoben"
     override fun migrationError(message: String?) = "Fehler bei Migration: $message"
+    override fun migratedPartly(name: String, toSdCard: Boolean, moved: Int, failed: Int) =
+        "$moved Element(e) von '$name' auf ${if (toSdCard) "SD-Karte" else "internen Speicher"} verschoben, $failed konnten nicht verschoben werden und sind noch am alten Ort"
+    override fun notEnoughSpace(neededBytes: Long, freeBytes: Long) =
+        "Nicht genug Platz: ${gigabytes(neededBytes)} nötig, ${gigabytes(freeBytes)} frei"
     override val movingMediaTitle = "Verschiebe Medien…"
     override fun progressOf(current: Int, total: Int) = "$current von $total"
 
@@ -711,24 +836,41 @@ object EnglishStrings : AppStrings {
     override val newAlbum = "New album"
     override val newSubAlbum = "New sub-album"
     override val hiddenAlbums = "Hidden albums"
+    override val sortAlbums = "Sort albums"
+    override val sortStandard = "Standard"
+    override val sortNameAsc = "Name (A–Z)"
+    override val sortNameDesc = "Name (Z–A)"
+    override val sortMostItems = "Most items"
+    override val sortCustom = "Custom order"
+    override val moveAlbumToTop = "Move to top"
     override val noHiddenAlbums = "No hidden albums"
     override val unhide = "Show again"
     override val moveToInternal = "Move to internal storage"
     override val moveToSd = "Move to SD card"
+    override val moveToUsb = "Move to USB storage"
+    override val usbStorage = "USB storage"
+    override val showAlbums = "Show albums"
+    override val showAll = "All"
+    override fun freeSpace(size: String) = "$size free"
+    override fun selectionSize(count: Int, size: String) = "$count item(s) · $size"
     override val sdCard = "SD card"
     override val internal = "Internal"
-    override val noSdCard = "No SD card available"
+    override val noSdCard = "No SD card inserted"
     override val renameAlbum = "Rename album"
     override val hideAlbum = "Hide album"
     override val deleteAlbum = "Delete album"
     override val hideAlbumTitle = "Hide album?"
     override fun hideAlbumMessage(name: String) =
         "“$name” and its contents will be hidden from the gallery and your albums. You can show it again at any time under “Hidden albums”."
+    override val searchAlbums = "Search albums"
+    override val searchAlbumsPlaceholder = "Album name"
+    override fun noAlbumsFound(query: String) = "No albums found for “$query”"
     override fun deleteAlbumTitle(name: String) = "Delete “$name”?"
     override fun deleteAlbumMessage(count: Int) =
         "All $count items in this album will be moved to the trash and the folder will be removed."
     override fun deleteEmptyAlbumMessage(name: String) = "The empty folder “$name” will be deleted permanently."
     override val changeLocationTitle = "Change storage location?"
+    override fun moveSizeInfo(size: String, target: String, free: String) = "Size: $size · Free on $target: $free"
     override fun migrateMessage(name: String, count: Int, toSdCard: Boolean) =
         "“$name” with $count item(s) will be moved to ${if (toSdCard) "the SD card" else "internal storage"}. The files are physically moved and the media index is updated right away."
     override fun subAlbumSuffix(count: Int) = " · $count sub-albums"
@@ -737,7 +879,7 @@ object EnglishStrings : AppStrings {
     override val albumName = "Album name"
     override val newAlbumName = "New album name"
     override val internalStorage = "Internal storage"
-    override val sdCardUnavailable = "SD card (not available)"
+    override val sdCardUnavailable = "SD card (none inserted)"
     override val externalStorage = "External storage"
 
     override val moveToAlbum = "Move to album"
@@ -754,6 +896,26 @@ object EnglishStrings : AppStrings {
     override val trashEmpty = "Trash is empty"
     override val trashEmptyMessage = "Deleted media is kept here for 30 days."
     override val trashInfo = "Items in the trash are deleted permanently after 30 days."
+    override val duplicates = "Duplicate files"
+    override val duplicatesSubtitle = "Find files you have more than once"
+    override val duplicatesScanning = "Comparing files …"
+    override fun duplicatesScanProgress(checked: Int, total: Int) = "$checked of $total checked"
+    override val noDuplicates = "No duplicates"
+    override val noDuplicatesMessage = "No file on this device exists more than once."
+    override val rescan = "Scan again"
+    override fun duplicateSets(count: Int) = if (count == 1) "1 set" else "$count sets"
+    override fun duplicatesSummary(sets: Int, size: String) =
+        "${if (sets == 1) "One file exists" else "$sets files exist"} more than once. The extra copies take up $size."
+    override fun duplicateCopies(count: Int) = "$count× the same file"
+    override fun duplicateWastes(size: String) = "$size doubled"
+    override val duplicateKept = "Kept"
+    override fun deleteCopies(count: Int) = "Delete $count copy(s)"
+    override val deleteCopiesTitle = "Delete copies?"
+    override fun deleteCopiesMessage(count: Int, size: String) =
+        "$count copy(s) go to the trash and free $size. At least one of every file is kept."
+    override fun deleteCopiesMessageAll(count: Int, sets: Int) =
+        "$count copy(s) go to the trash. Careful: in $sets set(s) every copy is ticked, so nothing of those is left."
+    override fun duplicatesFrees(count: Int, size: String) = "$count selected · frees $size"
     override val deletedItem = "Deleted item"
     override val itemFallback = "Item"
     override val deletePermanently = "Delete permanently"
@@ -773,6 +935,10 @@ object EnglishStrings : AppStrings {
     override val filePath = "File path"
     override val cameraModel = "Camera model"
     override val captureSettings = "Capture settings"
+    override val infoAperture = "Aperture"
+    override val infoShutter = "Shutter"
+    override val infoFocalLength = "Focal length"
+    override val infoExposure = "Exposure"
     override val captureLocation = "Location"
     override val map = "Map"
     override val gallery = "Gallery"
@@ -803,6 +969,7 @@ object EnglishStrings : AppStrings {
     override val designFooterText = "The design shapes the bars, dialogs, lists and animations of the whole app."
     override val appearanceModeHeader = "Appearance"
     override val accentColorHeader = "Accent Color"
+    override val fromWallpaper = "From wallpaper"
     override val accentFooterText = "The accent color is used for icons, selections and highlighted text."
     override val languageFooterText = "The app's language, independent of the system language."
     override val appNameLabel = "Name"
@@ -822,6 +989,13 @@ object EnglishStrings : AppStrings {
     override val moreActions = "More"
     override val copyToClipboard = "Copy to clipboard"
     override val setAsWallpaper = "Set as wallpaper"
+    override val wallpaperHome = "Home screen"
+    override val wallpaperLock = "Lock screen"
+    override val wallpaperBoth = "Home and lock screen"
+    override val wallpaperSet = "Wallpaper set"
+    override val liveWallpaper = "Set as live wallpaper"
+    override val liveWallpaperTooLong = "Only videos up to 15 seconds can be a live wallpaper."
+    override val wallpaperFailed = "Could not set the wallpaper"
     override val imageInfo = "Image info"
     override val recent = "Recent"
     override val manageStorage = "Manage storage"
@@ -843,6 +1017,8 @@ object EnglishStrings : AppStrings {
     override val light = "Light"
     override val dark = "Dark"
     override val appVersion = "App version"
+    override val debugBuild = "Debug"
+    override val prereleaseBuild = "Pre-release"
     override val customColor = "Custom color"
     override val customAccentTitle = "Custom accent color"
     override fun customAccentMessage(lightMode: Boolean, designName: String) =
@@ -908,6 +1084,17 @@ object EnglishStrings : AppStrings {
     override fun moveStarted(albumName: String) = "Moving to '$albumName'..."
     override fun movedItems(count: Int, albumName: String) = "Moved $count item(s) to '$albumName'"
     override fun albumHidden(name: String) = "Album '$name' hidden"
+    override fun albumsHidden(count: Int) = "$count albums hidden"
+    override fun migratingAlbums(count: Int, toSdCard: Boolean) =
+        "Moving $count albums to ${if (toSdCard) "the SD card" else "internal storage"} …"
+    override fun migratedAlbums(count: Int, toSdCard: Boolean) =
+        "Moved $count albums to ${if (toSdCard) "the SD card" else "internal storage"}"
+    override fun migratedAlbumsPartly(moved: Int, failed: Int) =
+        "Moved $moved files, $failed could not be moved"
+    override val selectAlbums = "Select"
+    override val hideSelected = "Hide"
+    override val moveSelected = "Move"
+    override val moveAlbumsTitle = "Move where?"
     override val albumUnhidden = "Album shown again"
     override val itemTrashed = "Moved to trash"
     override val restored = "Restored"
@@ -928,6 +1115,10 @@ object EnglishStrings : AppStrings {
     override fun migrated(name: String, toSdCard: Boolean) =
         "Album '$name' moved to ${if (toSdCard) "the SD card" else "internal storage"}"
     override fun migrationError(message: String?) = "Migration failed: $message"
+    override fun migratedPartly(name: String, toSdCard: Boolean, moved: Int, failed: Int) =
+        "Moved $moved item(s) of '$name' to ${if (toSdCard) "the SD card" else "internal storage"}; $failed could not be moved and are still where they were"
+    override fun notEnoughSpace(neededBytes: Long, freeBytes: Long) =
+        "Not enough space: ${gigabytes(neededBytes)} needed, ${gigabytes(freeBytes)} free"
     override val movingMediaTitle = "Moving media…"
     override fun progressOf(current: Int, total: Int) = "$current of $total"
 
@@ -939,4 +1130,25 @@ object EnglishStrings : AppStrings {
     override val sdCardNotWritable = "SD card not found or not writable."
     override val folderCreateFailed = "The folder could not be created."
     override val subFolderCreateFailed = "The sub-folder could not be created."
+}
+
+/** A size as "1.4 GB" (one decimal), for storage messages. */
+internal fun gigabytes(bytes: Long): String =
+    String.format(java.util.Locale.getDefault(), "%.1f GB", bytes / 1_000_000_000.0)
+
+/** "Internal storage", "SD card" or "USB storage". */
+internal fun storageLabel(kind: com.example.amoledgallery.util.StorageKind): String = when (kind) {
+    com.example.amoledgallery.util.StorageKind.INTERNAL -> strings.internalStorage
+    com.example.amoledgallery.util.StorageKind.SD_CARD -> strings.sdCard
+    com.example.amoledgallery.util.StorageKind.USB -> strings.usbStorage
+}
+
+/** A size in bytes as people read it: "850 MB", "1,4 GB". */
+internal fun readableSize(bytes: Long): String {
+    val locale = LanguageState.locale
+    return when {
+        bytes >= 1_000_000_000L -> String.format(locale, "%.1f GB", bytes / 1_000_000_000.0)
+        bytes >= 1_000_000L -> String.format(locale, "%.0f MB", bytes / 1_000_000.0)
+        else -> String.format(locale, "%.0f KB", bytes / 1_000.0)
+    }
 }

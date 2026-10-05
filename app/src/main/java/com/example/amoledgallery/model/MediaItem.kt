@@ -44,7 +44,9 @@ data class MediaItem(
     val width: Int = 0,
     val height: Int = 0,
     /** Clockwise rotation in degrees that has to be applied to show the media upright. */
-    val orientation: Int = 0
+    val orientation: Int = 0,
+    /** File size in bytes as MediaStore reports it; 0 if unknown. */
+    val size: Long = 0L
 ) {
     /** Width / height as displayed on screen, or 0 if the size is unknown. */
     val displayAspectRatio: Float

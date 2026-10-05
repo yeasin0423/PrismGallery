@@ -29,7 +29,10 @@ data class AlbumItem(
     val relativePath: String = "",
     val directoryPath: String = "",
     val parentDirectoryPath: String = "",
-    val subAlbumCount: Int = 0
+    val subAlbumCount: Int = 0,
+    /** Which storage it is on; [isSdCard] is true for both SD card and USB storage. */
+    val storage: com.example.amoledgallery.util.StorageKind =
+        if (isSdCard) com.example.amoledgallery.util.StorageKind.SD_CARD else com.example.amoledgallery.util.StorageKind.INTERNAL
 ) {
     val coverThumbnail: MediaThumbnail?
         get() = coverUri?.let { MediaThumbnail(it) }

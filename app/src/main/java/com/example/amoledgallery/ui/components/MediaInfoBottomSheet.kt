@@ -7,6 +7,7 @@ import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -418,8 +419,10 @@ private fun OneUiMediaInfoContent(item: MediaItem, onEdit: (() -> Unit)?, modifi
 }
 
 /**
- * Google (Gemini) details: the day and time, then soft rounded cards - the file with its format values as pills,
- * the camera with its capture values as pills, and the location with a map button.
+ * Gemini details, in the look of the Gemini screens: the day and date as a large heading with the
+ * time and the photo's size under it, the capture values as a grid of small tiles (big value, small
+ * label) in the dark Gemini chips with a hairline edge, and the file, camera and place as rows with
+ * a tinted icon. It sits on the glowing glass panel (see InfoPanel).
  */
 @Composable
 private fun GoogleMediaInfoContent(item: MediaItem, modifier: Modifier) {
@@ -428,50 +431,83 @@ private fun GoogleMediaInfoContent(item: MediaItem, modifier: Modifier) {
     val meta = rememberMediaMetadata(item)
     val dateMillis = item.date * 1000L
     val locale = LanguageState.locale
-    val day = remember(dateMillis, locale) { SimpleDateFormat("EEEE, ${strings.longDatePattern}", locale).format(Date(dateMillis)) }
+    val weekday = remember(dateMillis, locale) { SimpleDateFormat("EEEE", locale).format(Date(dateMillis)) }
+    val day = remember(dateMillis, locale) { SimpleDateFormat(strings.longDatePattern, locale).format(Date(dateMillis)) }
     val time = remember(dateMillis, locale) { SimpleDateFormat("HH:mm", locale).format(Date(dateMillis)) }
+    val accentText = if (palette.isLight) palette.accent else com.example.amoledgallery.ui.design.vividAccent(palette.accent)
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(day, color = palette.onBackground, fontSize = 22.sp, modifier = Modifier.padding(horizontal = 6.dp))
-        Text(time, color = palette.textMuted, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+        // Heading: the weekday small in the accent, the date large, then time, megapixels and size.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 6.dp)
+        ) {
+            com.example.amoledgallery.ui.design.GeminiSparkle(modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(weekday, color = accentText, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        }
+        Text(
+            day,
+            color = palette.onBackground,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(start = 6.dp, end = 6.dp, top = 4.dp)
+        )
+        val summary = listOfNotNull(
+            time,
+            meta?.megapixelsFormatted?.takeIf { it.isNotBlank() },
+            meta?.fileSizeFormatted?.takeIf { it.isNotBlank() },
+            meta?.durationFormatted
+        ).joinToString("  ·  ")
+        Text(summary, color = palette.textMuted, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp))
+
         if (meta == null) {
             Text(strings.loadingMetadata, color = palette.textMuted, fontSize = 15.sp, modifier = Modifier.padding(6.dp, 16.dp))
             return@Column
         }
-        Spacer(modifier = Modifier.height(18.dp))
-        GoogleInfoCard {
-            GoogleInfoRow(Icons.Rounded.Description, meta.fileName, meta.storagePath.ifBlank { "Pictures/${meta.albumName}" })
-            GooglePills(
-                listOf(
-                    meta.formatLabel,
-                    meta.resolutionFormatted,
-                    meta.megapixelsFormatted,
-                    meta.fileSizeFormatted,
-                    meta.durationFormatted.orEmpty(),
-                    meta.bitrateFormatted.orEmpty()
-                )
-            )
+
+        // Capture values as tiles, three to a row.
+        val tiles = buildList {
+            meta.fNumberText?.let { add(it to strings.infoAperture) }
+            meta.exposureTimeText?.let { add(it to strings.infoShutter) }
+            meta.iso?.removePrefix("ISO")?.trim()?.takeIf { it.isNotBlank() }?.let { add(it to "ISO") }
+            (meta.focal35Text ?: meta.focalLength)?.let { add(it to strings.infoFocalLength) }
+            meta.exposureBiasText?.let { add(it to strings.infoExposure) }
+            meta.resolutionFormatted.takeIf { it.isNotBlank() }?.let { add(it to strings.resolution) }
+            meta.bitrateFormatted?.let { add(it to strings.bitrate) }
         }
-        val capture = listOf(
-            meta.fNumberText.orEmpty(),
-            meta.exposureTimeText.orEmpty(),
-            meta.iso?.let { if (it.startsWith("ISO", ignoreCase = true)) it else "ISO $it" }.orEmpty(),
-            meta.focalLength.orEmpty(),
-            meta.exposureBiasText.orEmpty()
-        )
-        if (meta.cameraDevice != null || capture.any { it.isNotBlank() }) {
-            Spacer(modifier = Modifier.height(12.dp))
-            GoogleInfoCard {
-                GoogleInfoRow(Icons.Rounded.CameraAlt, meta.cameraDevice ?: strings.cameraModel, meta.focal35Text)
-                GooglePills(capture)
+        if (tiles.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(18.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                tiles.chunked(3).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        row.forEach { (value, label) -> GeminiStatTile(value, label, Modifier.weight(1f)) }
+                        repeat(3 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+                    }
+                }
             }
         }
-        if (meta.latitude != null && meta.longitude != null) {
-            Spacer(modifier = Modifier.height(12.dp))
-            GoogleInfoCard {
+
+        Spacer(modifier = Modifier.height(18.dp))
+        GeminiInfoGroup {
+            GeminiInfoRow(
+                Icons.Rounded.Description,
+                meta.fileName,
+                meta.storagePath.ifBlank { "Pictures/${meta.albumName}/" }.substringBeforeLast('/')
+            )
+            if (meta.cameraDevice != null) {
+                GeminiInfoDivider()
+                GeminiInfoRow(
+                    Icons.Rounded.CameraAlt,
+                    meta.cameraDevice,
+                    listOfNotNull(meta.formatLabel.takeIf { it.isNotBlank() }, meta.focalLength).joinToString("  ·  ").ifBlank { null }
+                )
+            }
+            if (meta.latitude != null && meta.longitude != null) {
+                GeminiInfoDivider()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(modifier = Modifier.weight(1f)) {
-                        GoogleInfoRow(
+                        GeminiInfoRow(
                             Icons.Rounded.LocationOn,
                             strings.captureLocation,
                             "${String.format(Locale.US, "%.5f", meta.latitude)}, ${String.format(Locale.US, "%.5f", meta.longitude)}"
@@ -479,11 +515,11 @@ private fun GoogleMediaInfoContent(item: MediaItem, modifier: Modifier) {
                     }
                     Text(
                         text = strings.map,
-                        color = palette.onAccent,
+                        color = accentText,
                         fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
                         modifier = Modifier
-                            .clip(CircleShape)
-                            .background(palette.accent)
+                            .geminiPill()
                             .clickable { openMap(context, meta) }
                             .padding(horizontal = 16.dp, vertical = 9.dp)
                     )
@@ -493,64 +529,88 @@ private fun GoogleMediaInfoContent(item: MediaItem, modifier: Modifier) {
     }
 }
 
+/** A Gemini chip: the dark grey of the Gemini pills with a hairline edge (a soft grey in light mode). */
 @Composable
-private fun GoogleInfoCard(content: @Composable ColumnScope.() -> Unit) {
+private fun Modifier.geminiPill(shape: androidx.compose.ui.graphics.Shape = CircleShape): Modifier {
     val palette = LocalAppTheme.current.palette
+    return this
+        .clip(shape)
+        .background(com.example.amoledgallery.ui.design.geminiSelectionOnBackground(palette.isLight))
+        .border(1.dp, com.example.amoledgallery.ui.design.geminiSelectionEdge(palette.isLight), shape)
+}
+
+@Composable
+private fun GeminiStatTile(value: String, label: String, modifier: Modifier) {
+    val palette = LocalAppTheme.current.palette
+    // A tile is a third of the row, and a full resolution ("8160 × 6120") does not fit there at full
+    // size: it used to be cut off mid-number. The value shrinks until it fits instead.
+    var valueSize by remember(value) { mutableStateOf(17.sp) }
+    Column(
+        modifier = modifier
+            .geminiPill(RoundedCornerShape(20.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Text(
+            text = value,
+            color = palette.onBackground,
+            fontSize = valueSize,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false,
+            onTextLayout = { layout ->
+                if (layout.hasVisualOverflow && valueSize.value > 11f) {
+                    valueSize = (valueSize.value - 0.8f).sp
+                }
+            }
+        )
+        Text(label, color = palette.textMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** File, camera and place in one Gemini card, separated by hairlines. */
+@Composable
+private fun GeminiInfoGroup(content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
-            .background(if (palette.isLight) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color(0xFF111214))
-            .padding(18.dp),
+            .geminiPill(RoundedCornerShape(26.dp))
+            .padding(horizontal = 16.dp, vertical = 6.dp),
         content = content
     )
 }
 
 @Composable
-private fun GoogleInfoRow(icon: ImageVector, title: String, subtitle: String?) {
+private fun GeminiInfoDivider() {
     val palette = LocalAppTheme.current.palette
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(com.example.amoledgallery.ui.design.vividAccent(palette.accent).copy(alpha = if (palette.isLight) 0.14f else 0.2f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, null, tint = if (palette.isLight) palette.accent else com.example.amoledgallery.ui.design.vividAccent(palette.accent), modifier = Modifier.size(22.dp))
-        }
-        Spacer(modifier = Modifier.width(14.dp))
-        Column {
-            Text(title, color = palette.onBackground, fontSize = 17.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (!subtitle.isNullOrBlank()) {
-                Text(subtitle, color = palette.textMuted, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 54.dp)
+            .height(0.5.dp)
+            .background(palette.onBackground.copy(alpha = 0.08f))
+    )
 }
 
 @Composable
-private fun GooglePills(values: List<String>) {
-    val shown = values.filter { it.isNotBlank() }
-    if (shown.isEmpty()) return
+private fun GeminiInfoRow(icon: ImageVector, title: String, subtitle: String?) {
     val palette = LocalAppTheme.current.palette
-    Row(
-        modifier = Modifier
-            .padding(top = 14.dp)
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        shown.forEach { value ->
-            Text(
-                text = value,
-                color = palette.onBackground,
-                fontSize = 14.sp,
-                maxLines = 1,
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(if (palette.isLight) palette.onBackground.copy(alpha = 0.06f) else androidx.compose.ui.graphics.Color(0xFF1C1D20))
-                    .padding(horizontal = 12.dp, vertical = 7.dp)
-            )
+    val tint = if (palette.isLight) palette.accent else com.example.amoledgallery.ui.design.vividAccent(palette.accent)
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 12.dp)) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(tint.copy(alpha = if (palette.isLight) 0.12f else 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Column {
+            Text(title, color = palette.onBackground, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (!subtitle.isNullOrBlank()) {
+                Text(subtitle, color = palette.textMuted, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }
