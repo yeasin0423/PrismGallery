@@ -53,6 +53,30 @@ class AmoledGalleryApp : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        val userManager = getSystemService(android.os.UserManager::class.java)
+        if (userManager == null || userManager.isUserUnlocked) {
+            loadSettings()
+        } else {
+            // Started before the phone was unlocked for the first time since a restart: only the live
+            // wallpaper (direct-boot aware) runs then, and the app's settings are still locked away -
+            // reading them threw, which crashed the process and made Android drop the wallpaper.
+            // Defaults until the unlock, then the real settings for everything that follows.
+            performanceProfile = calculateDefaultPerformanceProfile()
+            androidx.core.content.ContextCompat.registerReceiver(
+                this,
+                object : android.content.BroadcastReceiver() {
+                    override fun onReceive(context: Context, intent: android.content.Intent) {
+                        runCatching { unregisterReceiver(this) }
+                        loadSettings()
+                    }
+                },
+                android.content.IntentFilter(android.content.Intent.ACTION_USER_UNLOCKED),
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        }
+    }
+
+    private fun loadSettings() {
         performanceProfile = loadGraphicsQuality()
         com.example.amoledgallery.ui.theme.ThemeState.load(this)
         com.example.amoledgallery.ui.i18n.LanguageState.load(this)

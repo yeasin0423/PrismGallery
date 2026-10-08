@@ -92,7 +92,6 @@ class LiveWallpaperService : WallpaperService() {
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
-            player?.let { runCatching { it.pause() } }
             pause()
         }
 
@@ -101,9 +100,8 @@ class LiveWallpaperService : WallpaperService() {
             handler.removeCallbacks(retry)
             val choice = LiveWallpaperChoice.read(this@LiveWallpaperService)
             if (choice == null) {
-                // Nothing picked yet, or the setting is not readable. Either way: try again shortly,
-                // rather than leaving whatever happens to be in the buffer on screen.
-                paintBlack()
+                // Nothing picked yet, or the setting is not readable. Either way: try again shortly. Not
+                // painted black here: if a video comes next, the canvas would block it (see paintBlack).
                 handler.postDelayed(retry, RETRY_MS)
                 return
             }
@@ -125,14 +123,21 @@ class LiveWallpaperService : WallpaperService() {
             if (choice.isVideo) startVideo(choice.uri) else startGif(choice.uri)
             if (player == null && gif == null) {
                 // The file could not be opened - the phone has most likely not been unlocked since it
-                // was restarted. Keep the screen black and come back to it in a moment.
+                // was restarted. Come back to it in a moment. A GIF wallpaper is painted black meanwhile;
+                // a video one is left alone, since its surface stays black until the player draws.
                 playing = null
-                paintBlack()
+                if (!choice.isVideo) paintBlack()
                 handler.postDelayed(retry, RETRY_MS)
             }
         }
 
-        /** Fills the wallpaper with black, so a failed start shows nothing rather than stale pixels. */
+        /**
+         * Fills the wallpaper with black, so a failed GIF start shows nothing rather than stale pixels.
+         *
+         * Never for a video: drawing with a canvas claims the surface for the CPU for good, and the video
+         * player can then no longer attach to it ("already connected"). After a restart that left the
+         * wallpaper still and black until the app was opened, which created a fresh surface.
+         */
         private fun paintBlack() {
             val holder = surfaceHolder
             if (holder.surface?.isValid != true) return
@@ -160,7 +165,10 @@ class LiveWallpaperService : WallpaperService() {
                     // A file that cannot be read yet fails here rather than when it was opened; the
                     // session is dropped so the next attempt starts cleanly.
                     setOnErrorListener { _, _, _ ->
-                        release()
+                        // The engine's cleanup, not MediaPlayer.release(): inside this apply block a plain
+                        // release() meant the player's own, which killed it while the engine still waited
+                        // for it to finish preparing - the wallpaper then stayed black for good.
+                        this@MediaEngine.release()
                         if (isVisible) handler.postDelayed(retry, RETRY_MS)
                         true
                     }
@@ -218,7 +226,10 @@ class LiveWallpaperService : WallpaperService() {
         private fun pause() {
             handler.removeCallbacks(drawGif)
             handler.removeCallbacks(retry)
-            player?.let { runCatching { it.pause() } }
+            // Only a prepared player may be paused: pausing one that is still preparing is an error (-38),
+            // which happens whenever the wallpaper is hidden for a moment right after it started (a restart,
+            // an app update, the preview). The prepared listener checks visibility before it starts.
+            if (prepared) player?.let { runCatching { it.pause() } }
             gif?.let { runCatching { it.stop() } }
         }
 
@@ -226,6 +237,7 @@ class LiveWallpaperService : WallpaperService() {
             handler.removeCallbacksAndMessages(null)
             player?.let { runCatching { it.stop() }; runCatching { it.release() } }
             player = null
+            prepared = false
             gif?.let { runCatching { it.stop() }; it.callback = null }
             gif = null
             playing = null
