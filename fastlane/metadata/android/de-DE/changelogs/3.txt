@@ -1,0 +1,1 @@
+Verwendet einen neueren Code-Shrinker, damit Builds auf jedem Rechner reproduzierbar sind. Die App ist außerdem etwa 4 % kleiner. Keine weiteren Änderungen.

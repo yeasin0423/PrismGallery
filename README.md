@@ -48,7 +48,8 @@ A5:66:D9:9F:38:36:C3:6E:77:BE:C4:EA:44:62:AC:8F:E6:FF:30:9F:67:F1:64:97:F0:87:F8
 
 You can check it with `apksigner verify --print-certs app-release.apk`, or let
 [AppVerifier](https://github.com/soupslurpr/AppVerifier) or [Obtainium](https://github.com/ImranR98/Obtainium) do it.
-Builds from F-Droid are signed with F-Droid's own key, so the two cannot be updated over each other.
+The build is reproducible: F-Droid builds the app from source and publishes the APK signed with this same key, so
+installs from F-Droid and from GitHub can update each other.
 
 ## Building
 
