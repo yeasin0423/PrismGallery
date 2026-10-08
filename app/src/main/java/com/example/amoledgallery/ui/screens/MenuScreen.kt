@@ -96,7 +96,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 
-/** The app's full name, shown on the info pages; the launcher label stays "Gallery". */
+/** The app's full name, shown on the info pages; the launcher label (app_name) is the same. */
 internal const val APP_FULL_NAME = "Prism Gallery"
 
 /** Sections of the settings sheet; every menu entry opens the sheet scrolled to its own section. */

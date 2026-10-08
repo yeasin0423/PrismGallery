@@ -2,10 +2,14 @@ package com.example.amoledgallery.ui.components
 import com.example.amoledgallery.ui.i18n.LanguageState
 import com.example.amoledgallery.ui.i18n.strings
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.provider.MediaStore
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -898,6 +902,24 @@ private fun MetadataRow(
 }
 
 /**
+ * Opens a photo with its location tags intact. Since Android 10 the system strips GPS data from files the app did not
+ * create, unless the app holds ACCESS_MEDIA_LOCATION and asks MediaStore for the original. Without the permission, or
+ * for files that are not in the media library ("Open with" from another app), the normal stream is used.
+ */
+private fun openWithLocation(context: Context, uri: Uri): java.io.InputStream? {
+    if (uri.authority == MediaStore.AUTHORITY &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED
+    ) {
+        try {
+            context.contentResolver.openInputStream(MediaStore.setRequireOriginal(uri))?.let { return it }
+        } catch (_: Exception) {
+            // Not available for this file: fall back to the normal stream below.
+        }
+    }
+    return context.contentResolver.openInputStream(uri)
+}
+
+/**
  * Extracts comprehensive metadata from file, ContentResolver and ExifInterface.
  */
 private fun extractMediaMetadata(context: Context, item: MediaItem): MediaMetadata {
@@ -978,7 +1000,7 @@ private fun extractMediaMetadata(context: Context, item: MediaItem): MediaMetada
     } else {
         // Image EXIF
         try {
-            context.contentResolver.openInputStream(item.uri)?.use { stream ->
+            openWithLocation(context, item.uri)?.use { stream ->
                 val exif = ExifInterface(stream)
                 val w = exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, 0)
                 val h = exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0)

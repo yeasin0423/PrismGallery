@@ -817,7 +817,7 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
 }
 
 private fun getRequiredPermissions(): Array<String> {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+    val media = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
         arrayOf(
             Manifest.permission.READ_MEDIA_IMAGES,
             Manifest.permission.READ_MEDIA_VIDEO,
@@ -837,6 +837,9 @@ private fun getRequiredPermissions(): Array<String> {
             Manifest.permission.WRITE_EXTERNAL_STORAGE
         )
     }
+    // Where a photo was taken: without it Android strips the GPS tags, so the details never show the place.
+    // Optional - the gallery works without it (hasMediaPermission does not ask for it).
+    return media + Manifest.permission.ACCESS_MEDIA_LOCATION
 }
 
 private fun hasMediaPermission(context: Context): Boolean {
