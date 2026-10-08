@@ -1,0 +1,2 @@
+Neu: Alben sortieren, durchsuchen und selbst ordnen. USB-Speicher und mehrere SD-Karten, freier Platz vor dem Verschieben. Fotos als Hintergrund, Videos und GIFs als Live-Hintergrund. Akzentfarben vom Hintergrund. Symbol passt zum Design, die App heißt jetzt Prism Gallery. Kamera-Fotos zum Durchwischen. Neue Fotos erscheinen ohne Neustart.
+Behoben: Fotoort in den Details, abgelehntes Verschieben lief später, gelöschte Alben kamen zurück, springender Zoom.
