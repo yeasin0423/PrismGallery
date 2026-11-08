@@ -6,8 +6,6 @@ name: Build release APK
 # The APK is signed afterwards, on the maintainer's own computer; the signing key never leaves it.
 
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -34,6 +32,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PrismGallery-unsigned-${{ github.ref_name }}
+          name: Gallery-unsigned-${{ github.ref_name }}
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error

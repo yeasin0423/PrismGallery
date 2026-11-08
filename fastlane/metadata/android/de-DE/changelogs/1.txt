@@ -1,7 +1,0 @@
-Erste öffentliche Version.
-
-• Vier Designs im Stil von iOS, One UI, HyperOS und Gemini
-• Alben, Favoriten, Papierkorb, Editor und Speicherübersicht
-• Interner Speicher und SD-Karte
-• Fotos und Videos aus anderen Apps öffnen
-• Komplett offline, keine Internetberechtigung

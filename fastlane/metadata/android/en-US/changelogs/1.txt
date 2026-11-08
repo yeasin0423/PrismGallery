@@ -1,6 +1,6 @@
 First public release.
 
-• Four design styles inspired by iOS, One UI, HyperOS and Gemini
+• Samsung One UI-inspired design
 • Albums, favorites, trash, editor and storage overview
 • Internal storage and SD card
 • Open photos and videos from other apps

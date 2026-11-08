@@ -1,4 +1,4 @@
-HSPLcom/example/amoledgallery/**->**(**)**
+HSPLcom/gallery/app/**->**(**)**
 HSPLandroidx/compose/runtime/**->**(**)**
 HSPLandroidx/compose/ui/**->**(**)**
 HSPLandroidx/compose/foundation/**->**(**)**

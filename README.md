@@ -1,9 +1,9 @@
-# Prism Gallery
+# Gallery
 
-A fast, private photo and video gallery for Android, with four complete design styles and smooth animations.
+A fast, private photo and video gallery for Android, with a Samsung One UI-inspired design and smooth animations.
 It works entirely offline: no internet permission, no ads, no tracking, no account.
 
-Prism Gallery is made for:
+Gallery is made for:
 
 - custom ROMs that ship without a usable gallery app,
 - phones whose only gallery is a cloud photo app,
@@ -11,8 +11,7 @@ Prism Gallery is made for:
 
 ## Features
 
-- **Four design styles** with their own layouts and animations, inspired by iOS (Liquid Glass), Samsung One UI,
-  Xiaomi HyperOS and Google Gemini
+- **Samsung One UI-inspired design** with its own layout and animations
 - Photos, videos and GIFs from internal storage and the SD card
 - Albums: create, rename, hide, sub-albums, move media between albums, move whole albums between internal storage
   and SD card
@@ -21,12 +20,12 @@ Prism Gallery is made for:
 - Editor: crop, rotate and mirror photos and videos (saved as a copy)
 - Storage overview for internal storage and SD card
 - Open photos and videos from other apps ("Open with")
-- English and German
+- English
 - Adjustable graphics quality for older or low-memory devices
 
 ## Privacy
 
-Prism Gallery has no internet permission, so it cannot send anything anywhere. It only asks for access to your
+Gallery has no internet permission, so it cannot send anything anywhere. It only asks for access to your
 photos and videos. Settings stay on your device.
 
 ## Requirements
@@ -35,7 +34,7 @@ Android 10 (API 29) or newer.
 
 ## Download
 
-- **GitHub Releases:** https://github.com/Soretake/PrismGallery/releases
+- **GitHub Releases:** https://github.com/yeasin0423/PrismGallery/releases
 - **F-Droid:** coming soon
 
 ### Verifying the APK
@@ -71,8 +70,8 @@ keyPassword=...
 
 ## Disclaimer
 
-Prism Gallery is an independent project and is not affiliated with, endorsed by or connected to Apple, Samsung,
-Xiaomi or Google. Their names are only used to describe the visual style each design is inspired by.
+Gallery is an independent project and is not affiliated with, endorsed by or connected to Samsung. The name is
+only used to describe the visual style the design is inspired by.
 
 ## License
 

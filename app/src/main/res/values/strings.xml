@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Launcher label: the full name, so it can't be mixed up with the phone's own gallery app. -->
-    <string name="app_name">Prism Gallery</string>
+    <!-- Launcher label. -->
+    <string name="app_name">Gallery</string>
     <!-- Shown in the system wallpaper picker for the video / GIF live wallpaper. -->
-    <string name="live_wallpaper_label">Prism Gallery</string>
-    <string name="live_wallpaper_description">The video or GIF you picked in Prism Gallery</string>
+    <string name="live_wallpaper_label">Gallery</string>
+    <string name="live_wallpaper_description">The video or GIF you picked in Gallery</string>
 </resources>

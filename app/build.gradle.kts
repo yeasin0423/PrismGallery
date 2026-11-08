@@ -15,12 +15,11 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
-    namespace = "com.example.amoledgallery"
+    namespace = "com.gallery.app"
     compileSdk = 34
 
     defaultConfig {
-        // Store identity of Prism Gallery (the Kotlin namespace stays as it is; it is not visible to users).
-        applicationId = "com.prismgallery.app"
+        applicationId = "com.gallery.app"
         minSdk = 29
         targetSdk = 34
         versionCode = 4

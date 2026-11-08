@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "PrismGallery"
+rootProject.name = "Gallery"
 include(":app")
