@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
@@ -51,18 +53,40 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil3.compose.AsyncImage
 import androidx.media3.common.MediaItem as Media3Item
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.gallery.app.model.MediaItem
-import com.gallery.app.ui.theme.AmoledBlack
+import com.gallery.app.ui.design.ThemedButton
 import com.gallery.app.ui.theme.PureWhite
 import com.gallery.app.ui.theme.TextMuted
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import java.util.Locale
+
+/**
+ * Prefers the device's hardware decoders for video.
+ *
+ * Some devices (notably MediaTek ones) report no profile/level support for a format that their
+ * hardware decoder plays perfectly well. Media3 then ranks the software decoder first - and the
+ * software H.264 decoder crashes in `media.swcodec` on those devices. Hardware decoders are
+ * therefore used exclusively whenever one exists for the MIME type; formats without any hardware
+ * decoder (and all audio) keep the default list, so nothing loses support.
+ */
+@OptIn(UnstableApi::class)
+private val preferHardwareVideoCodecSelector = MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+    val all = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+    if (!mimeType.startsWith("video/")) {
+        all
+    } else {
+        all.filter { it.hardwareAccelerated }.ifEmpty { all }
+    }
+}
 
 /**
  * Native Media3 ExoPlayer video viewer in pure AMOLED black:
@@ -136,9 +160,14 @@ private fun ActiveVideoPlayer(
     var isScrubbing by remember { mutableStateOf(false) }
     /** Paused with the button: then it stays paused, also after coming back to the app. */
     var pausedByUser by remember { mutableStateOf(false) }
+    var playbackError by remember(item.uri) { mutableStateOf<PlaybackException?>(null) }
 
     val exoPlayer = remember(item.uri) {
-        ExoPlayer.Builder(context).build().apply {
+        val renderersFactory = DefaultRenderersFactory(context)
+            // Without this, Media3 can pick a software H.264 decoder that crashes on some devices.
+            .setMediaCodecSelector(preferHardwareVideoCodecSelector)
+            .setEnableDecoderFallback(true)
+        ExoPlayer.Builder(context, renderersFactory).build().apply {
             setMediaItem(Media3Item.fromUri(item.uri))
             repeatMode = Player.REPEAT_MODE_ONE
             // Opening a video in the viewer plays it straight away.
@@ -168,6 +197,11 @@ private fun ActiveVideoPlayer(
                     val d = exoPlayer.duration
                     if (d > 0) durationMs = d
                 }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                playbackError = error
+                isPlaying = false
             }
         }
         exoPlayer.addListener(listener)
@@ -331,6 +365,37 @@ private fun ActiveVideoPlayer(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
+            }
+        }
+
+        // A black screen is indistinguishable from a frozen player: say what happened and offer a retry.
+        if (playbackError != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.65f)),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = strings.videoPlaybackFailed,
+                    color = PureWhite,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(18.dp))
+                ThemedButton(
+                    text = strings.retry,
+                    icon = Icons.Rounded.Refresh,
+                    onClick = {
+                        playbackError = null
+                        isFirstFrameRendered = false
+                        pausedByUser = false
+                        currentPositionMs = 0L
+                        exoPlayer.seekTo(0L)
+                        exoPlayer.prepare()
+                    }
+                )
             }
         }
     }

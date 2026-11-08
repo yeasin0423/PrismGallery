@@ -62,6 +62,8 @@ interface AppStrings {
     val apply: String
     val play: String
     val pause: String
+    val retry: String
+    val videoPlaybackFailed: String
     val name: String
 
     // Tabs, filters, grid
@@ -403,6 +405,8 @@ object EnglishStrings : AppStrings {
     override val apply = "Apply"
     override val play = "Play"
     override val pause = "Pause"
+    override val retry = "Retry"
+    override val videoPlaybackFailed = "This video can't be played."
     override val name = "Name"
 
     override val tabPictures = "Photos"

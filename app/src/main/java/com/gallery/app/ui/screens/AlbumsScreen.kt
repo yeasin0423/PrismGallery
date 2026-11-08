@@ -132,10 +132,6 @@ import com.gallery.app.ui.design.bottomBarContentPadding
 import com.gallery.app.ui.design.barGlass
 import com.gallery.app.ui.theme.isLight
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
-import androidx.compose.material.icons.rounded.AutoAwesomeMotion
-import androidx.compose.material.icons.rounded.GridView
-import androidx.compose.material.icons.rounded.PlayArrow
 import com.gallery.app.ui.design.geminiChip
 import com.gallery.app.ui.design.glass
 import com.gallery.app.ui.design.pressScale
@@ -335,12 +331,6 @@ fun AlbumsScreen(
     // iOS Photos lists an album's photos oldest first, like the Mediathek. Grid, drag selection and the viewer
     // all work on this displayed order.
     val displayAlbumMedia = remember(albumMedia, isIos) { if (isIos) albumMedia.asReversed() else albumMedia }
-    // iOS: an album with photos opens with a large header that cycles through them.
-    val iosAlbumHero = isIos && isInsideAlbum && albumMedia.isNotEmpty()
-    val heroHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.56f
-    // One UI 8: an album opens with its first photo as a large cover with the name and counts on it.
-    val oneUiAlbumHero = language == DesignLanguage.SAMSUNG_ONEUI && isInsideAlbum && albumMedia.isNotEmpty()
-    val oneUiHeroHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.38f
 
     // Opening an album (or going back up) moves the page in with the design language's album motion.
     val navProgress = remember { androidx.compose.animation.core.Animatable(1f) }
@@ -391,15 +381,7 @@ fun AlbumsScreen(
                         val covers = latestSubAlbums.value.take(subColumns * 2).mapNotNull { it.coverUri }.map { uri ->
                             async { loader.execute(albumCoverRequest(context, uri)) }
                         }
-                        // iOS: the header's first photo, so the album opens with its big image already there.
-                        val hero = if (isIos || language == DesignLanguage.SAMSUNG_ONEUI) {
-                            listOfNotNull(latestMedia.value.firstOrNull()).map { item ->
-                                async { loader.execute(albumHeroRequest(context, item.uri)) }
-                            }
-                        } else {
-                            emptyList()
-                        }
-                        (thumbnails + covers + hero).awaitAll()
+                        (thumbnails + covers).awaitAll()
                     }
                 }
             }
@@ -547,8 +529,6 @@ fun AlbumsScreen(
     BackHandler(enabled = albumSearchOpen) { closeAlbumSearch() }
     // ... and ends the album selection before it leaves the tab.
     BackHandler(enabled = albumSelectMode) { exitAlbumSelection() }
-    // One UI with a cover header: the cover stays put and only the rows below it move aside for the drawer.
-    val drawerShift = if (oneUiAlbumHero) Modifier.graphicsLayer { translationX = drawerProgress * drawerWidthPx } else Modifier
 
     val openAlbumActions: (AlbumItem, Rect?) -> Unit = { album, anchor ->
         contextAnchor = anchor
@@ -632,8 +612,7 @@ fun AlbumsScreen(
                 }
                 .graphicsLayer {
                     // While a navigation is pending the swiped-away page is already replaced: no offset.
-                    // With One UI's cover header only the rows below the cover move aside (see drawerShift).
-                    translationX = (if (oneUiAlbumHero) 0f else drawerProgress * drawerWidthPx) + if (navPending) 0f else backSwipeOffset
+                    translationX = drawerProgress * drawerWidthPx + if (navPending) 0f else backSwipeOffset
                 }
         ) {
             HazeSource(
@@ -777,7 +756,6 @@ fun AlbumsScreen(
                         start = outerPadding,
                         end = outerPadding,
                         top = when {
-                            iosAlbumHero || oneUiAlbumHero -> 0.dp
                             // Gemini's bar fades out 28dp below itself; the first row starts below that fade.
                             isInsideAlbum && language == DesignLanguage.GOOGLE_EXPRESSIVE -> statusBarTop + 96.dp
                             isInsideAlbum -> statusBarTop + 68.dp
@@ -945,49 +923,23 @@ fun AlbumsScreen(
                             }
                         }
                     } else {
-                        if (iosAlbumHero && currentAlbum != null) {
-                            item(span = { GridItemSpan(maxLineSpan) }, key = "ios_album_hero") {
-                                IosAlbumHero(
-                                    title = currentAlbum.name,
-                                    media = displayAlbumMedia,
-                                    height = heroHeight,
-                                    onPlay = { onMediaItemClick(displayAlbumMedia.first(), 0) },
-                                    onOpenGridMenu = { anchor ->
-                                        subAlbumMenuAnchor = anchor
-                                        showSubAlbumMenu = true
-                                    }
-                                )
-                            }
-                        }
-                        if (oneUiAlbumHero && currentAlbum != null) {
-                            item(span = { GridItemSpan(maxLineSpan) }, key = "oneui_album_hero") {
-                                OneUiAlbumHero(
-                                    title = currentAlbum.name,
-                                    media = albumMedia,
-                                    height = oneUiHeroHeight,
-                                    modifier = Modifier
-                                        .bleedHorizontally(outerPadding)
-                                        .padding(bottom = 8.dp)
-                                )
-                            }
-                        }
                         if (breadcrumbs.size > 1) {
                             item(span = { GridItemSpan(maxLineSpan) }, key = "breadcrumbs") {
                                 Breadcrumbs(
                                     breadcrumbs = breadcrumbs,
                                     onBreadcrumbClick = onBreadcrumbClick,
-                                    modifier = drawerShift.padding(horizontal = sectionInset, vertical = 4.dp)
+                                    modifier = Modifier.padding(horizontal = sectionInset, vertical = 4.dp)
                                 )
                             }
                         }
 
                         if (albums.isNotEmpty()) {
                             item(span = { GridItemSpan(maxLineSpan) }, key = "sub_albums_title") {
-                                AlbumsSectionTitle(strings.subAlbums, albums.size, drawerShift.padding(horizontal = sectionInset))
+                                AlbumsSectionTitle(strings.subAlbums, albums.size, Modifier.padding(horizontal = sectionInset))
                             }
                             item(span = { GridItemSpan(maxLineSpan) }, key = "sub_albums") {
                                 Column(
-                                    modifier = drawerShift.padding(horizontal = sectionInset, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = sectionInset, vertical = 4.dp),
                                     verticalArrangement = Arrangement.spacedBy(14.dp)
                                 ) {
                                     albums.chunked(subColumns).forEach { rowAlbums ->
@@ -1016,7 +968,7 @@ fun AlbumsScreen(
                         if (albumMedia.isNotEmpty()) {
                             if (albums.isNotEmpty()) {
                                 item(span = { GridItemSpan(maxLineSpan) }, key = "album_media_title") {
-                                    AlbumsSectionTitle(strings.media, albumMedia.size, drawerShift.padding(horizontal = sectionInset, vertical = 6.dp))
+                                    AlbumsSectionTitle(strings.media, albumMedia.size, Modifier.padding(horizontal = sectionInset, vertical = 6.dp))
                                 }
                             }
                             items(
@@ -1039,7 +991,6 @@ fun AlbumsScreen(
                                         }
                                     },
                                     modifier = Modifier
-                                        .then(drawerShift)
                                         .aspectRatio(1f)
                                         .clipToBounds()
                                 )
@@ -1129,47 +1080,6 @@ fun AlbumsScreen(
                     onClose = onClearSelection,
                     hazeState = albumsHaze,
                     modifier = Modifier.align(Alignment.TopCenter)
-                )
-            } else if (iosAlbumHero && currentAlbum != null) {
-                // iOS album: buttons float over the header; once it has scrolled away a frosted bar with the
-                // small title fades in behind them.
-                val heroHeightPx = with(density) { heroHeight.toPx() }
-                IosAlbumTopBar(
-                    title = currentAlbum.name,
-                    subtitle = strings.objects(albumMedia.size),
-                    collapse = {
-                        if (albumGridState.firstVisibleItemIndex > 0) 1f
-                        else ((albumGridState.firstVisibleItemScrollOffset - heroHeightPx * 0.55f) / (heroHeightPx * 0.3f)).coerceIn(0f, 1f)
-                    },
-                    hazeState = albumsHaze,
-                    onBack = { onBreadcrumbClick(breadcrumbs.size - 2) },
-                    onNewSubAlbum = { showCreateSubDialog = true },
-                    onMore = { anchor ->
-                        subAlbumMenuAnchor = anchor
-                        showSubAlbumMenu = true
-                    },
-                    onSelect = onEnterSelection,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .albumNavTransition(language, { navProgress.value }, { navDirection[0] }, forcedNavProgress)
-                )
-            } else if (oneUiAlbumHero && currentAlbum != null) {
-                val heroHeightPx = with(density) { oneUiHeroHeight.toPx() }
-                OneUiAlbumTopBar(
-                    title = currentAlbum.name,
-                    collapse = {
-                        if (albumGridState.firstVisibleItemIndex > 0) 1f
-                        else ((albumGridState.firstVisibleItemScrollOffset - heroHeightPx * 0.55f) / (heroHeightPx * 0.3f)).coerceIn(0f, 1f)
-                    },
-                    hazeState = albumsHaze,
-                    onBack = { onBreadcrumbClick(breadcrumbs.size - 2) },
-                    onMore = { anchor ->
-                        subAlbumMenuAnchor = anchor
-                        showSubAlbumMenu = true
-                    },
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .albumNavTransition(language, { navProgress.value }, { navDirection[0] }, forcedNavProgress)
                 )
             } else if (isInsideAlbum && currentAlbum != null) {
                 ThemedTopBar(
@@ -1281,16 +1191,7 @@ fun AlbumsScreen(
                 currentRootId = breadcrumbs.firstOrNull()?.bucketId,
                 widthPx = drawerWidthPx,
                 progress = { drawerProgress },
-                // With the cover header, the drawer starts right below the cover and follows it while scrolling.
-                topOffsetPx = if (oneUiAlbumHero) {
-                    val heroPx = with(density) { oneUiHeroHeight.toPx() }
-                    ({
-                        if (albumGridState.firstVisibleItemIndex > 0) 0f
-                        else (heroPx - albumGridState.firstVisibleItemScrollOffset).coerceAtLeast(0f)
-                    })
-                } else {
-                    ({ 0f })
-                },
+                topOffsetPx = { 0f },
                 onAlbumClick = { album ->
                     settleDrawer(false)
                     if (album.bucketId != breadcrumbs.firstOrNull()?.bucketId || breadcrumbs.size > 1) {
@@ -1383,9 +1284,9 @@ fun AlbumsScreen(
         onDismissRequest = { showSubAlbumMenu = false },
         anchorBounds = subAlbumMenuAnchor,
         entries = buildList {
-            // One UI's album ⋮ also starts a selection and creates sub-albums (its header has no other buttons).
-            if (language == DesignLanguage.SAMSUNG_ONEUI && oneUiAlbumHero) {
-                add(MenuEntry(strings.select) { onEnterSelection() })
+            // One UI's album ⋮ also starts a selection and creates sub-albums.
+            if (language == DesignLanguage.SAMSUNG_ONEUI && isInsideAlbum) {
+                if (albumMedia.isNotEmpty()) add(MenuEntry(strings.select) { onEnterSelection() })
                 add(MenuEntry(strings.newSubAlbum) { showCreateSubDialog = true })
             }
             if (albumMedia.isNotEmpty()) {
@@ -1646,362 +1547,6 @@ fun AlbumsScreen(
 }
 
 private fun albumCountText(count: Int) = strings.albums(count)
-
-/** Screen-sized image request for the iOS album header, loadable ahead of time under the same key. */
-private fun albumHeroRequest(context: android.content.Context, uri: android.net.Uri): ImageRequest =
-    ImageRequest.Builder(context)
-        .data(uri)
-        .size(1080)
-        .precision(Precision.INEXACT)
-        .build()
-
-/**
- * iOS Photos album header: a large photo of the album that slowly cycles through its contents with a
- * crossfade, the album name and item count on it, and round buttons for the grid options and playback.
- */
-@Composable
-private fun IosAlbumHero(
-    title: String,
-    media: List<MediaItem>,
-    height: androidx.compose.ui.unit.Dp,
-    onPlay: () -> Unit,
-    onOpenGridMenu: (Rect?) -> Unit
-) {
-    val context = LocalContext.current
-    // Up to 12 photos spread over the whole album (videos only when there are no photos).
-    val slides = remember(media) {
-        val photos = media.filter { !it.isVideo }.ifEmpty { media }
-        val step = (photos.size / 12).coerceAtLeast(1)
-        photos.filterIndexed { index, _ -> index % step == 0 }.take(12)
-    }
-    var slide by remember(slides) { androidx.compose.runtime.mutableIntStateOf(0) }
-    LaunchedEffect(slides) {
-        if (slides.size < 2) return@LaunchedEffect
-        val loader = SingletonImageLoader.get(context)
-        while (true) {
-            kotlinx.coroutines.delay(4500)
-            val next = (slide + 1) % slides.size
-            // The next photo is decoded before the crossfade starts, so it never fades in from an empty frame.
-            loader.execute(albumHeroRequest(context, slides[next].uri))
-            slide = next
-        }
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(height)
-            .clipToBounds()
-    ) {
-        androidx.compose.animation.Crossfade(
-            targetState = slides.getOrNull(slide),
-            animationSpec = androidx.compose.animation.core.tween(900),
-            label = "album_hero"
-        ) { item ->
-            if (item != null) {
-                val request = remember(item.id) { albumHeroRequest(context, item.uri) }
-                AsyncImage(
-                    model = request,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        }
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.35f),
-                        0.25f to Color.Transparent,
-                        0.6f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.55f)
-                    )
-                )
-        )
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 20.dp, end = 130.dp, bottom = 22.dp)
-        ) {
-            Text(
-                text = title,
-                style = androidx.compose.ui.text.TextStyle(
-                    color = Color.White,
-                    fontSize = 40.sp,
-                    fontWeight = FontWeight.Bold,
-                    shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.35f), Offset(0f, 1f), 10f)
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.AutoAwesomeMotion, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(strings.objects(media.size), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-            }
-        }
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            var anchor by remember { mutableStateOf<Rect?>(null) }
-            HeroCircleButton(
-                icon = Icons.Rounded.GridView,
-                description = strings.options,
-                modifier = Modifier.onGloballyPositioned { anchor = it.boundsInRoot() }
-            ) { onOpenGridMenu(anchor) }
-            HeroCircleButton(icon = Icons.Rounded.PlayArrow, description = title, onClick = onPlay)
-        }
-    }
-}
-
-@Composable
-private fun HeroCircleButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    description: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    val interaction = remember { MutableInteractionSource() }
-    Box(
-        modifier = modifier
-            .pressScale(interaction, 0.9f)
-            .size(50.dp)
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.38f))
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(icon, description, tint = Color.White, modifier = Modifier.size(26.dp))
-    }
-}
-
-/**
- * Top bar of an iOS album with a header: the back circle, a glass capsule (new sub-album, ⋯) and "Auswählen"
- * float over the photo; once the header has scrolled away ([collapse] 1) a frosted bar with the small title
- * fades in behind them.
- */
-@Composable
-private fun IosAlbumTopBar(
-    title: String,
-    subtitle: String,
-    collapse: () -> Float,
-    hazeState: HazeState,
-    onBack: () -> Unit,
-    onNewSubAlbum: () -> Unit,
-    onMore: (Rect?) -> Unit,
-    onSelect: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val palette = LocalAppTheme.current.palette
-    val shade = if (palette.isLight) Color.White else Color.Black
-    Box(modifier = modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .graphicsLayer { alpha = collapse() }
-                .glass(
-                    androidx.compose.ui.graphics.RectangleShape,
-                    com.gallery.app.ui.design.GlassSpec(shade.copy(alpha = 0.40f), shade.copy(alpha = 0.92f), 18.dp, com.gallery.app.ui.design.GlassRim.None),
-                    hazeState,
-                    mask = androidx.compose.ui.graphics.Brush.verticalGradient(0f to Color.Black, 0.75f to Color.Black, 1f to Color.Transparent)
-                )
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .height(60.dp)
-                .padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ThemedIconButton(
-                icon = Icons.AutoMirrored.Rounded.ArrowBackIos,
-                contentDescription = strings.back,
-                onClick = onBack,
-                hazeState = hazeState
-            )
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 10.dp)
-                    .graphicsLayer { alpha = collapse() }
-            ) {
-                Text(title, color = palette.onBackground, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(subtitle, color = palette.textMuted, fontSize = 12.sp, maxLines = 1)
-            }
-            var moreAnchor by remember { mutableStateOf<Rect?>(null) }
-            Row(
-                modifier = Modifier
-                    .height(44.dp)
-                    .glass(CircleShape, barGlass(), hazeState)
-                    .padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 46.dp, height = 40.dp)
-                        .clip(CircleShape)
-                        .clickable(onClick = onNewSubAlbum),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Rounded.CreateNewFolder, strings.newSubAlbum, tint = palette.onBackground, modifier = Modifier.size(22.dp))
-                }
-                Box(
-                    modifier = Modifier
-                        .onGloballyPositioned { moreAnchor = it.boundsInRoot() }
-                        .size(width = 46.dp, height = 40.dp)
-                        .clip(CircleShape)
-                        .clickable { onMore(moreAnchor) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Rounded.MoreHoriz, strings.options, tint = palette.onBackground, modifier = Modifier.size(24.dp))
-                }
-            }
-            Spacer(modifier = Modifier.width(10.dp))
-            Box(
-                modifier = Modifier
-                    .height(44.dp)
-                    .glass(CircleShape, barGlass(), hazeState)
-                    .clip(CircleShape)
-                    .clickable(onClick = onSelect)
-                    .padding(horizontal = 16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(strings.select, color = palette.onBackground, fontSize = 17.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-            }
-        }
-    }
-}
-
-/** One UI 8's album cover header: the first photo, darkened towards the bottom, with the name and counts. */
-@Composable
-private fun OneUiAlbumHero(
-    title: String,
-    media: List<MediaItem>,
-    height: androidx.compose.ui.unit.Dp,
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-    val cover = remember(media) { media.firstOrNull() }
-    val images = remember(media) { media.count { !it.isVideo } }
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(height)
-            .background(Color.Black)
-    ) {
-        if (cover != null) {
-            val request = remember(cover.uri, context) { albumHeroRequest(context, cover.uri) }
-            AsyncImage(
-                model = request,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.30f),
-                        0.4f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.6f)
-                    )
-                )
-        )
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(start = 24.dp, end = 24.dp, bottom = 26.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(title, color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(strings.imagesAndVideos(images, media.size - images), color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-        }
-    }
-}
-
-/**
- * One UI 8 album top bar: dark circles with the back chevron and ⋮ float over the cover; once it has scrolled
- * away ([collapse] 1) a frosted bar with the album name fades in behind them.
- */
-@Composable
-private fun OneUiAlbumTopBar(
-    title: String,
-    collapse: () -> Float,
-    hazeState: HazeState,
-    onBack: () -> Unit,
-    onMore: (Rect?) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val palette = LocalAppTheme.current.palette
-    Box(modifier = modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .graphicsLayer { alpha = collapse() }
-                .glass(
-                    androidx.compose.ui.graphics.RectangleShape,
-                    com.gallery.app.ui.design.GlassSpec(palette.background.copy(alpha = 0.72f), palette.background.copy(alpha = 0.97f), 30.dp, com.gallery.app.ui.design.GlassRim.None),
-                    hazeState
-                )
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .height(76.dp)
-                .padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OneUiDarkCircle(Icons.AutoMirrored.Rounded.ArrowBackIos, strings.back, Modifier, onBack)
-            Text(
-                text = title,
-                color = palette.onBackground,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 14.dp)
-                    .graphicsLayer { alpha = collapse() }
-            )
-            var anchor by remember { mutableStateOf<Rect?>(null) }
-            OneUiDarkCircle(
-                Icons.Rounded.MoreVert,
-                strings.options,
-                Modifier.onGloballyPositioned { anchor = it.boundsInRoot() }
-            ) { onMore(anchor) }
-        }
-    }
-}
-
-@Composable
-private fun OneUiDarkCircle(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    description: String,
-    modifier: Modifier,
-    onClick: () -> Unit
-) {
-    val interaction = remember { MutableInteractionSource() }
-    Box(
-        modifier = modifier
-            .pressScale(interaction, 0.9f)
-            .size(56.dp)
-            .clip(CircleShape)
-            .background(Color(0xFF232325).copy(alpha = 0.9f))
-            .clickable(interactionSource = interaction, indication = ripple(color = Color.White), onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(icon, description, tint = Color.White, modifier = Modifier.size(25.dp))
-    }
-}
 
 /** One UI's album drawer: every top-level album as a cover with its name, the open one outlined. */
 @Composable
