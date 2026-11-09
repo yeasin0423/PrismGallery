@@ -31,7 +31,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Gif
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Videocam
@@ -560,7 +559,6 @@ fun GalleryScreen(
                                 MediaFilter.ALL -> Icons.Outlined.PhotoLibrary
                                 MediaFilter.IMAGES -> Icons.Outlined.Image
                                 MediaFilter.VIDEOS -> Icons.Outlined.Videocam
-                                MediaFilter.GIFS -> Icons.Outlined.Gif
                             }
                             add(MenuEntry(filter.displayLabel, icon = icon, checked = filter == selectedFilter, group = 1) { onFilterSelected(filter) })
                         }

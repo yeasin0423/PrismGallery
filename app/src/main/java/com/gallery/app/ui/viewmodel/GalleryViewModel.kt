@@ -52,8 +52,7 @@ enum class DetailSource {
 enum class MediaFilter(val label: String) {
     ALL("All"),
     IMAGES("Images"),
-    VIDEOS("Videos"),
-    GIFS("GIFs")
+    VIDEOS("Videos")
 }
 
 sealed interface GalleryUiState {
@@ -100,7 +99,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     private val _currentSubAlbums = MutableStateFlow<List<AlbumItem>>(emptyList())
     val currentSubAlbums: StateFlow<List<AlbumItem>> = _currentSubAlbums.asStateFlow()
 
-    // Media Filter State (Alle, Bilder, Videos, GIFs)
+    // Media Filter State (All, Images, Videos)
     private val _selectedFilter = MutableStateFlow(MediaFilter.ALL)
     val selectedFilter: StateFlow<MediaFilter> = _selectedFilter.asStateFlow()
 
@@ -404,7 +403,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun applyFilter() {
-        val raw = _rawMedia.value
+        // The Photos tab is the camera roll: only files in DCIM/Camera. Albums still use the full
+        // _rawMedia list, so the Albums tab is unaffected.
+        val raw = _rawMedia.value.filter { it.isInCameraAlbum }
 
         val filtered = filterMediaList(raw, _selectedFilter.value)
         _uiState.value = if (filtered.isEmpty()) {
@@ -419,7 +420,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             MediaFilter.ALL -> items
             MediaFilter.IMAGES -> items.filter { it.isImage }
             MediaFilter.VIDEOS -> items.filter { it.isVideo }
-            MediaFilter.GIFS -> items.filter { it.isGif }
         }
     }
 

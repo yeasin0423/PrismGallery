@@ -22,8 +22,8 @@ android {
         applicationId = "com.gallery.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 6
-        versionName = "1.3"
+        versionCode = 22
+        versionName = "2.3"
         // True while this version is still in testing; set to false for the published release. The
         // About page shows it (and whether this is a debug build) next to the version.
         buildConfigField("boolean", "PRERELEASE", "false")
@@ -72,6 +72,11 @@ android {
     }
 
     packaging {
+        // This prebuilt library has no usable debug symbols; keep it as-is instead of letting the
+        // release build print an "Unable to strip" warning for it.
+        jniLibs {
+            keepDebugSymbols += "**/libandroidx.graphics.path.so"
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }

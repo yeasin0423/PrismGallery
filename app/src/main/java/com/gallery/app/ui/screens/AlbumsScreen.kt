@@ -1067,7 +1067,7 @@ fun AlbumsScreen(
                 }
             }
 
-            if (isInsideAlbum && currentAlbum != null && isSelectionMode) {
+            if (currentAlbum != null && isSelectionMode) {
                 SelectionTopBar(
                     // Set lookup: scanning the album for every selected id was quadratic, which froze the
                     // selection bar after "select all" in albums with thousands of items.
@@ -1083,7 +1083,7 @@ fun AlbumsScreen(
                     hazeState = albumsHaze,
                     modifier = Modifier.align(Alignment.TopCenter)
                 )
-            } else if (isInsideAlbum && currentAlbum != null) {
+            } else if (currentAlbum != null) {
                 ThemedTopBar(
                     title = currentAlbum.name,
                     subtitle = strings.items(albumMedia.size),

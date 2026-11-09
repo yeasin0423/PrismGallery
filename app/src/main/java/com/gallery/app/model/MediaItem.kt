@@ -75,6 +75,26 @@ data class MediaItem(
     val isImage: Boolean
         get() = !isVideo && !isGif
 
+    /**
+     * True when the file sits in the phone's camera album (DCIM/Camera). The Photos tab uses this to show
+     * the camera roll instead of every picture on the device. [dataPath] is a fallback for rows where
+     * MediaStore does not report a relative path.
+     */
+    val isInCameraAlbum: Boolean
+        get() {
+            val relative = relativePath.replace('\\', '/').trim('/')
+            if (relative.equals("DCIM/Camera", ignoreCase = true) ||
+                relative.startsWith("DCIM/Camera/", ignoreCase = true)
+            ) {
+                return true
+            }
+            val absolute = dataPath.replace('\\', '/')
+            if (absolute.contains("/DCIM/Camera/", ignoreCase = true)) return true
+            // Some volumes report neither path; fall back to the bucket name only then.
+            return relative.isEmpty() && absolute.isEmpty() &&
+                bucketDisplayName.equals("Camera", ignoreCase = true)
+        }
+
     val thumbnail: MediaThumbnail
         get() = MediaThumbnail(
             uri = uri,

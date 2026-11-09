@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.rounded.Close
@@ -226,19 +225,17 @@ fun OneUiCheckCircle(checked: Boolean, modifier: Modifier = Modifier, size: andr
     }
 }
 
-/** One UI's "Alle" toggle: the round check with the label underneath. */
+/** One UI's select-all toggle: just the round check, with no label underneath. */
 @Composable
 fun OneUiSelectAll(checked: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val palette = LocalAppTheme.current.palette
-    androidx.compose.foundation.layout.Column(
+    Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(CircleShape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(4.dp),
+        contentAlignment = Alignment.Center
     ) {
         OneUiCheckCircle(checked, size = 28.dp)
-        Text(strings.all, color = palette.onBackground, fontSize = 14.sp, maxLines = 1)
     }
 }
 

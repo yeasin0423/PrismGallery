@@ -145,8 +145,8 @@ internal fun Modifier.liquidGlass(shape: Shape, spec: GlassSpec, state: HazeStat
     val palette = LocalAppTheme.current.palette
     val touch = remember { LiquidTouch() }
     val position = remember { mutableStateOf(Offset.Zero) }
-    val refract = state != null && liquidRefractionEnabled()
-    val blur = state != null && glassEnabled()
+    val refract = liquidRefractionEnabled()
+    val blur = glassEnabled()
 
     var result = this
         .onGloballyPositioned { position.value = it.positionInRoot() }

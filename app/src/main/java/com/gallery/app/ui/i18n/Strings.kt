@@ -25,7 +25,6 @@ val MediaFilter.displayLabel: String
         MediaFilter.ALL -> strings.filterAll
         MediaFilter.IMAGES -> strings.filterImages
         MediaFilter.VIDEOS -> strings.filterVideos
-        MediaFilter.GIFS -> strings.filterGifs
     }
 
 interface AppStrings {
@@ -88,7 +87,6 @@ interface AppStrings {
     val filterAll: String
     val filterImages: String
     val filterVideos: String
-    val filterGifs: String
     fun items(count: Int): String
     fun selectionTitle(count: Int): String
     fun itemsSelected(count: Int): String
@@ -406,7 +404,6 @@ object EnglishStrings : AppStrings {
     override val filterAll = "All"
     override val filterImages = "Images"
     override val filterVideos = "Videos"
-    override val filterGifs = "GIFs"
     override fun items(count: Int) = if (count == 1) "1 item" else "$count items"
     override fun selectionTitle(count: Int) = if (count == 0) "Select items" else "$count selected"
     override fun itemsSelected(count: Int) = if (count == 1) "1 item selected" else "$count items selected"

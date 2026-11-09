@@ -640,10 +640,10 @@ fun MediaDetailScreen(
                     // One UI: the strip of neighbouring photos above the toolbar.
                     Column(modifier = Modifier.fillMaxWidth()) {
                         OneUiFilmstrip(mediaList, pagerState)
-                        DetailBottomBar(language, lightChrome, detailHaze, actions)
+                        DetailBottomBar(language, lightChrome, detailHaze, actions, canEdit = !currentItem.isVideo)
                     }
                 } else {
-                    DetailBottomBar(language, lightChrome, detailHaze, actions)
+                    DetailBottomBar(language, lightChrome, detailHaze, actions, canEdit = !currentItem.isVideo)
                 }
             }
         }
@@ -677,7 +677,7 @@ fun MediaDetailScreen(
         if (panelComposed && panelHeightPx > 0f && !isIos && !isHyperOs) {
             InfoPanel(
                 item = currentItem,
-                onEdit = if (viewOnly) null else actions.onEdit,
+                onEdit = if (viewOnly || currentItem.isVideo) null else actions.onEdit,
                 heightDp = with(density) { panelHeightPx.toDp() },
                 progress = { infoProgress },
                 expand = { infoExpand },
@@ -1322,7 +1322,9 @@ private fun DetailBottomBar(
     language: DesignLanguage,
     lightChrome: Boolean,
     hazeState: HazeState,
-    actions: DetailActions
+    actions: DetailActions,
+    /** Editing is for photos only; videos hide the edit action. */
+    canEdit: Boolean = true
 ) {
     val palette = LocalAppTheme.current.palette
     val favoriteIcon = if (actions.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder
@@ -1363,7 +1365,7 @@ private fun DetailBottomBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 ChromeIcon(favoriteIcon, strings.favorite, if (actions.isFavorite) Color(0xFFFF4D6D) else Color.White, actions.onToggleFavorite, favoriteModifier)
-                ChromeIcon(Icons.Outlined.Edit, strings.edit, Color.White, actions.onEdit)
+                if (canEdit) ChromeIcon(Icons.Outlined.Edit, strings.edit, Color.White, actions.onEdit)
                 ChromeIcon(Icons.Outlined.Info, strings.details, Color.White, actions.onInfo)
                 ChromeIcon(Icons.Outlined.Share, strings.share, Color.White, actions.onShare)
                 ChromeIcon(Icons.Outlined.Delete, strings.delete, Color.White, actions.onDelete)

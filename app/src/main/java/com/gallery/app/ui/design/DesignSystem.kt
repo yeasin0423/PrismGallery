@@ -165,7 +165,7 @@ fun Modifier.glass(
         return liquidGlass(shape, spec, state?.takeIf { it !in LocalEnclosingHazeSources.current })
     }
     val palette = theme.palette
-    val blur = state != null && spec.blur > 0.dp && glassEnabled() &&
+    val blur = spec.blur > 0.dp && glassEnabled() &&
         state !in LocalEnclosingHazeSources.current
     var result = this.clip(shape)
     result = if (blur && state != null) {
