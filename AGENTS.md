@@ -23,7 +23,7 @@ this fork intentionally keeps only One UI and English.
 │   │   ├── java/com/gallery/app/
 │   │   │   ├── GalleryApplication.kt   # Application, graphics-quality tiers, Coil setup
 │   │   │   ├── MainActivity.kt         # app shell, navigation, theme
-│   │   │   ├── data/                   # MediaStore repository, thumbnails, duplicate finder
+│   │   │   ├── data/                   # MediaStore repository, thumbnails
 │   │   │   ├── model/                  # MediaItem, AlbumItem, sorts
 │   │   │   ├── service/                # live wallpaper, move-media service
 │   │   │   ├── ui/
@@ -54,6 +54,10 @@ There is no local JDK/Android SDK guarantee in every environment. Prefer CI as t
 
 - CI runs **only** via manual `workflow_dispatch` in `.github/workflows/build-release.yml`
   (Ubuntu 24.04, Temurin JDK 21). A normal push does **not** start a build.
+- CI does **not** use the wrapper: it reassembles the bundled Gradle distribution from
+  `gradle/wrapper/gradle-8.9-bin.zip.part-*`, checks its SHA-256 and runs that `gradle` directly.
+  The parts are 45 MB pieces of the official zip (GitHub rejects files over 100 MB); keep them and
+  the hash in the workflow/README in sync if Gradle is ever upgraded.
 - The workflow uploads `app-release-unsigned.apk` as `Gallery-unsigned-<ref>`.
 - The release APK is unsigned unless a git-ignored `keystore.properties` exists.
 - Keep the R8 `8.8.34` pin in the root `build.gradle.kts`; changing it breaks the reproducible build.

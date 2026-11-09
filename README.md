@@ -68,6 +68,41 @@ keyAlias=...
 keyPassword=...
 ```
 
+### Bundled Gradle distribution (CI)
+
+The Gradle wrapper downloads `gradle-8.9-bin.zip` from `services.gradle.org`, which redirects to
+`github.com/gradle/gradle-distributions`. That GitHub download occasionally answers HTTP 504, and the
+CI build then fails before compilation starts. To keep the manual CI build working during those
+outages, the Gradle 8.9 distribution is stored in the repository as three parts:
+
+```
+gradle/wrapper/gradle-8.9-bin.zip.part-00
+gradle/wrapper/gradle-8.9-bin.zip.part-01
+gradle/wrapper/gradle-8.9-bin.zip.part-02
+```
+
+They are the unmodified `gradle-8.9-bin.zip`, split with `split -b 45M`. GitHub rejects any single
+file larger than 100 MB, hence the split. The workflow concatenates the parts, verifies the SHA-256
+(`d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab`), unpacks the distribution and
+runs that `gradle` directly, so CI never downloads it. Local `./gradlew` builds are unchanged and
+still download Gradle normally.
+
+To rebuild the archive by hand:
+
+```sh
+cat gradle/wrapper/gradle-8.9-bin.zip.part-* > gradle-8.9-bin.zip
+sha256sum gradle-8.9-bin.zip   # must match the hash above
+unzip gradle-8.9-bin.zip
+./gradle-8.9/bin/gradle assembleRelease --no-daemon
+```
+
+**Removing it again:** once the Gradle download is reliable, delete the three
+`gradle/wrapper/gradle-8.9-bin.zip.part-*` files and remove the "Restore the bundled Gradle
+distribution" step from `.github/workflows/build-release.yml`, switching the build step back to
+`./gradlew`. Deleting the files in a new commit does not reclaim space, because the 130 MB stay in
+the repository history; only a history rewrite (`git filter-repo` or BFG) actually shrinks the clone.
+Do that only if the repository size matters.
+
 ## Disclaimer
 
 Gallery is an independent project and is not affiliated with, endorsed by or connected to Samsung. The name is

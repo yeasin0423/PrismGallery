@@ -22,10 +22,19 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Build the unsigned release APK
+      # services.gradle.org redirects to github.com/gradle/gradle-distributions, which occasionally
+      # answers 504 and makes the wrapper fail before the build starts. The distribution is therefore
+      # committed in 45 MB parts (GitHub rejects single files over 100 MB); rebuild it, verify it and
+      # use it directly so no download is needed.
+      - name: Restore the bundled Gradle distribution
         run: |
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          cat gradle/wrapper/gradle-8.9-bin.zip.part-* > "$RUNNER_TEMP/gradle-8.9-bin.zip"
+          echo "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab  $RUNNER_TEMP/gradle-8.9-bin.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/gradle-8.9-bin.zip" -d "$RUNNER_TEMP/gradle-dist"
+          echo "$RUNNER_TEMP/gradle-dist/gradle-8.9/bin" >> "$GITHUB_PATH"
+
+      - name: Build the unsigned release APK
+        run: gradle assembleRelease --no-daemon
 
       - name: Show checksums
         run: sha256sum app/build/outputs/apk/release/*.apk
