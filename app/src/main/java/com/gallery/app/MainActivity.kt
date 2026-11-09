@@ -71,7 +71,6 @@ import com.gallery.app.ui.screens.GalleryScreen
 import com.gallery.app.ui.screens.MediaDetailScreen
 import com.gallery.app.ui.screens.MenuScreen
 import com.gallery.app.ui.screens.PermissionScreen
-import com.gallery.app.ui.screens.DuplicatesScreen
 import com.gallery.app.ui.screens.TrashScreen
 import com.gallery.app.ui.theme.GalleryTheme
 import com.gallery.app.ui.theme.LocalAppTheme
@@ -111,7 +110,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Screens pushed over the main tabs. */
-private enum class PushedScreen { FAVORITES, TRASH, DUPLICATES }
+private enum class PushedScreen { FAVORITES, TRASH, SETTINGS }
 
 class MainActivity : ComponentActivity() {
 
@@ -256,11 +255,6 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
     val currentSubAlbums by viewModel.currentSubAlbums.collectAsStateWithLifecycle()
     val selectedFilter by viewModel.selectedFilter.collectAsStateWithLifecycle()
     val isTrashOpen by viewModel.isTrashOpen.collectAsStateWithLifecycle()
-    val isDuplicatesOpen by viewModel.isDuplicatesOpen.collectAsStateWithLifecycle()
-    val duplicateGroups by viewModel.duplicateGroups.collectAsStateWithLifecycle()
-    val duplicateSelection by viewModel.duplicateSelection.collectAsStateWithLifecycle()
-    val duplicateProgress by viewModel.duplicateProgress.collectAsStateWithLifecycle()
-    val duplicatesScanned by viewModel.duplicatesScanned.collectAsStateWithLifecycle()
     val selectedItemIndex by viewModel.selectedItemIndex.collectAsStateWithLifecycle()
     val detailSource by viewModel.detailSource.collectAsStateWithLifecycle()
     val columnCount by viewModel.columnCount.collectAsStateWithLifecycle()
@@ -281,10 +275,8 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
     val moveProgress by viewModel.moveProgress.collectAsStateWithLifecycle()
 
     var isFavoritesOpen by remember { mutableStateOf(false) }
-    // One UI: the "Menü" tab opens Samsung Gallery's round-icon popup instead of switching tabs.
-    var oneUiMenuOpen by remember { mutableStateOf(false) }
-    // Whether a settings page is pushed over the menu tab.
-    var settingsPageOpen by remember { mutableStateOf(false) }
+    // The settings hub, pushed from the ⋮ menu over the tabs.
+    var isSettingsOpen by remember { mutableStateOf(false) }
     var showCreateAlbumFromMove by remember { mutableStateOf(false) }
 
     // Permission Launcher for media storage access
@@ -388,7 +380,7 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
         val pushedScreen = when {
             isFavoritesOpen -> PushedScreen.FAVORITES
             isTrashOpen -> PushedScreen.TRASH
-            isDuplicatesOpen -> PushedScreen.DUPLICATES
+            isSettingsOpen -> PushedScreen.SETTINGS
             else -> null
         }
         // Opening a tab or a pushed screen lets the Gemini glass surfaces on it play their animation once.
@@ -478,7 +470,8 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                         onClearSelection = { viewModel.clearSelection() },
                                         onMoveClick = { viewModel.openMoveSheet() },
                                         onDeleteSelected = { viewModel.trashSelectedMedia() },
-                                        graphicsQuality = graphicsQuality
+                                        graphicsQuality = graphicsQuality,
+                                        onOpenSettings = { isSettingsOpen = true }
                                     )
                                 }
 
@@ -559,33 +552,8 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                         storageFilter = albumStorageFilter,
                                         onSetStorageFilter = { viewModel.setAlbumStorageFilter(it) },
                                         albumBytes = { viewModel.albumBytes(it) },
-                                        freeByStorage = freeByStorage
-                                    )
-                                }
-
-                                GalleryTab.MENU -> {
-                                    // Keyed on becoming the active tab (not on every selectedTab change) since
-                                    // this Box stays permanently composed alongside the other two tabs.
-                                    val internalStorage = remember(isActiveTab) { viewModel.getInternalStorageSpace() }
-                                    val sdCardStorage = remember(isActiveTab) { viewModel.getSdCardStorageSpace() }
-                                    MenuScreen(
-                                        favoriteCount = favoriteMedia.size,
-                                        trashedCount = trashedMedia.size,
-                                        internalFreeBytes = internalStorage.freeBytes,
-                                        internalTotalBytes = internalStorage.totalBytes,
-                                        sdCardFreeBytes = sdCardStorage?.freeBytes,
-                                        sdCardTotalBytes = sdCardStorage?.totalBytes,
-                                        appVersionName = appVersionName,
-                                        graphicsQuality = graphicsQuality,
-                                        onSetGraphicsQuality = { viewModel.setGraphicsQuality(it) },
-                                        onOpenFavorites = { isFavoritesOpen = true },
-                                        onOpenTrash = { viewModel.openTrash() },
-                                        onOpenDuplicates = { viewModel.openDuplicates() },
-                                        loadStorageStats = { viewModel.loadStorageStats() },
-                                        onEmptyTrash = { viewModel.emptyTrash() },
-                                        onOpenLibrary = { viewModel.selectTab(GalleryTab.BILDER) },
-                                        onBack = { viewModel.selectTab(GalleryTab.BILDER) },
-                                        onSettingsPageOpenChanged = { settingsPageOpen = it }
+                                        freeByStorage = freeByStorage,
+                                        onOpenSettings = { isSettingsOpen = true }
                                     )
                                 }
                             }
@@ -612,13 +580,11 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                         fadeOut(animationSpec = qualityTween(graphicsQuality, 160))
                 }
 
-                // One UI and HyperOS hide the tab bar inside an album and in the settings; iOS only on a settings page.
+                // One UI and HyperOS hide the tab bar inside an album.
                 val oneUiPushedPage = when (language) {
                     com.gallery.app.ui.theme.DesignLanguage.SAMSUNG_ONEUI,
                     com.gallery.app.ui.theme.DesignLanguage.XIAOMI_HYPEROS ->
-                        (selectedTab == GalleryTab.ALBEN && breadcrumbStack.isNotEmpty()) || selectedTab == GalleryTab.MENU
-                    com.gallery.app.ui.theme.DesignLanguage.IOS_LIQUID_GLASS ->
-                        selectedTab == GalleryTab.MENU && settingsPageOpen
+                        selectedTab == GalleryTab.ALBEN && breadcrumbStack.isNotEmpty()
                     else -> false
                 }
                 AnimatedVisibility(
@@ -629,32 +595,7 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                 ) {
                     BottomNavigationBar(
                         currentTab = selectedTab,
-                        onTabSelected = { tab ->
-                            if (tab == GalleryTab.MENU && selectedTab != GalleryTab.MENU &&
-                                language == com.gallery.app.ui.theme.DesignLanguage.SAMSUNG_ONEUI
-                            ) {
-                                oneUiMenuOpen = true
-                            } else {
-                                viewModel.selectTab(tab)
-                            }
-                        }
-                    )
-                }
-
-                if (oneUiMenuOpen) {
-                    com.gallery.app.ui.screens.OneUiMenuPopup(
-                        onDismiss = { oneUiMenuOpen = false },
-                        onVideos = {
-                            viewModel.selectFilter(com.gallery.app.ui.viewmodel.MediaFilter.VIDEOS)
-                            viewModel.selectTab(GalleryTab.BILDER)
-                        },
-                        onFavorites = { isFavoritesOpen = true },
-                        onRecent = {
-                            viewModel.selectFilter(com.gallery.app.ui.viewmodel.MediaFilter.ALL)
-                            viewModel.selectTab(GalleryTab.BILDER)
-                        },
-                        onTrash = { viewModel.openTrash() },
-                        onSettings = { viewModel.selectTab(GalleryTab.MENU) }
+                        onTabSelected = { tab -> viewModel.selectTab(tab) }
                     )
                 }
 
@@ -771,20 +712,31 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                         }
                     }
 
-                    PushedScreen.DUPLICATES -> {
-                        BackHandler(enabled = isDuplicatesOpen) { viewModel.closeDuplicates() }
-                        DuplicatesScreen(
-                            groups = duplicateGroups,
-                            selection = duplicateSelection,
-                            progress = duplicateProgress,
-                            scanned = duplicatesScanned,
-                            onBack = { viewModel.closeDuplicates() },
-                            onToggle = { id -> viewModel.toggleDuplicateSelection(id) },
-                            onRescan = { viewModel.scanDuplicates() },
-                            onDelete = { viewModel.trashDuplicateSelection() },
-                            selectionBytes = remember(duplicateSelection, duplicateGroups) {
-                                viewModel.duplicateSelectionBytes()
-                            }
+                    PushedScreen.SETTINGS -> {
+                        BackHandler(enabled = isSettingsOpen && !isFavoritesOpen && !isTrashOpen) {
+                            isSettingsOpen = false
+                        }
+                        val internalStorage = remember { viewModel.getInternalStorageSpace() }
+                        val sdCardStorage = remember { viewModel.getSdCardStorageSpace() }
+                        MenuScreen(
+                            favoriteCount = favoriteMedia.size,
+                            trashedCount = trashedMedia.size,
+                            internalFreeBytes = internalStorage.freeBytes,
+                            internalTotalBytes = internalStorage.totalBytes,
+                            sdCardFreeBytes = sdCardStorage?.freeBytes,
+                            sdCardTotalBytes = sdCardStorage?.totalBytes,
+                            appVersionName = appVersionName,
+                            graphicsQuality = graphicsQuality,
+                            onSetGraphicsQuality = { viewModel.setGraphicsQuality(it) },
+                            onOpenFavorites = { isFavoritesOpen = true },
+                            onOpenTrash = { viewModel.openTrash() },
+                            loadStorageStats = { viewModel.loadStorageStats() },
+                            onEmptyTrash = { viewModel.emptyTrash() },
+                            onOpenLibrary = {
+                                isSettingsOpen = false
+                                viewModel.selectTab(GalleryTab.BILDER)
+                            },
+                            onBack = { isSettingsOpen = false }
                         )
                     }
                 }

@@ -58,6 +58,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.SdCard
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Usb
 import androidx.compose.material.icons.rounded.Visibility
@@ -265,7 +266,9 @@ fun AlbumsScreen(
     /** Hides every ticked album at once. */
     onHideAlbums: (List<AlbumItem>) -> Unit = {},
     /** Moves every ticked album to the other storage at once. */
-    onMigrateAlbums: (List<AlbumItem>, Boolean) -> Unit = { _, _ -> }
+    onMigrateAlbums: (List<AlbumItem>, Boolean) -> Unit = { _, _ -> },
+    /** Opens the settings hub from the ⋮ menu. */
+    onOpenSettings: () -> Unit = {}
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
     var showCreateSubDialog by remember { mutableStateOf(false) }
@@ -784,7 +787,6 @@ fun AlbumsScreen(
                                     title = strings.tabAlbums,
                                     subtitle = if (language == DesignLanguage.SAMSUNG_ONEUI) null else albumCountText(shownAlbums.size),
                                     collapseFraction = { rootHeaderCollapse },
-                                    tall = true,
                                     modifier = if (language == DesignLanguage.XIAOMI_HYPEROS) Modifier.bleedHorizontally(outerPadding) else Modifier
                                 ) {
                                     ThemedIconButton(
@@ -804,7 +806,7 @@ fun AlbumsScreen(
                                     }
                                     ThemedIconButton(
                                         icon = if (language == DesignLanguage.IOS_LIQUID_GLASS) Icons.Rounded.MoreHoriz else Icons.Rounded.MoreVert,
-                                        contentDescription = strings.tabMenu,
+                                        contentDescription = strings.options,
                                         onClick = { showMenu = true },
                                         hazeState = albumsHaze,
                                         modifier = Modifier.onGloballyPositioned { menuAnchor = it.boundsInRoot() }
@@ -1164,7 +1166,7 @@ fun AlbumsScreen(
                                 .clickable { showMenu = true },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Rounded.MoreHoriz, strings.tabMenu, tint = palette.onBackground, modifier = Modifier.size(26.dp))
+                            Icon(Icons.Rounded.MoreHoriz, strings.options, tint = palette.onBackground, modifier = Modifier.size(26.dp))
                         }
                     }
                 }
@@ -1237,6 +1239,7 @@ fun AlbumsScreen(
                 add(MenuEntry(strings.showAlbums, icon = Icons.Rounded.Storage) { showStorageMenu = true })
             }
             add(MenuEntry(strings.hiddenAlbums, icon = Icons.Rounded.VisibilityOff) { showManageHiddenDialog = true })
+            add(MenuEntry(strings.settings, icon = Icons.Rounded.Settings) { onOpenSettings() })
         }
     )
 
@@ -1297,6 +1300,7 @@ fun AlbumsScreen(
                 add(MenuEntry(strings.largerSubAlbums, icon = Icons.Rounded.ZoomIn) { if (subColumns > 2) onSetSubAlbumColumns(subColumns - 1) })
                 add(MenuEntry(strings.smallerSubAlbums, icon = Icons.Rounded.ZoomOut) { if (subColumns < 5) onSetSubAlbumColumns(subColumns + 1) })
             }
+            add(MenuEntry(strings.settings, icon = Icons.Rounded.Settings) { onOpenSettings() })
         }
     )
 

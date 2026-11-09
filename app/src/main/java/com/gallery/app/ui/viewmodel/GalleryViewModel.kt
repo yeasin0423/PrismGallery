@@ -39,8 +39,7 @@ import kotlinx.coroutines.withContext
 
 enum class GalleryTab {
     BILDER,
-    ALBEN,
-    MENU
+    ALBEN
 }
 
 enum class DetailSource {
@@ -108,23 +107,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     // Trash View state
     private val _isTrashOpen = MutableStateFlow(false)
     val isTrashOpen: StateFlow<Boolean> = _isTrashOpen.asStateFlow()
-
-    // ---- Duplicates: files that are byte for byte the same -----------------------------------------
-    private val duplicateFinder = com.gallery.app.data.DuplicateFinder(application)
-    private val _isDuplicatesOpen = MutableStateFlow(false)
-    val isDuplicatesOpen: StateFlow<Boolean> = _isDuplicatesOpen.asStateFlow()
-    private val _duplicateGroups = MutableStateFlow<List<com.gallery.app.data.DuplicateGroup>>(emptyList())
-    val duplicateGroups: StateFlow<List<com.gallery.app.data.DuplicateGroup>> = _duplicateGroups.asStateFlow()
-    /** How far the scan has got; null when none is running. */
-    private val _duplicateProgress = MutableStateFlow<com.gallery.app.data.DuplicateProgress?>(null)
-    val duplicateProgress: StateFlow<com.gallery.app.data.DuplicateProgress?> = _duplicateProgress.asStateFlow()
-    /** True once a scan has finished, so "nothing found" can be told apart from "not looked yet". */
-    private val _duplicatesScanned = MutableStateFlow(false)
-    val duplicatesScanned: StateFlow<Boolean> = _duplicatesScanned.asStateFlow()
-    /** The copies ticked for deletion, by media id. */
-    private val _duplicateSelection = MutableStateFlow<Set<Long>>(emptySet())
-    val duplicateSelection: StateFlow<Set<Long>> = _duplicateSelection.asStateFlow()
-    private var duplicateJob: Job? = null
 
     // Raw unfiltered media items
     private val _rawMedia = MutableStateFlow<List<MediaItem>>(emptyList())
@@ -719,106 +701,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         _isTrashOpen.value = false
     }
 
-    // ---- Duplicates --------------------------------------------------------------------------------
-
-    fun openDuplicates() {
-        clearSelection()
-        _isDuplicatesOpen.value = true
-        if (_duplicateGroups.value.isEmpty() && !_duplicatesScanned.value) scanDuplicates()
-    }
-
-    fun closeDuplicates() {
-        _isDuplicatesOpen.value = false
-        cancelDuplicateScan()
-    }
-
-    /**
-     * Looks through every photo and video for files that are byte for byte the same.
-     *
-     * Hidden albums are searched too: a copy there is still a copy, and leaving them out would report
-     * space as free that is not.
-     */
-    fun scanDuplicates() {
-        duplicateJob?.cancel()
-        _duplicateSelection.value = emptySet()
-        _duplicateGroups.value = emptyList()
-        _duplicatesScanned.value = false
-        duplicateJob = viewModelScope.launch {
-            try {
-                val media = withContext(Dispatchers.IO) { repository.getAllMedia(includeHidden = true) }
-                _duplicateProgress.value = com.gallery.app.data.DuplicateProgress(0, media.size)
-                val found = duplicateFinder.find(media) { progress -> _duplicateProgress.value = progress }
-                _duplicateGroups.value = found
-                // Everything but the newest copy of each set is ticked, which is what is wanted nearly
-                // always; the ticks can be changed before anything is deleted.
-                _duplicateSelection.value = found.flatMap { group -> group.items.drop(1).map { it.id } }.toSet()
-                _duplicatesScanned.value = true
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                // Leaving the screen stops the scan; nothing is reported, and it starts afresh next time.
-                throw cancelled
-            } catch (e: Exception) {
-                _duplicatesScanned.value = true
-            } finally {
-                _duplicateProgress.value = null
-            }
-        }
-    }
-
-    fun cancelDuplicateScan() {
-        duplicateJob?.cancel()
-        duplicateJob = null
-        _duplicateProgress.value = null
-    }
-
-    fun toggleDuplicateSelection(id: Long) {
-        val current = _duplicateSelection.value
-        _duplicateSelection.value = if (id in current) current - id else current + id
-    }
-
-    /** How much deleting the ticked copies would free. */
-    fun duplicateSelectionBytes(): Long {
-        val selected = _duplicateSelection.value
-        return _duplicateGroups.value
-            .flatMap { it.items }
-            .filter { it.id in selected }
-            .sumOf { it.size }
-    }
-
-    /** Moves the ticked copies to the trash; the originals they duplicate stay where they are. */
-    fun trashDuplicateSelection() {
-        viewModelScope.launch {
-            val selected = _duplicateSelection.value
-            if (selected.isEmpty()) return@launch
-            val items = _duplicateGroups.value.flatMap { it.items }.filter { it.id in selected }
-            if (items.isEmpty()) return@launch
-            pendingDuplicateTrash = items.map { it.id }.toSet()
-            val pendingIntent = withContext(Dispatchers.IO) {
-                repository.createTrashRequest(items.map { it.uri }, trash = true)
-            }
-            if (pendingIntent != null) {
-                _pendingIntentSender.emit(pendingIntent)
-            } else {
-                pendingDuplicateTrash = null
-                _userMessage.emit(strings.movedToTrash(items.size))
-                dropTrashedDuplicates(items.map { it.id }.toSet())
-                loadMedia()
-                loadTrash()
-            }
-        }
-    }
-
-    /** Ids awaiting the user's confirmation of the trash request, so the list can be pruned after it. */
-    private var pendingDuplicateTrash: Set<Long>? = null
-
-    /** Takes the deleted copies out of the groups, dropping any set that no longer has a double. */
-    private fun dropTrashedDuplicates(ids: Set<Long>) {
-        _duplicateGroups.value = _duplicateGroups.value.mapNotNull { group ->
-            val left = group.items.filterNot { it.id in ids }
-            if (left.size < 2) null else group.copy(items = left, wastedBytes = left.first().size * (left.size - 1))
-        }
-        _duplicateSelection.value = _duplicateSelection.value - ids
-    }
-
     // Tiles per row of the album list and of the sub-albums inside an album; null = the design's default.
     private val gridPrefs = application.getSharedPreferences("amoled_gallery_grid_prefs", Context.MODE_PRIVATE)
     private val _albumColumns = MutableStateFlow(gridPrefs.getInt("album_columns", 0).takeIf { it > 0 })
@@ -1067,7 +949,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         pendingMove = null
         pendingAlbumRename = null
         pendingAlbumDelete = null
-        pendingDuplicateTrash = null
     }
 
     fun onIntentSenderSuccess() {
@@ -1137,13 +1018,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 // underlying row changes shortly after RESULT_OK, so a brief delay avoids
                 // refreshing on stale data (e.g. a just-migrated album still showing its old location).
                 kotlinx.coroutines.delay(300)
-                // Copies the user had ticked in the duplicates list are gone now: take them out of it
-                // rather than leaving sets behind that have nothing left to compare.
-                pendingDuplicateTrash?.let { trashed ->
-                    pendingDuplicateTrash = null
-                    dropTrashedDuplicates(trashed)
-                    loadTrash()
-                }
             }
 
             clearSelection()

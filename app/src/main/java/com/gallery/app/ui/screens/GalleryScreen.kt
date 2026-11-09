@@ -43,6 +43,7 @@ import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
 import androidx.compose.foundation.layout.size
 import com.gallery.app.ui.design.barGlass
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.material.icons.rounded.ZoomOut
 import androidx.compose.material3.CircularProgressIndicator
@@ -160,7 +161,8 @@ fun GalleryScreen(
     // Move / delete for a selection live in the SelectionActionBar that replaces the tab bar.
     onMoveClick: () -> Unit = {},
     onDeleteSelected: () -> Unit = {},
-    graphicsQuality: com.gallery.app.PerformanceProfile = com.gallery.app.PerformanceProfile.MEDIUM
+    graphicsQuality: com.gallery.app.PerformanceProfile = com.gallery.app.PerformanceProfile.MEDIUM,
+    onOpenSettings: () -> Unit = {}
 ) {
     // Intercept back button if in selection mode and detail overlay is not open
     if (isSelectionMode && selectedDetailIndex == null) {
@@ -563,6 +565,7 @@ fun GalleryScreen(
                             add(MenuEntry(filter.displayLabel, icon = icon, checked = filter == selectedFilter, group = 1) { onFilterSelected(filter) })
                         }
                     }
+                    add(MenuEntry(strings.settings, icon = Icons.Rounded.Settings) { onOpenSettings() })
                 }
             )
 
@@ -646,16 +649,14 @@ private fun GalleryHeader(
     }
 
     when (language) {
-        // One UI 8 selection: the big title becomes "14 ausgewählt", with "Alle" and "Abbrechen" below it.
+        // One UI 8 selection: the compact title becomes "14 selected", with All and Cancel on the right.
         DesignLanguage.SAMSUNG_ONEUI -> if (isSelectionMode) {
             val palette = LocalAppTheme.current.palette
             LargeHeader(
                 title = strings.selectionTitle(selectedCount),
                 collapseFraction = collapseFraction,
-                tall = true,
                 actions = {
                     OneUiSelectAll(checked = allSelected, onClick = onToggleSelectAll, modifier = Modifier.padding(start = 12.dp))
-                    Spacer(modifier = Modifier.weight(1f))
                     Text(
                         text = strings.cancel,
                         color = palette.onBackground,
@@ -672,7 +673,6 @@ private fun GalleryHeader(
             LargeHeader(
                 title = title,
                 collapseFraction = collapseFraction,
-                tall = true,
                 actions = menuButton
             )
         }

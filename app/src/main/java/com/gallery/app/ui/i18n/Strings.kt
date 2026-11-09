@@ -69,7 +69,6 @@ interface AppStrings {
     // Tabs, filters, grid
     val tabPictures: String
     val tabAlbums: String
-    val tabMenu: String
     /** iOS Photos' names for the two content tabs. */
     val tabLibrary: String
     val tabCollections: String
@@ -178,24 +177,6 @@ interface AppStrings {
     val trashEmpty: String
     val trashEmptyMessage: String
     val trashInfo: String
-    // Duplicates: files that are byte for byte the same.
-    val duplicates: String
-    val duplicatesSubtitle: String
-    val duplicatesScanning: String
-    fun duplicatesScanProgress(checked: Int, total: Int): String
-    val noDuplicates: String
-    val noDuplicatesMessage: String
-    val rescan: String
-    fun duplicateSets(count: Int): String
-    fun duplicatesSummary(sets: Int, size: String): String
-    fun duplicateCopies(count: Int): String
-    fun duplicateWastes(size: String): String
-    val duplicateKept: String
-    fun deleteCopies(count: Int): String
-    val deleteCopiesTitle: String
-    fun deleteCopiesMessage(count: Int, size: String): String
-    fun deleteCopiesMessageAll(count: Int, sets: Int): String
-    fun duplicatesFrees(count: Int, size: String): String
     val deletedItem: String
     val itemFallback: String
     val deletePermanently: String
@@ -411,7 +392,6 @@ object EnglishStrings : AppStrings {
 
     override val tabPictures = "Photos"
     override val tabAlbums = "Albums"
-    override val tabMenu = "Menu"
     override val tabLibrary = "Library"
     override val tabCollections = "Collections"
     override val select = "Select"
@@ -516,26 +496,6 @@ object EnglishStrings : AppStrings {
     override val trashEmpty = "Trash is empty"
     override val trashEmptyMessage = "Deleted media is kept here for 30 days."
     override val trashInfo = "Items in the trash are deleted permanently after 30 days."
-    override val duplicates = "Duplicate files"
-    override val duplicatesSubtitle = "Find files you have more than once"
-    override val duplicatesScanning = "Comparing files …"
-    override fun duplicatesScanProgress(checked: Int, total: Int) = "$checked of $total checked"
-    override val noDuplicates = "No duplicates"
-    override val noDuplicatesMessage = "No file on this device exists more than once."
-    override val rescan = "Scan again"
-    override fun duplicateSets(count: Int) = if (count == 1) "1 set" else "$count sets"
-    override fun duplicatesSummary(sets: Int, size: String) =
-        "${if (sets == 1) "One file exists" else "$sets files exist"} more than once. The extra copies take up $size."
-    override fun duplicateCopies(count: Int) = "$count× the same file"
-    override fun duplicateWastes(size: String) = "$size doubled"
-    override val duplicateKept = "Kept"
-    override fun deleteCopies(count: Int) = "Delete $count copy(s)"
-    override val deleteCopiesTitle = "Delete copies?"
-    override fun deleteCopiesMessage(count: Int, size: String) =
-        "$count copy(s) go to the trash and free $size. At least one of every file is kept."
-    override fun deleteCopiesMessageAll(count: Int, sets: Int) =
-        "$count copy(s) go to the trash. Careful: in $sets set(s) every copy is ticked, so nothing of those is left."
-    override fun duplicatesFrees(count: Int, size: String) = "$count selected · frees $size"
     override val deletedItem = "Deleted item"
     override val itemFallback = "Item"
     override val deletePermanently = "Delete permanently"

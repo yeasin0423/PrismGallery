@@ -27,7 +27,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,9 +39,8 @@ import com.gallery.app.ui.theme.LocalAppTheme
 import com.gallery.app.ui.theme.onAccent
 
 /**
- * The large title at the top of the Bilder / Alben / Menü tabs, in each OS's own layout:
- * - One UI: the expanded app bar - an empty upper third with a big centred title, action icons
- *   right-aligned underneath. The title fades and lags behind while scrolling (see [collapseFraction]).
+ * The title at the top of the Photos / Albums tabs, in each OS's own layout:
+ * - One UI: a compact bar - title on the left, action icons on the right.
  * - Material 3 Expressive: actions row on top, big start-aligned headline below.
  * - iOS: actions (glass circles) on top, bold 34pt large title below.
  * - HyperOS: plain action icons on top, lighter-weight start-aligned title below.
@@ -53,60 +51,42 @@ fun LargeHeader(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     collapseFraction: () -> Float = { 0f },
-    /**
-     * One UI only: a taller expanded bar so the grid starts lower and the ⋮ button sits within reach of
-     * the thumb, like Samsung Gallery's photo and album lists.
-     */
-    tall: Boolean = false,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     val theme = LocalAppTheme.current
     val palette = theme.palette
 
     when (theme.language) {
-        DesignLanguage.SAMSUNG_ONEUI -> {
-            val screenHeight = LocalConfiguration.current.screenHeightDp.dp
-            val actionRowHeight = 56.dp
-            Column(modifier = modifier.fillMaxWidth()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height((screenHeight * if (tall) 0.44f else 0.36f).coerceAtLeast(260.dp) - actionRowHeight)
-                        .graphicsLayer {
-                            val f = collapseFraction()
-                            alpha = (1f - f * 1.5f).coerceIn(0f, 1f)
-                            translationY = f * 70.dp.toPx()
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        modifier = Modifier.statusBarsPadding(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = title,
-                            color = palette.onBackground,
-                            fontSize = theme.shapes.headerTitleSize,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        if (subtitle != null) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(text = subtitle, color = palette.textMuted, fontSize = 15.sp)
-                        }
-                    }
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(actionRowHeight)
-                        .padding(horizontal = 10.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                    content = actions
+        DesignLanguage.SAMSUNG_ONEUI -> Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .height(64.dp)
+                .padding(start = 20.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp)
+            ) {
+                Text(
+                    text = title,
+                    color = palette.onBackground,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+                if (subtitle != null) {
+                    Text(text = subtitle, color = palette.textMuted, fontSize = 14.sp, maxLines = 1)
+                }
             }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
+                content = actions
+            )
         }
 
         // Google Photos: no big title - a pill chip with the title and count on the left, actions on the right.

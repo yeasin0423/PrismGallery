@@ -74,9 +74,11 @@ There is no local JDK/Android SDK guarantee in every environment. Prefer CI as t
 
 ## Editing conventions
 
+- **Bump the version on every commit.** Increase `versionCode` by 1 and update `versionName` in
+  `app/build.gradle.kts` with each change that is committed, so every build is distinguishable.
 - Match the surrounding Compose style (4-space indent, trailing commas, one composable per concern).
 - Read user-facing text from `strings` / `AppStrings`; do not hardcode UI strings in composables.
-- Keep the One UI look: AMOLED black background, large centred titles, floating frosted bars, grouped
+- Keep the One UI look: AMOLED black background, compact top titles, floating frosted bars, grouped
   cards with coloured circle icons.
 - All Kotlin files live under `app/src/main/java/com/gallery/app/` and their `package` line must match
   the directory.

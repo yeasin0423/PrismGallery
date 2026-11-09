@@ -44,10 +44,8 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.rounded.Collections
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Image
-import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.AutoAwesomeMotion
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -111,21 +109,18 @@ private data class NavTab(
         get() = when (tab) {
             GalleryTab.BILDER -> strings.tabPictures
             GalleryTab.ALBEN -> strings.tabAlbums
-            GalleryTab.MENU -> strings.tabMenu
         }
 }
 
-/** One UI uses Samsung Gallery's own album and menu glyphs. */
+/** One UI uses Samsung Gallery's own album glyph. */
 private fun NavTab.oneUiIcon(selected: Boolean): ImageVector = when (tab) {
     GalleryTab.ALBEN -> if (selected) SamsungGalleryIcons.AlbumsSelected else SamsungGalleryIcons.Albums
-    GalleryTab.MENU -> if (selected) SamsungGalleryIcons.MenuSelected else SamsungGalleryIcons.Menu
     else -> if (selected) selectedIcon else icon
 }
 
 private val NAV_TABS = listOf(
     NavTab(GalleryTab.BILDER, Icons.Rounded.Image, Icons.Outlined.Image),
-    NavTab(GalleryTab.ALBEN, Icons.Rounded.Collections, Icons.Outlined.Collections),
-    NavTab(GalleryTab.MENU, Icons.Rounded.Menu, Icons.Rounded.Menu)
+    NavTab(GalleryTab.ALBEN, Icons.Rounded.Collections, Icons.Outlined.Collections)
 )
 
 /**
@@ -134,7 +129,7 @@ private val NAV_TABS = listOf(
  *   lighter capsule sliding behind the active tab.
  * - Material 3 Expressive: an attached tonal bar; the active indicator springs open around the icon.
  * - iOS 26 Photos: a Liquid Glass capsule for the content tabs with a selection bubble that stretches as
- *   it glides, plus a detached glass circle. The glass swells slightly while touched.
+ *   it glides. The glass swells slightly while touched.
  * - HyperOS: a small frosted icon-only pill centred above the gesture bar.
  *
  * Holding a tab for [HOLD_TO_SLIDE_TIMEOUT_MS] and dragging slides the selection across tabs; the
@@ -368,39 +363,6 @@ fun BottomNavigationBar(
                     }
                 }
             }
-            val menuTab = NAV_TABS[2]
-            val menuSelected = highlighted == 2
-            val menuInteraction = remember { MutableInteractionSource() }
-            val menuFill by animateColorAsState(
-                targetValue = if (menuSelected) activeFill else activeFill.copy(alpha = 0f),
-                label = "google_menu_fill"
-            )
-            Box(
-                modifier = Modifier
-                    .then(reportCenter(2))
-                    .pressScale(menuInteraction, 0.92f)
-                    .size(70.dp)
-                    .geminiGlass(CircleShape, tintAlpha = 0.62f)
-                    .clickable(interactionSource = menuInteraction, indication = ripple(color = palette.onBackground)) {
-                        onTabSelected(menuTab.tab)
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(54.dp)
-                        .clip(CircleShape)
-                        .background(menuFill)
-                )
-                Icon(
-                    Icons.Rounded.Settings,
-                    menuTab.label,
-                    tint = palette.onBackground,
-                    modifier = Modifier
-                        .size(26.dp)
-                        .selectionPop(menuSelected, fromScale = 0.7f, dampingRatio = 0.45f, stiffness = 600f)
-                )
-            }
         }
 
         DesignLanguage.IOS_LIQUID_GLASS -> Row(
@@ -530,42 +492,6 @@ fun BottomNavigationBar(
                         }
                     }
                 }
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            val menuTab = NAV_TABS[2]
-            val menuSelected = highlighted == 2
-            val menuInteraction = remember { MutableInteractionSource() }
-            val menuTint by animateColorAsState(
-                targetValue = if (menuSelected) palette.accent else palette.onBackground,
-                label = "ios_menu_tint"
-            )
-            Box(
-                modifier = Modifier
-                    .then(reportCenter(2))
-                    .size(64.dp)
-                    .glass(CircleShape)
-                    .clickable(interactionSource = menuInteraction, indication = null) { onTabSelected(menuTab.tab) },
-                contentAlignment = Alignment.Center
-            ) {
-                val innerAlpha by animateFloatAsState(if (menuSelected) 1f else 0f, label = "ios_menu_bubble")
-                Box(
-                    modifier = Modifier
-                        .size(54.dp)
-                        .graphicsLayer { alpha = innerAlpha }
-                        .clip(CircleShape)
-                        .background(if (palette.isLight) Color.Black.copy(alpha = 0.07f) else Color.White.copy(alpha = 0.16f))
-                )
-                // The detached circle opens the Settings-style menu, so it carries the settings gear.
-                Icon(
-                    Icons.Rounded.Settings,
-                    menuTab.label,
-                    tint = menuTint,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .selectionPop(menuSelected, fromScale = 0.8f, dampingRatio = 0.5f, stiffness = 700f)
-                )
             }
         }
 

@@ -23,9 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
@@ -102,15 +100,15 @@ internal const val APP_FULL_NAME = "Gallery"
 enum class SettingsSection { DESIGN, SETTINGS, STORAGE, INFO }
 
 /**
- * The "Menü" tab, built the way each OS would build it:
- * - One UI: huge centred title, two big shortcut tiles, a list card with blue value summaries.
+ * The settings hub, pushed from the ⋮ menu and built the way each OS would build it:
+ * - One UI: a compact top bar titled "Settings", then grouped cards with coloured circle icons.
  * - Material 3 Expressive: a tonal storage card with the wavy progress indicator, segmented lists with
  *   cookie-shaped icons.
- * - iOS: the Settings app - a pinned centred "Einstellungen" title over the glass, header-less inset grouped
- *   lists with icon squares in the accent colour and trailing values.
+ * - iOS: the Settings app - a pinned centred title over the glass, header-less inset grouped lists with
+ *   icon squares in the accent colour and trailing values.
  * - HyperOS: light cards - shortcut cards with pastel icon circles, a storage card, a chevron list.
  *
- * Design, Einstellungen, Speicher and Info all live in one settings sheet, and each entry opens it
+ * Appearance, General, Storage and Info all live in one settings sheet, and each entry opens it
  * scrolled to that section.
  */
 @Composable
@@ -126,16 +124,13 @@ fun MenuScreen(
     onSetGraphicsQuality: (PerformanceProfile) -> Unit = {},
     onOpenFavorites: () -> Unit,
     onOpenTrash: () -> Unit,
-    onOpenDuplicates: () -> Unit = {},
     modifier: Modifier = Modifier,
     // iOS settings pages
     loadStorageStats: suspend () -> com.gallery.app.data.MediaRepository.MediaStorageStats? = { null },
     onEmptyTrash: () -> Unit = {},
     onOpenLibrary: () -> Unit = {},
-    /** One UI: its settings are a pushed page without the tab bar, so they need their own way back. */
-    onBack: () -> Unit = {},
-    /** Reports whether a settings page is pushed over the menu (iOS hides the tab bar then). */
-    onSettingsPageOpenChanged: (Boolean) -> Unit = {}
+    /** The settings hub is a pushed page without the tab bar, so it needs its own way back. */
+    onBack: () -> Unit = {}
 ) {
     var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
     val theme = LocalAppTheme.current
@@ -180,10 +175,7 @@ fun MenuScreen(
     if (page != null) {
         androidx.activity.compose.BackHandler { page = null }
     }
-    LaunchedEffect(page != null) {
-        onSettingsPageOpenChanged(page != null)
-        com.gallery.app.ui.design.GeminiVisits.bump()
-    }
+    LaunchedEffect(page != null) { com.gallery.app.ui.design.GeminiVisits.bump() }
     // Picking a design whose settings take the other form carries the open section over to it, so the settings
     // switch to the new design at once instead of staying in the old form until the menu is reopened.
     LaunchedEffect(usesPages) {
@@ -216,14 +208,17 @@ fun MenuScreen(
             ) {
                 if (isIos) {
                     Spacer(modifier = Modifier.statusBarsPadding().height(72.dp))
+                } else if (isOneUi) {
+                    // Pinned compact bar: the title sits at the very top, like Samsung Settings.
+                    Spacer(modifier = Modifier.statusBarsPadding().height(64.dp))
                 } else {
                     LargeHeader(
-                        title = if (isOneUi) strings.settings else strings.tabMenu,
+                        title = strings.settings,
                         collapseFraction = { (menuScroll.value / headerCollapsePx).coerceIn(0f, 1f) },
                         actions = {
-                            if (isOneUi || isHyperOs) {
+                            if (isHyperOs) {
                                 ThemedIconButton(
-                                    icon = if (isOneUi) Icons.AutoMirrored.Rounded.ArrowBackIos else Icons.AutoMirrored.Rounded.ArrowBack,
+                                    icon = Icons.AutoMirrored.Rounded.ArrowBack,
                                     contentDescription = strings.back,
                                     onClick = onBack
                                 )
@@ -255,7 +250,6 @@ fun MenuScreen(
                             appVersionName = appVersionName,
                             onOpenFavorites = onOpenFavorites,
                             onOpenTrash = onOpenTrash,
-                            onOpenDuplicates = onOpenDuplicates,
                             onOpenDesign = openDesign,
                             onOpenSettings = openSettings,
                             onOpenStorage = openStorage,
@@ -276,7 +270,6 @@ fun MenuScreen(
                             appVersionName = appVersionName,
                             onOpenFavorites = onOpenFavorites,
                             onOpenTrash = onOpenTrash,
-                            onOpenDuplicates = onOpenDuplicates,
                             onOpenDesign = openDesign,
                             onOpenSettings = openSettings,
                             onOpenStorage = openStorage,
@@ -288,8 +281,7 @@ fun MenuScreen(
                             ThemedListSection(
                                 rows = listOf(
                                     ListRow(strings.favorites, icon = Icons.Rounded.Favorite, value = "$favoriteCount", onClick = onOpenFavorites),
-                                    ListRow(strings.recentlyDeleted, icon = Icons.Rounded.Delete, value = "$trashedCount", onClick = onOpenTrash),
-                                    ListRow(strings.duplicates, icon = Icons.Rounded.ContentCopy, onClick = onOpenDuplicates)
+                                    ListRow(strings.recentlyDeleted, icon = Icons.Rounded.Delete, value = "$trashedCount", onClick = onOpenTrash)
                                 )
                             )
                             ThemedListSection(
@@ -309,7 +301,6 @@ fun MenuScreen(
                             appVersionName = appVersionName,
                             onOpenFavorites = onOpenFavorites,
                             onOpenTrash = onOpenTrash,
-                            onOpenDuplicates = onOpenDuplicates,
                             onOpenDesign = openDesign,
                             onOpenSettings = openSettings,
                             onOpenStorage = openStorage,
@@ -320,9 +311,10 @@ fun MenuScreen(
             }
         }
 
-        if (isIos) {
+        if (isIos || isOneUi) {
             ThemedTopBar(
                 title = strings.settings,
+                onBack = if (isOneUi) onBack else null,
                 hazeState = menuHaze,
                 modifier = Modifier.align(Alignment.TopCenter)
             )

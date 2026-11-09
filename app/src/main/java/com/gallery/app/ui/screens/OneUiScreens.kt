@@ -1,12 +1,7 @@
 package com.gallery.app.ui.screens
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -30,12 +24,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.SmartDisplay
-import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Info
@@ -56,20 +44,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gallery.app.PerformanceProfile
 import com.gallery.app.data.MediaRepository
-import com.gallery.app.ui.design.OverlayWindow
 import com.gallery.app.ui.design.ThemedRadioIndicator
 import com.gallery.app.ui.design.bottomBarContentPadding
 import com.gallery.app.ui.design.pressScale
@@ -81,118 +63,10 @@ import com.gallery.app.ui.theme.isLight
 import com.gallery.app.ui.theme.presetsFor
 
 /*
- * Samsung One UI 8: the Gallery's "Menü" popup with round icons, and pages built like Samsung Settings -
- * a big centred title in the upper third, a back chevron under it, grouped rounded cards with coloured
- * circle icons, radio choices, and the "Speicher verwalten" storage card.
+ * Samsung One UI 8: the Settings hub and pages built like Samsung Settings - a compact top bar with the
+ * title, grouped rounded cards with coloured circle icons, radio choices, and the "Speicher verwalten"
+ * storage card.
  */
-
-// ---------------------------------------------------------------------------------------------
-// Menü popup
-// ---------------------------------------------------------------------------------------------
-
-private data class PopupAction(val icon: ImageVector, val label: String, val onClick: () -> Unit)
-
-/** Samsung Gallery's "Menü": a card at the bottom of the screen with round icon buttons. */
-@Composable
-fun OneUiMenuPopup(
-    onDismiss: () -> Unit,
-    onVideos: () -> Unit,
-    onFavorites: () -> Unit,
-    onRecent: () -> Unit,
-    onTrash: () -> Unit,
-    onSettings: () -> Unit
-) {
-    OverlayWindow { transition ->
-        val palette = LocalAppTheme.current.palette
-        val progress by transition.animateFloat(
-            transitionSpec = { if (targetState) tween(280, easing = FastOutSlowInEasing) else tween(180) },
-            label = "oneui_menu_popup"
-        ) { if (it) 1f else 0f }
-        BackHandler(enabled = transition.targetState) { onDismiss() }
-
-        val actions = listOf(
-            PopupAction(Icons.Outlined.SmartDisplay, strings.legendVideos, onVideos),
-            PopupAction(Icons.Outlined.FavoriteBorder, strings.favorites, onFavorites),
-            PopupAction(Icons.Outlined.Schedule, strings.recent, onRecent),
-            PopupAction(Icons.Outlined.Delete, strings.trash, onTrash),
-            PopupAction(Icons.Outlined.Settings, strings.settings, onSettings)
-        )
-        val light = palette.isLight
-
-        Box(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = progress }
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .then(
-                        if (transition.targetState) Modifier.pointerInput(Unit) { detectTapGestures { onDismiss() } } else Modifier
-                    )
-            )
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(12.dp)
-                    .fillMaxWidth()
-                    .graphicsLayer {
-                        alpha = progress
-                        translationY = (1f - progress) * 60.dp.toPx()
-                        val s = 0.96f + 0.04f * progress
-                        scaleX = s
-                        scaleY = s
-                    }
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(if (light) Color.White else Color(0xFF232325))
-                    .pointerInput(Unit) { detectTapGestures { } }
-                    .padding(horizontal = 8.dp, vertical = 26.dp),
-                verticalArrangement = Arrangement.spacedBy(22.dp)
-            ) {
-                actions.chunked(4).forEach { row ->
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        row.forEach { action ->
-                            val interaction = remember { MutableInteractionSource() }
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable(interactionSource = interaction, indication = null) {
-                                        onDismiss()
-                                        action.onClick()
-                                    },
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .pressScale(interaction, 0.9f)
-                                        .size(62.dp)
-                                        .clip(CircleShape)
-                                        .background(if (light) Color(0xFFEDEDED) else Color(0xFF3A3A3C)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(action.icon, null, tint = palette.onBackground, modifier = Modifier.size(28.dp))
-                                }
-                                Spacer(modifier = Modifier.height(10.dp))
-                                // One line that shrinks to fit: long words like "Einstellungen" would otherwise break mid-word.
-                                var labelSize by remember(action.label) { mutableStateOf(16f) }
-                                Text(
-                                    text = action.label,
-                                    color = palette.onBackground,
-                                    fontSize = labelSize.sp,
-                                    textAlign = TextAlign.Center,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    onTextLayout = { if (it.didOverflowWidth && labelSize > 11f) labelSize -= 0.5f },
-                                    modifier = Modifier.padding(horizontal = 2.dp)
-                                )
-                            }
-                        }
-                        repeat(4 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
-                    }
-                }
-            }
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------------------------
 // Settings root
@@ -206,7 +80,6 @@ internal fun OneUiMenuContent(
     appVersionName: String,
     onOpenFavorites: () -> Unit,
     onOpenTrash: () -> Unit,
-    onOpenDuplicates: () -> Unit,
     onOpenDesign: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenStorage: () -> Unit,
@@ -217,8 +90,6 @@ internal fun OneUiMenuContent(
             IconRow(Icons.Rounded.Favorite, Color(0xFFF2586E), strings.favorites, strings.items(favoriteCount), onOpenFavorites)
             Divider(start = 78.dp)
             IconRow(Icons.Rounded.Delete, Color(0xFFF4731F), strings.trash, strings.items(trashedCount), onOpenTrash)
-            Divider(start = 78.dp)
-            IconRow(Icons.Rounded.ContentCopy, Color(0xFF00A9A5), strings.duplicates, strings.duplicatesSubtitle, onOpenDuplicates)
         }
         Card {
             IconRow(Icons.Rounded.Palette, Color(0xFF7B61F0), strings.appearance, ThemeState.designLanguage.displayName, onOpenDesign)
@@ -285,8 +156,6 @@ internal fun OneUiSettingsPage(
 ) {
     val palette = LocalAppTheme.current.palette
     val scroll = rememberScrollState()
-    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
-    val collapsePx = with(LocalDensity.current) { 180.dp.toPx() }
     val title = when (section) {
         SettingsSection.DESIGN -> strings.appearance
         SettingsSection.SETTINGS -> strings.general
@@ -300,43 +169,17 @@ internal fun OneUiSettingsPage(
             .verticalScroll(scroll)
             .padding(bottom = bottomBarContentPadding(24.dp))
     ) {
-        if (section == SettingsSection.STORAGE) {
-            // "Speicher verwalten" uses a compact bar: chevron and title side by side.
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .height(76.dp)
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                BackChevron(onBack)
-                Text(title, color = palette.onBackground, fontSize = 25.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            }
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height((screenHeight * 0.30f).coerceAtLeast(200.dp))
-                    .graphicsLayer {
-                        val f = (scroll.value / collapsePx).coerceIn(0f, 1f)
-                        alpha = (1f - f * 1.4f).coerceIn(0f, 1f)
-                        translationY = f * 60.dp.toPx()
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = title,
-                    color = palette.onBackground,
-                    fontSize = 38.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .statusBarsPadding()
-                        .padding(horizontal = 24.dp)
-                )
-            }
-            Box(modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)) { BackChevron(onBack) }
+        // A compact top bar on every page: chevron and title side by side, right at the top.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .height(64.dp)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BackChevron(onBack)
+            Text(title, color = palette.onBackground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
 
         Column(

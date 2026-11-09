@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Info
@@ -85,7 +84,6 @@ internal fun GoogleMenuContent(
     appVersionName: String,
     onOpenFavorites: () -> Unit,
     onOpenTrash: () -> Unit,
-    onOpenDuplicates: () -> Unit,
     onOpenDesign: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenStorage: () -> Unit,
@@ -140,7 +138,6 @@ internal fun GoogleMenuContent(
         SectionLabel(strings.library)
         DrawerRow(Icons.Outlined.FavoriteBorder, strings.favorites, "$favoriteCount", onOpenFavorites)
         DrawerRow(Icons.Outlined.Delete, strings.trash, "$trashedCount", onOpenTrash)
-        DrawerRow(Icons.Outlined.ContentCopy, strings.duplicates, null, onOpenDuplicates)
         Spacer(modifier = Modifier.height(14.dp))
         SectionLabel("App")
         DrawerRow(Icons.Outlined.Palette, strings.appearance, null, onOpenDesign)

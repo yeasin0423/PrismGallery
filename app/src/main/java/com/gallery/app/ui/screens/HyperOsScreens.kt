@@ -31,7 +31,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
-import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
@@ -223,7 +222,6 @@ internal fun HyperOsMenuContent(
     appVersionName: String,
     onOpenFavorites: () -> Unit,
     onOpenTrash: () -> Unit,
-    onOpenDuplicates: () -> Unit,
     onOpenDesign: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenStorage: () -> Unit,
@@ -234,7 +232,6 @@ internal fun HyperOsMenuContent(
         HyperOsSectionLabel(strings.organizePhotos, Modifier.padding(start = 28.dp, end = 28.dp, top = 4.dp, bottom = 6.dp))
         HyperOsIconRow(Icons.Rounded.Favorite, Color(0xFFFF5C7A), strings.favorites, value = "$favoriteCount", onClick = onOpenFavorites)
         HyperOsIconRow(Icons.Rounded.Delete, palette.accent, strings.recentlyDeleted, value = "$trashedCount", onClick = onOpenTrash)
-        HyperOsIconRow(Icons.Rounded.ContentCopy, Color(0xFF00A9A5), strings.duplicates, onClick = onOpenDuplicates)
         HyperOsIconRow(Icons.Rounded.Storage, Color(0xFF8A90A6), strings.storage, value = storageValue, onClick = onOpenStorage)
         HyperOsDivider(Modifier.padding(horizontal = 28.dp, vertical = 16.dp))
         HyperOsSectionLabel("App", Modifier.padding(start = 28.dp, end = 28.dp, bottom = 6.dp))
