@@ -30,11 +30,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.rounded.Collections
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -295,6 +297,39 @@ fun SelectionActionBar(
             }
         }
 
+}
+
+/**
+ * Shown at the bottom of the trash while items are selected: restore the selection or delete it
+ * permanently, in the same floating frosted capsule as the album selection bar.
+ */
+@Composable
+fun TrashSelectionActionBar(
+    selectedCount: Int,
+    onRestore: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val palette = LocalAppTheme.current.palette
+    val enabled = selectedCount > 0
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(top = 6.dp, bottom = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            modifier = Modifier
+                .height(66.dp)
+                .glass(RoundedCornerShape(percent = 50))
+                .padding(horizontal = 14.dp, vertical = 4.dp)
+        ) {
+            LabeledAction(Icons.Rounded.Restore, strings.restore, enabled, palette.onBackground, Modifier.width(92.dp), onRestore)
+            LabeledAction(Icons.Outlined.DeleteForever, strings.delete, enabled, palette.onBackground, Modifier.width(92.dp), onDelete)
+        }
+    }
 }
 
 @Composable

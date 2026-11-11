@@ -852,9 +852,15 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     /**
      * Restores media from MediaStore Trash.
      */
-    fun restoreMedia(item: MediaItem) {
+    fun restoreMedia(item: MediaItem) = restoreItems(listOf(item))
+
+    /**
+     * Restores several media items from MediaStore Trash in a single request.
+     */
+    fun restoreItems(items: List<MediaItem>) {
+        if (items.isEmpty()) return
         viewModelScope.launch {
-            val pendingIntent = withContext(Dispatchers.IO) { repository.createTrashRequest(listOf(item.uri), trash = false) }
+            val pendingIntent = withContext(Dispatchers.IO) { repository.createTrashRequest(items.map { it.uri }, trash = false) }
             if (pendingIntent != null) {
                 _pendingIntentSender.emit(pendingIntent)
             } else {
@@ -886,9 +892,15 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     /**
      * Permanently deletes a media item from MediaStore.
      */
-    fun deletePermanently(item: MediaItem) {
+    fun deletePermanently(item: MediaItem) = deleteItemsPermanently(listOf(item))
+
+    /**
+     * Permanently deletes several media items from MediaStore in a single request.
+     */
+    fun deleteItemsPermanently(items: List<MediaItem>) {
+        if (items.isEmpty()) return
         viewModelScope.launch {
-            val pendingIntent = withContext(Dispatchers.IO) { repository.createDeleteRequest(listOf(item.uri)) }
+            val pendingIntent = withContext(Dispatchers.IO) { repository.createDeleteRequest(items.map { it.uri }) }
             if (pendingIntent != null) {
                 _pendingIntentSender.emit(pendingIntent)
             } else {

@@ -158,6 +158,8 @@ interface AppStrings {
     val deletePermanently: String
     val emptyTrashTitle: String
     fun emptyTrashMessage(count: Int): String
+    val deleteSelectedTitle: String
+    fun deleteSelectedMessage(count: Int): String
 
     // Viewer & details
     val shareItem: String
@@ -426,6 +428,9 @@ object EnglishStrings : AppStrings {
     override val deletePermanently = "Delete permanently"
     override val emptyTrashTitle = "Empty trash?"
     override fun emptyTrashMessage(count: Int) = "All $count items in the trash will be deleted permanently."
+    override val deleteSelectedTitle = "Delete selected items?"
+    override fun deleteSelectedMessage(count: Int) =
+        "The $count selected item${if (count == 1) "" else "s"} will be deleted permanently."
 
     override val shareItem = "Share item"
     override val shareMedia = "Share media"

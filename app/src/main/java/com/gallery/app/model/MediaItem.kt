@@ -63,6 +63,12 @@ data class MediaItem(
      */
     val date: Long
         get() = when {
+            // Some cameras/MediaProvider versions write the EXIF capture time as local wall-clock
+            // instead of UTC, which pushes DATE_TAKEN a whole timezone offset ahead (15:34 became
+            // 21:34 with UTC+6 here). A file cannot be taken after it was last written, so when
+            // DATE_TAKEN is ahead of DATE_MODIFIED the file time is the trustworthy one. Edited
+            // photos keep their capture time because there DATE_TAKEN is older than DATE_MODIFIED.
+            dateTaken > 0L && dateModified > 0L && dateTaken > dateModified -> dateModified
             dateTaken > 0L -> dateTaken
             dateModified > 0L -> dateModified
             else -> dateAdded

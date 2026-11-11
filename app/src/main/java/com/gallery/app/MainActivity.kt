@@ -669,9 +669,12 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                 onBack = { viewModel.closeTrash() },
                                 onItemClick = { _, index -> viewModel.openDetail(index, DetailSource.TRASH) },
                                 onRestoreAll = { viewModel.restoreAllTrash() },
-                                onEmptyTrash = { viewModel.emptyTrash() }
+                                onEmptyTrash = { viewModel.emptyTrash() },
+                                onRestoreItems = { viewModel.restoreItems(it) },
+                                onDeleteItems = { viewModel.deleteItemsPermanently(it) }
                             )
-                            BottomEdgeFade(Modifier.align(Alignment.BottomCenter))
+                            // TrashScreen draws its own bottom fade so the selection action bar stays
+                            // above it, exactly like the album grids.
 
                             // A deleted item opens full size too, with only restore / delete permanently / details.
                             MediaZoomTransition(visible = selectedItemIndex != null && detailSource == DetailSource.TRASH) {
