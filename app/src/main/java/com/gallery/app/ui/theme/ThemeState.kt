@@ -9,7 +9,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 
 private const val THEME_PREFS_NAME = "amoled_gallery_theme"
-private const val KEY_DESIGN_LANGUAGE = "design_language"
 private const val KEY_PALETTE_ID = "palette_id"
 private const val KEY_CUSTOM_BG = "custom_background"
 private const val KEY_CUSTOM_ON_BG = "custom_onBackground"
@@ -35,7 +34,7 @@ val LocalAppTheme = compositionLocalOf {
  * Live-swappable app-wide color/shape state. Colors are exposed as plain (non-@Composable)
  * State-backed top-level properties in [Color.kt] under their original names (AmoledBlack,
  * PureWhite, ...) so every existing call site across the app keeps compiling unchanged while
- * still recomposing automatically whenever the user switches design language or palette.
+ * still recomposing automatically whenever the user switches palette.
  */
 object ThemeState {
     private val defaultPalette = presetsFor(DesignLanguage.SAMSUNG_ONEUI).first()
@@ -57,8 +56,7 @@ object ThemeState {
     var overlayScrim by mutableStateOf(defaultPalette.overlayScrim)
         private set
 
-    var designLanguage by mutableStateOf(DesignLanguage.SAMSUNG_ONEUI)
-        private set
+    val designLanguage: DesignLanguage = DesignLanguage.SAMSUNG_ONEUI
     var palette by mutableStateOf(defaultPalette)
         private set
     var shapes by mutableStateOf(shapeTokensFor(DesignLanguage.SAMSUNG_ONEUI))
@@ -66,11 +64,11 @@ object ThemeState {
 
     fun currentTheme(): AppTheme = AppTheme(designLanguage, palette, shapes)
 
-    /** Reads the persisted palette at app start. Only Samsung One UI is available now. */
+    /** Reads the persisted palette at app start. */
     fun load(context: Context) {
         val prefs = context.getSharedPreferences(THEME_PREFS_NAME, Context.MODE_PRIVATE)
-        val language = DesignLanguage.SAMSUNG_ONEUI
         val savedPaletteId = prefs.getString(KEY_PALETTE_ID, null)
+        val language = DesignLanguage.SAMSUNG_ONEUI
 
         val resolved = if (savedPaletteId == CUSTOM_PALETTE_ID) {
             val fallback = presetsFor(language).first()
@@ -89,18 +87,15 @@ object ThemeState {
         } else {
             presetsFor(language).find { it.id == savedPaletteId } ?: presetsFor(language).first()
         }
-        apply(language, resolved, persist = false, context = context)
+        apply(resolved, persist = false, context = context)
     }
 
     /** Switches the live theme immediately and (by default) persists the choice. */
-    fun apply(language: DesignLanguage, newPalette: AppColorPalette, persist: Boolean = true, context: Context? = null) {
-        // Only Samsung One UI is exposed; ignore any other design language a caller may still pass.
-        val effectiveLanguage = DesignLanguage.SAMSUNG_ONEUI
+    fun apply(newPalette: AppColorPalette, persist: Boolean = true, context: Context? = null) {
         // The user's pick is persisted as chosen; on screen the accent is kept readable.
         val live = newPalette.withReadableAccent()
-        designLanguage = effectiveLanguage
         palette = live
-        shapes = shapeTokensFor(effectiveLanguage)
+        shapes = shapeTokensFor(designLanguage)
         background = live.background
         onBackground = live.onBackground
         textMuted = live.textMuted
@@ -111,13 +106,12 @@ object ThemeState {
         overlayScrim = live.overlayScrim
 
         if (persist && context != null) {
-            persistToPrefs(context, effectiveLanguage, newPalette)
+            persistToPrefs(context, newPalette)
         }
     }
 
-    private fun persistToPrefs(context: Context, language: DesignLanguage, palette: AppColorPalette) {
+    private fun persistToPrefs(context: Context, palette: AppColorPalette) {
         context.getSharedPreferences(THEME_PREFS_NAME, Context.MODE_PRIVATE).edit().apply {
-            putString(KEY_DESIGN_LANGUAGE, language.name)
             putString(KEY_PALETTE_ID, palette.id)
             if (palette.id == CUSTOM_PALETTE_ID) {
                 putInt(KEY_CUSTOM_BG, palette.background.toArgb())

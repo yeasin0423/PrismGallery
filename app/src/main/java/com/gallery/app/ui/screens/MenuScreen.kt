@@ -5,7 +5,6 @@ import com.gallery.app.ui.i18n.strings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,31 +23,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.toArgb
 import com.gallery.app.util.WallpaperAccents
@@ -57,24 +44,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gallery.app.PerformanceProfile
 import com.gallery.app.ui.components.HsvColorPicker
-import com.gallery.app.ui.components.LargeHeader
 import com.gallery.app.ui.design.DialogButton
 import com.gallery.app.ui.design.DialogButtonStyle
-import com.gallery.app.ui.design.ExpressiveCookieShape
 import com.gallery.app.ui.design.HazeSource
-import com.gallery.app.ui.design.ListRow
-import com.gallery.app.ui.design.ThemedCard
 import com.gallery.app.ui.design.ThemedDialog
-import com.gallery.app.ui.design.ThemedIconButton
-import com.gallery.app.ui.design.ThemedListSection
-import com.gallery.app.ui.design.ThemedProgressBar
-import com.gallery.app.ui.design.ThemedRadioIndicator
-import com.gallery.app.ui.design.ThemedSectionHeader
-import com.gallery.app.ui.design.ThemedSegmentedControl
-import com.gallery.app.ui.design.ThemedSheet
 import com.gallery.app.ui.design.ThemedTopBar
 import com.gallery.app.ui.design.bottomBarContentPadding
-import com.gallery.app.ui.design.pressScale
 import com.gallery.app.ui.design.selectionPop
 import com.gallery.app.ui.design.pushSpec
 import com.gallery.app.ui.design.pushTransition
@@ -86,12 +61,9 @@ import com.gallery.app.ui.theme.DesignLanguage
 import com.gallery.app.ui.theme.LocalAppTheme
 import com.gallery.app.ui.theme.ThemeState
 import com.gallery.app.ui.theme.isLight
-import com.gallery.app.ui.theme.onAccent
 import com.gallery.app.ui.theme.presetsFor
 import dev.chrisbanes.haze.HazeState
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlin.math.roundToInt
 
 /** The app's full name, shown on the info pages; the launcher label (app_name) is the same. */
 internal const val APP_FULL_NAME = "Gallery"
@@ -100,16 +72,10 @@ internal const val APP_FULL_NAME = "Gallery"
 enum class SettingsSection { DESIGN, SETTINGS, STORAGE, INFO }
 
 /**
- * The settings hub, pushed from the ⋮ menu and built the way each OS would build it:
- * - One UI: a compact top bar titled "Settings", then grouped cards with coloured circle icons.
- * - Material 3 Expressive: a tonal storage card with the wavy progress indicator, segmented lists with
- *   cookie-shaped icons.
- * - iOS: the Settings app - a pinned centred title over the glass, header-less inset grouped lists with
- *   icon squares in the accent colour and trailing values.
- * - HyperOS: light cards - shortcut cards with pastel icon circles, a storage card, a chevron list.
+ * The One UI settings hub, pushed from the ⋮ menu: a compact top bar titled "Settings", then grouped
+ * cards with coloured circle icons.
  *
- * Appearance, General, Storage and Info all live in one settings sheet, and each entry opens it
- * scrolled to that section.
+ * Appearance, General, Storage and Info each open as their own pushed page.
  */
 @Composable
 fun MenuScreen(
@@ -125,38 +91,24 @@ fun MenuScreen(
     onOpenFavorites: () -> Unit,
     onOpenTrash: () -> Unit,
     modifier: Modifier = Modifier,
-    // iOS settings pages
+    // Settings pages
     loadStorageStats: suspend () -> com.gallery.app.data.MediaRepository.MediaStorageStats? = { null },
     onEmptyTrash: () -> Unit = {},
     onOpenLibrary: () -> Unit = {},
     /** The settings hub is a pushed page without the tab bar, so it needs its own way back. */
     onBack: () -> Unit = {}
 ) {
-    var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
     val theme = LocalAppTheme.current
     val palette = theme.palette
-    val language = theme.language
-    val isIos = language == DesignLanguage.IOS_LIQUID_GLASS
 
-    val favoritesText = strings.items(favoriteCount)
-    val trashText = strings.items(trashedCount)
     val storageText = if (internalTotalBytes > 0) {
         strings.freeOf(formatBytes(internalFreeBytes), formatBytes(internalTotalBytes))
     } else {
         strings.unknown
     }
-    val usedFraction = if (internalTotalBytes > 0) {
-        (1f - internalFreeBytes.toFloat() / internalTotalBytes.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-    // iOS and HyperOS push each entry as its own page, like their Settings apps; the others open the shared sheet.
-    val isHyperOs = language == DesignLanguage.XIAOMI_HYPEROS
-    val isOneUi = language == DesignLanguage.SAMSUNG_ONEUI
-    val isGoogle = language == DesignLanguage.GOOGLE_EXPRESSIVE
-    val usesPages = isIos || isHyperOs || isOneUi || isGoogle
+    // Each entry is pushed as its own page, like Samsung Settings.
     var page by remember { mutableStateOf<SettingsSection?>(null) }
-    val openSection: (SettingsSection) -> Unit = { if (usesPages) page = it else settingsSection = it }
+    val openSection: (SettingsSection) -> Unit = { page = it }
     val openDesign = { openSection(SettingsSection.DESIGN) }
     val openSettings = { openSection(SettingsSection.SETTINGS) }
     val openStorage = { openSection(SettingsSection.STORAGE) }
@@ -166,7 +118,7 @@ fun MenuScreen(
     page?.let { lastPage[0] = it }
     val pageProgress = androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (page != null) 1f else 0f,
-        animationSpec = pushSpec(language),
+        animationSpec = pushSpec(),
         label = "settings_page_push"
     )
     val pageShown by remember { androidx.compose.runtime.derivedStateOf { pageProgress.value > 0.001f } }
@@ -175,244 +127,78 @@ fun MenuScreen(
     if (page != null) {
         androidx.activity.compose.BackHandler { page = null }
     }
-    LaunchedEffect(page != null) { com.gallery.app.ui.design.GeminiVisits.bump() }
-    // Picking a design whose settings take the other form carries the open section over to it, so the settings
-    // switch to the new design at once instead of staying in the old form until the menu is reopened.
-    LaunchedEffect(usesPages) {
-        if (usesPages && settingsSection != null) {
-            page = settingsSection
-            settingsSection = null
-        } else if (!usesPages && page != null) {
-            settingsSection = page
-            page = null
-        }
-    }
 
     val menuScroll = rememberScrollState()
-    // One UI's big title fades out while the page scrolls instead of sliding under the status bar.
-    val headerCollapsePx = with(androidx.compose.ui.platform.LocalDensity.current) { 220.dp.toPx() }
-    // Backdrop for iOS's pinned title bar, which blurs the list scrolling underneath it.
+    // Backdrop for the pinned title bar, which blurs the list scrolling underneath it.
     val menuHaze = remember { HazeState() }
 
     Box(modifier = modifier.fillMaxSize()) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .then(if (usesPages) Modifier.pushTransition(language, { pageProgress.value }, isTop = false) else Modifier)
-    ) {
         HazeSource(menuHaze, Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(menuScroll)
             ) {
-                if (isIos) {
-                    Spacer(modifier = Modifier.statusBarsPadding().height(72.dp))
-                } else if (isOneUi) {
-                    // Pinned compact bar: the title sits at the very top, like Samsung Settings.
-                    Spacer(modifier = Modifier.statusBarsPadding().height(64.dp))
-                } else {
-                    LargeHeader(
-                        title = strings.settings,
-                        collapseFraction = { (menuScroll.value / headerCollapsePx).coerceIn(0f, 1f) },
-                        actions = {
-                            if (isHyperOs) {
-                                ThemedIconButton(
-                                    icon = Icons.AutoMirrored.Rounded.ArrowBack,
-                                    contentDescription = strings.back,
-                                    onClick = onBack
-                                )
-                                Spacer(modifier = Modifier.weight(1f))
-                            }
-                        }
-                    )
-                }
+                // Pinned compact bar: the title sits at the very top, like Samsung Settings.
+                Spacer(modifier = Modifier.statusBarsPadding().height(64.dp))
 
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(
-                            horizontal = when (language) {
-                                DesignLanguage.GOOGLE_EXPRESSIVE -> 12.dp
-                                DesignLanguage.XIAOMI_HYPEROS -> 0.dp
-                                else -> 16.dp
-                            }
-                        )
+                        .padding(horizontal = 16.dp)
                         .padding(bottom = bottomBarContentPadding(24.dp)),
-                    verticalArrangement = Arrangement.spacedBy(if (isIos) 32.dp else 16.dp)
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    when (language) {
-                        // One UI 8: Samsung Settings' grouped cards with coloured circle icons.
-                        DesignLanguage.SAMSUNG_ONEUI -> OneUiMenuContent(
-                            favoriteCount = favoriteCount,
-                            trashedCount = trashedCount,
-                            storageValue = storageText,
-                            appVersionName = appVersionName,
-                            onOpenFavorites = onOpenFavorites,
-                            onOpenTrash = onOpenTrash,
-                            onOpenDesign = openDesign,
-                            onOpenSettings = openSettings,
-                            onOpenStorage = openStorage,
-                            onOpenInfo = openInfo
-                        )
-
-                        // Google (Gemini): the glowing storage box, then Gemini's drawer-style lists.
-                        DesignLanguage.GOOGLE_EXPRESSIVE -> GoogleMenuContent(
-                            internalFreeBytes = internalFreeBytes,
-                            internalTotalBytes = internalTotalBytes,
-                            sdCardFreeBytes = sdCardFreeBytes,
-                            sdCardTotalBytes = sdCardTotalBytes,
-                            loadStorageStats = loadStorageStats,
-                            favoriteCount = favoriteCount,
-                            trashedCount = trashedCount,
-                            storageText = storageText,
-                            usedFraction = usedFraction,
-                            appVersionName = appVersionName,
-                            onOpenFavorites = onOpenFavorites,
-                            onOpenTrash = onOpenTrash,
-                            onOpenDesign = openDesign,
-                            onOpenSettings = openSettings,
-                            onOpenStorage = openStorage,
-                            onOpenInfo = openInfo
-                        )
-
-                        // iOS Settings groups have no headers; the icon squares take the accent colour (see ListRow).
-                        DesignLanguage.IOS_LIQUID_GLASS -> {
-                            ThemedListSection(
-                                rows = listOf(
-                                    ListRow(strings.favorites, icon = Icons.Rounded.Favorite, value = "$favoriteCount", onClick = onOpenFavorites),
-                                    ListRow(strings.recentlyDeleted, icon = Icons.Rounded.Delete, value = "$trashedCount", onClick = onOpenTrash)
-                                )
-                            )
-                            ThemedListSection(
-                                rows = listOf(
-                                    ListRow(strings.appearance, icon = Icons.Rounded.Palette, onClick = openDesign),
-                                    ListRow(strings.settings, icon = Icons.Rounded.Settings, onClick = openSettings),
-                                    ListRow(strings.storage, icon = Icons.Rounded.Storage, value = if (internalTotalBytes > 0) strings.free(formatBytes(internalFreeBytes)) else null, onClick = openStorage),
-                                    ListRow(strings.info, icon = Icons.Rounded.Info, value = appVersionName.ifBlank { null }, onClick = openInfo)
-                                )
-                            )
-                        }
-
-                        DesignLanguage.XIAOMI_HYPEROS -> HyperOsMenuContent(
-                            favoriteCount = favoriteCount,
-                            trashedCount = trashedCount,
-                            storageValue = if (internalTotalBytes > 0) strings.free(formatBytes(internalFreeBytes)) else null,
-                            appVersionName = appVersionName,
-                            onOpenFavorites = onOpenFavorites,
-                            onOpenTrash = onOpenTrash,
-                            onOpenDesign = openDesign,
-                            onOpenSettings = openSettings,
-                            onOpenStorage = openStorage,
-                            onOpenInfo = openInfo
-                        )
-                    }
+                    // Samsung Settings' grouped cards with coloured circle icons.
+                    OneUiMenuContent(
+                        favoriteCount = favoriteCount,
+                        trashedCount = trashedCount,
+                        storageValue = storageText,
+                        appVersionName = appVersionName,
+                        onOpenFavorites = onOpenFavorites,
+                        onOpenTrash = onOpenTrash,
+                        onOpenDesign = openDesign,
+                        onOpenSettings = openSettings,
+                        onOpenStorage = openStorage,
+                        onOpenInfo = openInfo
+                    )
                 }
             }
         }
 
-        if (isIos || isOneUi) {
-            ThemedTopBar(
-                title = strings.settings,
-                onBack = if (isOneUi) onBack else null,
-                hazeState = menuHaze,
-                modifier = Modifier.align(Alignment.TopCenter)
+        ThemedTopBar(
+            title = strings.settings,
+            onBack = onBack,
+            hazeState = menuHaze,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
+    }
+
+    if (page != null || pageShown) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pushTransition({ pageProgress.value }, isTop = true)
+                .screenBackground()
+                .blockTouchesBelow()
+        ) {
+            OneUiSettingsPage(
+                section = lastPage[0],
+                onBack = { page = null },
+                internalFreeBytes = internalFreeBytes,
+                internalTotalBytes = internalTotalBytes,
+                sdCardFreeBytes = sdCardFreeBytes,
+                sdCardTotalBytes = sdCardTotalBytes,
+                appVersionName = appVersionName,
+                trashedCount = trashedCount,
+                graphicsQuality = graphicsQuality,
+                onSetGraphicsQuality = onSetGraphicsQuality,
+                loadStorageStats = loadStorageStats,
+                onEmptyTrash = onEmptyTrash,
+                onOpenLibrary = onOpenLibrary,
+                onOpenTrash = onOpenTrash
             )
         }
-    }
-
-        if (usesPages && (page != null || pageShown)) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pushTransition(language, { pageProgress.value }, isTop = true)
-                    .screenBackground()
-                    .blockTouchesBelow()
-            ) {
-                if (isIos) {
-                    IosSettingsPage(
-                        section = lastPage[0],
-                        onBack = { page = null },
-                        internalFreeBytes = internalFreeBytes,
-                        internalTotalBytes = internalTotalBytes,
-                        sdCardFreeBytes = sdCardFreeBytes,
-                        sdCardTotalBytes = sdCardTotalBytes,
-                        appVersionName = appVersionName,
-                        trashedCount = trashedCount,
-                        graphicsQuality = graphicsQuality,
-                        onSetGraphicsQuality = onSetGraphicsQuality,
-                        loadStorageStats = loadStorageStats,
-                        onEmptyTrash = onEmptyTrash,
-                        onOpenLibrary = onOpenLibrary
-                    )
-                } else if (isOneUi) {
-                    OneUiSettingsPage(
-                        section = lastPage[0],
-                        onBack = { page = null },
-                        internalFreeBytes = internalFreeBytes,
-                        internalTotalBytes = internalTotalBytes,
-                        sdCardFreeBytes = sdCardFreeBytes,
-                        sdCardTotalBytes = sdCardTotalBytes,
-                        appVersionName = appVersionName,
-                        trashedCount = trashedCount,
-                        graphicsQuality = graphicsQuality,
-                        onSetGraphicsQuality = onSetGraphicsQuality,
-                        loadStorageStats = loadStorageStats,
-                        onEmptyTrash = onEmptyTrash,
-                        onOpenLibrary = onOpenLibrary,
-                        onOpenTrash = onOpenTrash
-                    )
-                } else if (isGoogle) {
-                    GoogleSettingsPage(
-                        section = lastPage[0],
-                        onBack = { page = null },
-                        internalFreeBytes = internalFreeBytes,
-                        internalTotalBytes = internalTotalBytes,
-                        sdCardFreeBytes = sdCardFreeBytes,
-                        sdCardTotalBytes = sdCardTotalBytes,
-                        appVersionName = appVersionName,
-                        trashedCount = trashedCount,
-                        graphicsQuality = graphicsQuality,
-                        onSetGraphicsQuality = onSetGraphicsQuality,
-                        loadStorageStats = loadStorageStats,
-                        onEmptyTrash = onEmptyTrash,
-                        onOpenLibrary = onOpenLibrary,
-                        onOpenTrash = onOpenTrash
-                    )
-                } else {
-                    HyperOsSettingsPage(
-                        section = lastPage[0],
-                        onBack = { page = null },
-                        internalFreeBytes = internalFreeBytes,
-                        internalTotalBytes = internalTotalBytes,
-                        sdCardFreeBytes = sdCardFreeBytes,
-                        sdCardTotalBytes = sdCardTotalBytes,
-                        appVersionName = appVersionName,
-                        trashedCount = trashedCount,
-                        graphicsQuality = graphicsQuality,
-                        onSetGraphicsQuality = onSetGraphicsQuality,
-                        loadStorageStats = loadStorageStats,
-                        onEmptyTrash = onEmptyTrash,
-                        onOpenLibrary = onOpenLibrary,
-                        onOpenTrash = onOpenTrash
-                    )
-                }
-            }
-        }
-    }
-
-    settingsSection?.let { section ->
-        SettingsSheet(
-            initialSection = section,
-            internalFreeBytes = internalFreeBytes,
-            internalTotalBytes = internalTotalBytes,
-            sdCardFreeBytes = sdCardFreeBytes,
-            sdCardTotalBytes = sdCardTotalBytes,
-            appVersionName = appVersionName,
-            graphicsQuality = graphicsQuality,
-            onSetGraphicsQuality = onSetGraphicsQuality,
-            onDismiss = { settingsSection = null }
-        )
     }
 }
 
@@ -441,144 +227,6 @@ private fun OneUiShortcutTile(
     }
 }
 
-@Composable
-private fun SettingsSheet(
-    initialSection: SettingsSection,
-    internalFreeBytes: Long,
-    internalTotalBytes: Long,
-    sdCardFreeBytes: Long?,
-    sdCardTotalBytes: Long?,
-    appVersionName: String,
-    graphicsQuality: PerformanceProfile,
-    onSetGraphicsQuality: (PerformanceProfile) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val context = LocalContext.current
-    var showCustomEditor by remember { mutableStateOf(false) }
-    val currentLanguage = ThemeState.designLanguage
-    val currentPalette = ThemeState.palette
-    val lightMode = currentPalette.isLight
-    val palette = LocalAppTheme.current.palette
-
-    val scrollState = rememberScrollState()
-    val sectionOffsets = remember { mutableStateMapOf<SettingsSection, Int>() }
-    fun Modifier.sectionAnchor(section: SettingsSection) = onGloballyPositioned {
-        sectionOffsets[section] = it.positionInParent().y.roundToInt()
-    }
-
-    fun switchBrightness(light: Boolean) = switchPaletteBrightness(context, light)
-
-    ThemedSheet(onDismissRequest = onDismiss, title = strings.settings) {
-        // Jump to the section on the first laid-out frame, while the sheet is still below the screen, so
-        // it slides up already showing that section instead of visibly racing down the whole list.
-        LaunchedEffect(initialSection) {
-            if (initialSection != SettingsSection.DESIGN) {
-                val offset = snapshotFlow { sectionOffsets[initialSection] }.filterNotNull().first()
-                scrollState.scrollTo(offset)
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .weight(1f, fill = false)
-                .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(22.dp)
-        ) {
-            Column(modifier = Modifier.sectionAnchor(SettingsSection.DESIGN)) {
-                ThemedSectionHeader(strings.colors)
-                ThemedCard(inSheet = true) {
-                    ThemedSegmentedControl(
-                        options = listOf(true, false),
-                        selected = lightMode,
-                        label = { light -> if (light) strings.light else strings.dark },
-                        onSelect = { light -> switchBrightness(light) }
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    PaletteRow(
-                        presets = presetsFor(currentLanguage, lightMode),
-                        currentPaletteId = currentPalette.id,
-                        onSelectPreset = { preset -> ThemeState.apply(currentLanguage, preset, context = context) },
-                        onOpenCustomEditor = { showCustomEditor = true }
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(strings.paletteLabel(currentPalette), color = palette.textMuted, fontSize = 13.sp)
-                }
-            }
-
-            Column(modifier = Modifier.sectionAnchor(SettingsSection.SETTINGS)) {
-                ThemedSectionHeader(strings.graphicsQuality)
-                ThemedSegmentedControl(
-                    options = PerformanceProfile.entries,
-                    selected = graphicsQuality,
-                    label = { graphicsQualityLabel(it) },
-                    onSelect = onSetGraphicsQuality
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = graphicsQualityDescription(graphicsQuality),
-                    color = palette.textMuted,
-                    fontSize = 13.sp,
-                    lineHeight = 17.sp,
-                    modifier = Modifier.padding(horizontal = 8.dp)
-                )
-            }
-
-            Column(modifier = Modifier.sectionAnchor(SettingsSection.STORAGE)) {
-                ThemedSectionHeader(strings.storage)
-                ThemedCard(inSheet = true) {
-                    StorageBlock(strings.internalStorage, internalFreeBytes, internalTotalBytes, null)
-                    Spacer(modifier = Modifier.height(18.dp))
-                    StorageBlock(strings.sdCard, sdCardFreeBytes, sdCardTotalBytes, strings.notAvailable)
-                }
-            }
-
-            ThemedListSection(
-                header = strings.info,
-                inSheet = true,
-                modifier = Modifier.sectionAnchor(SettingsSection.INFO),
-                rows = listOf(
-                    ListRow(strings.appVersion, icon = Icons.Rounded.Info, iconColor = Color(0xFF8E8E93), value = appVersionName.ifBlank { strings.unknown }, showChevron = false)
-                )
-            )
-        }
-    }
-
-    if (showCustomEditor) {
-        CustomAccentDialog(
-            language = currentLanguage,
-            lightMode = lightMode,
-            initialAccent = currentPalette.accent,
-            onConfirm = { accent ->
-                applyCustomAccent(context, currentLanguage, lightMode, accent)
-                showCustomEditor = false
-            },
-            onDismiss = { showCustomEditor = false }
-        )
-    }
-}
-
-@Composable
-private fun StorageBlock(label: String, freeBytes: Long?, totalBytes: Long?, notAvailableText: String?) {
-    val palette = LocalAppTheme.current.palette
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = palette.onBackground, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-        Text(
-            text = if (freeBytes != null && totalBytes != null && totalBytes > 0) {
-                strings.freeOf(formatBytes(freeBytes), formatBytes(totalBytes))
-            } else {
-                notAvailableText ?: strings.unknown
-            },
-            color = palette.textMuted,
-            fontSize = 13.sp
-        )
-    }
-    if (freeBytes != null && totalBytes != null && totalBytes > 0) {
-        Spacer(modifier = Modifier.height(10.dp))
-        ThemedProgressBar(progress = (1f - freeBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f))
-    }
-}
 
 /** Accent swatches for the active mode, plus a trailing "custom" swatch. */
 @Composable
@@ -649,7 +297,6 @@ internal fun PaletteRow(
 
 @Composable
 internal fun CustomAccentDialog(
-    language: DesignLanguage,
     lightMode: Boolean,
     initialAccent: Color,
     onConfirm: (Color) -> Unit,
@@ -659,7 +306,7 @@ internal fun CustomAccentDialog(
     ThemedDialog(
         onDismissRequest = onDismiss,
         title = strings.customAccentTitle,
-        message = strings.customAccentMessage(lightMode, language.displayName),
+        message = strings.customAccentMessage(lightMode, DesignLanguage.SAMSUNG_ONEUI.displayName),
         buttons = listOf(
             DialogButton(strings.cancel, DialogButtonStyle.Cancel, onClick = onDismiss),
             DialogButton(strings.apply, DialogButtonStyle.Primary) { onConfirm(pickedColor) }
@@ -684,14 +331,14 @@ internal fun switchPaletteBrightness(context: android.content.Context, light: Bo
         val slot = presetsFor(currentLanguage, currentPalette.isLight).indexOfFirst { it.id == currentPalette.id }
         target.getOrElse(slot) { target.first() }
     }
-    ThemeState.apply(currentLanguage, next, context = context)
+    ThemeState.apply(next, context = context)
 }
 
 /** Applies a custom accent on the active mode's base colors - light stays light. */
-internal fun applyCustomAccent(context: android.content.Context, language: DesignLanguage, lightMode: Boolean, accent: Color) {
-    val base = presetsFor(language, lightMode).first()
+internal fun applyCustomAccent(context: android.content.Context, lightMode: Boolean, accent: Color) {
+    val base = presetsFor(DesignLanguage.SAMSUNG_ONEUI, lightMode).first()
     val custom = base.copy(id = CUSTOM_PALETTE_ID, label = "Custom palette", accent = accent)
-    ThemeState.apply(language, custom, context = context)
+    ThemeState.apply(custom, context = context)
     wallpaperAccentPrefs(context).edit().remove(KEY_WALLPAPER_ACCENT).apply()
 }
 
@@ -706,8 +353,8 @@ internal fun pickedWallpaperAccent(context: android.content.Context): Color? =
         ?.let { Color(it.getInt(KEY_WALLPAPER_ACCENT, 0)) }
 
 /** Takes one of the wallpaper's colours as the accent (stored as a custom accent, remembered as from the wallpaper). */
-internal fun applyWallpaperAccent(context: android.content.Context, language: DesignLanguage, lightMode: Boolean, color: Color) {
-    applyCustomAccent(context, language, lightMode, color)
+internal fun applyWallpaperAccent(context: android.content.Context, lightMode: Boolean, color: Color) {
+    applyCustomAccent(context, lightMode, color)
     wallpaperAccentPrefs(context).edit().putInt(KEY_WALLPAPER_ACCENT, color.toArgb()).apply()
 }
 
@@ -742,7 +389,7 @@ private fun WallpaperAccentRow(currentPaletteId: String) {
                             color = if (isSelected) palette.accent else palette.onBackground.copy(alpha = 0.15f),
                             shape = CircleShape
                         )
-                        .clickable { applyWallpaperAccent(context, ThemeState.designLanguage, lightMode, color) },
+                        .clickable { applyWallpaperAccent(context, lightMode, color) },
                     contentAlignment = Alignment.Center
                 ) {
                     Box(

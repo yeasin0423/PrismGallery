@@ -29,7 +29,7 @@ fun GalleryTheme(
     val targetTheme = ThemeState.currentTheme()
     val target = targetTheme.palette
 
-    // Palette changes (accent, light/dark, design language) cross-fade instead of cutting over.
+    // Palette changes (accent, light/dark) cross-fade instead of cutting over.
     val colorSpec = tween<Color>(durationMillis = 450)
     val background by animateColorAsState(target.background, colorSpec, label = "palette_background")
     val onBackground by animateColorAsState(target.onBackground, colorSpec, label = "palette_on_background")
@@ -115,7 +115,7 @@ fun GalleryTheme(
             colorScheme = colorScheme,
             typography = Typography
         ) {
-            // Every clickable without an explicit indication gets the language's own press feedback.
+            // Every clickable without an explicit indication gets the One UI press feedback.
             CompositionLocalProvider(
                 LocalIndication provides com.gallery.app.ui.design.rememberThemedIndication(),
                 content = content

@@ -306,7 +306,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     fun getInternalStorageSpace() = repository.getInternalStorageSpace()
     fun getSdCardStorageSpace() = repository.getSdCardStorageSpace()
 
-    /** Space used by photos, videos, the trash and each album (iOS storage page). */
+    /** Space used by photos, videos, the trash and each album. */
     suspend fun loadStorageStats(): MediaRepository.MediaStorageStats = repository.getMediaStorageStats()
 
     // Manual Graphics Quality tier (Low/Medium/High/Ultra), like a game's video settings

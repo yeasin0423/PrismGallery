@@ -1,5 +1,4 @@
 package com.gallery.app.ui.design
-import com.gallery.app.ui.i18n.strings
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.MutableTransitionState
@@ -10,14 +9,11 @@ import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -40,10 +36,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -68,7 +60,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
@@ -78,12 +69,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gallery.app.ui.theme.AppColorPalette
-import com.gallery.app.ui.theme.DesignLanguage
 import com.gallery.app.ui.theme.LocalAppTheme
 import com.gallery.app.ui.theme.destructive
 import com.gallery.app.ui.theme.frost
 import com.gallery.app.ui.theme.isLight
-import com.gallery.app.ui.theme.onAccent
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeChild
@@ -160,13 +149,6 @@ fun OverlayWindow(content: @Composable (Transition<Boolean>) -> Unit) {
 // Scrim
 // ---------------------------------------------------------------------------------------------
 
-private fun scrimColor(language: DesignLanguage, palette: AppColorPalette): Color = when (language) {
-    DesignLanguage.SAMSUNG_ONEUI -> Color.Black.copy(alpha = 0.45f)
-    DesignLanguage.GOOGLE_EXPRESSIVE -> Color.Black.copy(alpha = 0.52f)
-    DesignLanguage.IOS_LIQUID_GLASS -> Color.Black.copy(alpha = if (palette.isLight) 0.18f else 0.38f)
-    DesignLanguage.XIAOMI_HYPEROS -> Color.Black.copy(alpha = if (palette.isLight) 0.30f else 0.45f)
-}
-
 @Composable
 private fun OverlayScrim(
     transition: Transition<Boolean>,
@@ -179,7 +161,7 @@ private fun OverlayScrim(
         label = "scrim_alpha"
     ) { if (it) 1f else 0f }
     val rootHaze = LocalRootHaze.current
-    val dim = scrimColor(theme.language, theme.palette)
+    val dim = Color.Black.copy(alpha = 0.45f)
     val useBlur = blur && glassEnabled()
     Box(
         modifier = Modifier
@@ -225,11 +207,7 @@ data class DialogButton(
 )
 
 /**
- * A dialog drawn the way each OS draws it:
- * - One UI: frosted dark card, start-aligned bold title, split text buttons at the bottom.
- * - Material 3 Expressive: tonal card, large headline, end-aligned buttons with a filled pill, springy pop.
- * - iOS: centered Liquid Glass alert that settles in from a slight zoom, capsule buttons.
- * - HyperOS: sheet-like card anchored to the bottom of the screen, two wide pill buttons.
+ * A One UI dialog: frosted dark card, start-aligned bold title, split text buttons at the bottom.
  *
  * Pass [buttons] in visual order, dismiss action first and confirm action last.
  */
@@ -259,21 +237,12 @@ private fun DialogFrame(
 ) {
     val theme = LocalAppTheme.current
     val palette = theme.palette
-    val language = theme.language
 
     BackHandler(enabled = transition.targetState && dismissible) { onDismissRequest() }
 
     val progress by transition.animateFloat(
         transitionSpec = {
-            if (targetState) {
-                when (language) {
-                    DesignLanguage.GOOGLE_EXPRESSIVE -> spring(dampingRatio = 0.68f, stiffness = 420f)
-                    DesignLanguage.XIAOMI_HYPEROS -> spring(dampingRatio = 0.9f, stiffness = 600f)
-                    else -> spring(dampingRatio = 0.86f, stiffness = 520f)
-                }
-            } else {
-                tween(160)
-            }
+            if (targetState) spring(dampingRatio = 0.86f, stiffness = 520f) else tween(160)
         },
         label = "dialog_progress"
     ) { if (it) 1f else 0f }
@@ -285,20 +254,13 @@ private fun DialogFrame(
             blur = true
         )
 
-        val bottomAnchored = language == DesignLanguage.XIAOMI_HYPEROS
-        val centeredText = language == DesignLanguage.IOS_LIQUID_GLASS || language == DesignLanguage.XIAOMI_HYPEROS
-        val sidePadding = when (language) {
-            DesignLanguage.IOS_LIQUID_GLASS -> 36.dp
-            DesignLanguage.XIAOMI_HYPEROS -> 12.dp
-            else -> 24.dp
-        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .systemBarsPadding()
                 .imePadding()
-                .padding(horizontal = sidePadding, vertical = if (bottomAnchored) 10.dp else 24.dp),
-            contentAlignment = if (bottomAnchored) Alignment.BottomCenter else Alignment.Center
+                .padding(horizontal = 24.dp, vertical = 24.dp),
+            contentAlignment = Alignment.Center
         ) {
             val shape = RoundedCornerShape(theme.shapes.dialogCornerRadius)
             Column(
@@ -308,72 +270,34 @@ private fun DialogFrame(
                     .graphicsLayer {
                         val p = progress
                         alpha = p.coerceIn(0f, 1f)
-                        when (language) {
-                            DesignLanguage.XIAOMI_HYPEROS -> translationY = (1f - p) * 180.dp.toPx()
-                            DesignLanguage.IOS_LIQUID_GLASS -> {
-                                val s = 1.14f - 0.14f * p
-                                scaleX = s
-                                scaleY = s
-                            }
-                            DesignLanguage.GOOGLE_EXPRESSIVE -> {
-                                val s = 0.82f + 0.18f * p
-                                scaleX = s
-                                scaleY = s
-                            }
-                            DesignLanguage.SAMSUNG_ONEUI -> {
-                                val s = 0.92f + 0.08f * p
-                                scaleX = s
-                                scaleY = s
-                            }
-                        }
+                        val s = 0.92f + 0.08f * p
+                        scaleX = s
+                        scaleY = s
                     }
                     .dialogSurface(shape)
                     .pointerInput(Unit) { detectTapGestures { } }
-                    .padding(
-                        when (language) {
-                            DesignLanguage.SAMSUNG_ONEUI -> PaddingValues(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 12.dp)
-                            DesignLanguage.GOOGLE_EXPRESSIVE -> PaddingValues(24.dp)
-                            DesignLanguage.IOS_LIQUID_GLASS -> PaddingValues(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 16.dp)
-                            DesignLanguage.XIAOMI_HYPEROS -> PaddingValues(start = 22.dp, end = 22.dp, top = 26.dp, bottom = 20.dp)
-                        }
-                    ),
-                horizontalAlignment = if (centeredText) Alignment.CenterHorizontally else Alignment.Start
+                    .padding(PaddingValues(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 12.dp)),
+                horizontalAlignment = Alignment.Start
             ) {
-                val textAlign = if (centeredText) TextAlign.Center else TextAlign.Start
+                val textAlign = TextAlign.Start
                 if (title != null) {
                     Text(
                         text = title,
                         color = palette.onBackground,
-                        fontSize = when (language) {
-                            DesignLanguage.SAMSUNG_ONEUI -> 20.sp
-                            DesignLanguage.GOOGLE_EXPRESSIVE -> 24.sp
-                            DesignLanguage.IOS_LIQUID_GLASS -> 17.sp
-                            DesignLanguage.XIAOMI_HYPEROS -> 21.sp
-                        },
-                        fontWeight = when (language) {
-                            DesignLanguage.GOOGLE_EXPRESSIVE -> FontWeight.Normal
-                            DesignLanguage.SAMSUNG_ONEUI -> FontWeight.Bold
-                            else -> FontWeight.SemiBold
-                        },
-                        lineHeight = if (language == DesignLanguage.GOOGLE_EXPRESSIVE) 32.sp else 24.sp,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 24.sp,
                         textAlign = textAlign,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
                 if (message != null) {
-                    Spacer(modifier = Modifier.height(if (language == DesignLanguage.GOOGLE_EXPRESSIVE) 14.dp else 8.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = message,
-                        color = when (language) {
-                            DesignLanguage.GOOGLE_EXPRESSIVE, DesignLanguage.XIAOMI_HYPEROS -> palette.textMuted
-                            else -> palette.onBackground.copy(alpha = 0.86f)
-                        },
-                        fontSize = when (language) {
-                            DesignLanguage.IOS_LIQUID_GLASS -> 14.sp
-                            DesignLanguage.XIAOMI_HYPEROS -> 17.sp
-                            else -> 15.sp
-                        },
-                        lineHeight = if (language == DesignLanguage.XIAOMI_HYPEROS) 24.sp else 21.sp,
+                        color = palette.onBackground.copy(alpha = 0.86f),
+                        fontSize = 15.sp,
+                        lineHeight = 21.sp,
                         textAlign = textAlign,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -383,7 +307,7 @@ private fun DialogFrame(
                     content()
                 }
                 if (buttons.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(if (language == DesignLanguage.SAMSUNG_ONEUI) 14.dp else 22.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
                     DialogButtons(buttons)
                 }
             }
@@ -396,28 +320,11 @@ private fun Modifier.dialogSurface(shape: Shape): Modifier {
     val theme = LocalAppTheme.current
     val palette = theme.palette
     val rootHaze = LocalRootHaze.current
-    return when (theme.language) {
-        DesignLanguage.SAMSUNG_ONEUI -> this.glass(
-            shape,
-            GlassSpec(palette.frost(Color(0xFF282828), 0.80f), palette.frost(Color(0xFF282828), 1f), 44.dp, GlassRim.Subtle),
-            rootHaze
-        )
-        // Gemini's glowing translucent box.
-        DesignLanguage.GOOGLE_EXPRESSIVE -> this.geminiGlass(shape, rootHaze, tintAlpha = 0.74f)
-        DesignLanguage.IOS_LIQUID_GLASS -> this.glass(
-            shape,
-            if (palette.isLight) {
-                GlassSpec(Color.White.copy(alpha = 0.66f), Color.White.copy(alpha = 0.98f), 40.dp, GlassRim.Liquid)
-            } else {
-                GlassSpec(Color(0xFF2A2A2D).copy(alpha = 0.58f), Color(0xFF2A2A2D).copy(alpha = 0.98f), 40.dp, GlassRim.Liquid)
-            },
-            rootHaze
-        )
-        DesignLanguage.XIAOMI_HYPEROS -> this
-            .shadow(24.dp, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.25f))
-            .clip(shape)
-            .background(if (palette.isLight) palette.surface else palette.surfaceVariant)
-    }
+    return this.glass(
+        shape,
+        GlassSpec(palette.frost(Color(0xFF282828), 0.80f), palette.frost(Color(0xFF282828), 1f), 44.dp, GlassRim.Subtle),
+        rootHaze
+    )
 }
 
 private fun dialogButtonTextColor(button: DialogButton, palette: AppColorPalette): Color = when (button.style) {
@@ -428,169 +335,37 @@ private fun dialogButtonTextColor(button: DialogButton, palette: AppColorPalette
 
 @Composable
 private fun DialogButtons(buttons: List<DialogButton>) {
-    val theme = LocalAppTheme.current
-    val palette = theme.palette
-    when (theme.language) {
-        DesignLanguage.SAMSUNG_ONEUI -> Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            buttons.forEachIndexed { index, button ->
-                if (index > 0) {
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .height(18.dp)
-                            .background(palette.onBackground.copy(alpha = 0.16f))
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(22.dp))
-                        .clickable(enabled = button.enabled, onClick = button.onClick)
-                        .padding(vertical = 13.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val color = dialogButtonTextColor(button, palette)
-                    Text(
-                        text = button.text,
-                        color = if (button.enabled) color else color.copy(alpha = 0.38f),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-        }
-
-        DesignLanguage.GOOGLE_EXPRESSIVE -> Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            buttons.forEach { button ->
-                val filled = button.style == DialogButtonStyle.Primary || button.style == DialogButtonStyle.Destructive
-                val container = if (button.style == DialogButtonStyle.Destructive) palette.destructive else palette.accent
-                val interaction = remember { MutableInteractionSource() }
-                Box(
-                    modifier = Modifier
-                        .pressScale(interaction, 0.92f)
-                        .clip(CircleShape)
-                        .then(
-                            if (filled) {
-                                Modifier.background(if (button.enabled) container else container.copy(alpha = 0.3f))
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .clickable(
-                            interactionSource = interaction,
-                            indication = androidx.compose.material3.ripple(),
-                            enabled = button.enabled,
-                            onClick = button.onClick
-                        )
-                        .padding(horizontal = if (filled) 22.dp else 14.dp, vertical = 11.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = button.text,
-                        color = when {
-                            filled && button.style == DialogButtonStyle.Destructive -> Color.White
-                            filled -> palette.onAccent
-                            else -> palette.accent
-                        },
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-        }
-
-        DesignLanguage.IOS_LIQUID_GLASS -> {
-            if (buttons.size > 2) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    buttons.forEach { IosCapsuleButton(it, Modifier.fillMaxWidth()) }
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    buttons.forEach { IosCapsuleButton(it, Modifier.weight(1f)) }
-                }
-            }
-        }
-
-        DesignLanguage.XIAOMI_HYPEROS -> Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // HyperOS: wide pills on a lighter grey; cancel in soft white, delete in red.
-            buttons.forEach { button ->
-                val primary = button.style == DialogButtonStyle.Primary
-                val interaction = remember { MutableInteractionSource() }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .pressScale(interaction, 0.96f)
-                        .height(56.dp)
-                        .clip(CircleShape)
-                        .background(
-                            when {
-                                primary && button.enabled -> palette.accent
-                                primary -> palette.accent.copy(alpha = 0.35f)
-                                else -> lerp(if (palette.isLight) palette.surfaceVariant else palette.surfaceVariant, palette.onBackground, if (palette.isLight) 0.02f else 0.10f)
-                            }
-                        )
-                        .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(), enabled = button.enabled, onClick = button.onClick),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = button.text,
-                        color = when (button.style) {
-                            DialogButtonStyle.Primary -> palette.onAccent
-                            DialogButtonStyle.Destructive -> palette.destructive
-                            else -> palette.onBackground.copy(alpha = 0.8f)
-                        },
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun IosCapsuleButton(button: DialogButton, modifier: Modifier) {
     val palette = LocalAppTheme.current.palette
-    val interaction = remember { MutableInteractionSource() }
-    val primary = button.style == DialogButtonStyle.Primary
-    Box(
-        modifier = modifier
-            .pressScale(interaction, 0.95f)
-            .height(48.dp)
-            .clip(CircleShape)
-            .background(
-                when {
-                    primary -> palette.accent.copy(alpha = if (button.enabled) 1f else 0.4f)
-                    palette.isLight -> Color.Black.copy(alpha = 0.07f)
-                    else -> Color.White.copy(alpha = 0.14f)
-                }
-            )
-            .clickable(interactionSource = interaction, indication = null, enabled = button.enabled, onClick = button.onClick),
-        contentAlignment = Alignment.Center
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = button.text,
-            color = when (button.style) {
-                DialogButtonStyle.Primary -> palette.onAccent
-                DialogButtonStyle.Destructive -> palette.destructive
-                else -> palette.onBackground
-            }.let { if (button.enabled) it else it.copy(alpha = 0.5f) },
-            fontSize = 17.sp,
-            fontWeight = if (primary) FontWeight.SemiBold else FontWeight.Medium
-        )
+        buttons.forEachIndexed { index, button ->
+            if (index > 0) {
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(18.dp)
+                        .background(palette.onBackground.copy(alpha = 0.16f))
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(22.dp))
+                    .clickable(enabled = button.enabled, onClick = button.onClick)
+                    .padding(vertical = 13.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                val color = dialogButtonTextColor(button, palette)
+                Text(
+                    text = button.text,
+                    color = if (button.enabled) color else color.copy(alpha = 0.38f),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
     }
 }
 
@@ -599,9 +374,8 @@ private fun IosCapsuleButton(button: DialogButton, modifier: Modifier) {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * A bottom sheet in the active language: One UI frosted dark sheet, Material tonal sheet with a spring,
- * iOS floating Liquid Glass card inset from the screen edges, HyperOS frosted light sheet. Dragging the
- * header down dismisses it. Scrollable content should use `Modifier.weight(1f, fill = false)`.
+ * A One UI bottom sheet: a frosted dark card that slides up from the bottom edge. Dragging the header
+ * down dismisses it. Scrollable content should use `Modifier.weight(1f, fill = false)`.
  */
 @Composable
 fun ThemedSheet(
@@ -622,17 +396,12 @@ private fun SheetFrame(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val theme = LocalAppTheme.current
-    val language = theme.language
 
     BackHandler(enabled = transition.targetState) { onDismissRequest() }
 
     val progress by transition.animateFloat(
         transitionSpec = {
-            if (targetState) {
-                spring(dampingRatio = if (language == DesignLanguage.GOOGLE_EXPRESSIVE) 0.78f else 1f, stiffness = 360f)
-            } else {
-                tween(210)
-            }
+            if (targetState) spring(dampingRatio = 1f, stiffness = 360f) else tween(210)
         },
         label = "sheet_progress"
     ) { if (it) 1f else 0f }
@@ -692,14 +461,10 @@ private fun SheetFrame(
                 .statusBarsPadding(),
             contentAlignment = Alignment.BottomCenter
         ) {
-            val floating = language == DesignLanguage.IOS_LIQUID_GLASS
             val corner = theme.shapes.dialogCornerRadius
-            val shape = if (floating) RoundedCornerShape(corner) else RoundedCornerShape(topStart = corner, topEnd = corner)
+            val shape = RoundedCornerShape(topStart = corner, topEnd = corner)
             Column(
                 modifier = Modifier
-                    .then(
-                        if (floating) Modifier.navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp) else Modifier
-                    )
                     .widthIn(max = 640.dp)
                     .fillMaxWidth()
                     .heightIn(max = maxHeight * 0.92f)
@@ -712,7 +477,7 @@ private fun SheetFrame(
                         orientation = Orientation.Vertical,
                         onDragStopped = { velocity -> settleDrag(velocity) }
                     )
-                    .then(if (floating) Modifier else Modifier.navigationBarsPadding())
+                    .navigationBarsPadding()
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     SheetHeader(title, onDismissRequest)
@@ -728,39 +493,16 @@ private fun Modifier.sheetSurface(shape: Shape): Modifier {
     val theme = LocalAppTheme.current
     val palette = theme.palette
     val rootHaze = LocalRootHaze.current
-    return when (theme.language) {
-        DesignLanguage.SAMSUNG_ONEUI -> this.glass(
-            shape,
-            GlassSpec(palette.frost(Color(0xFF1C1C1C), 0.84f), palette.frost(Color(0xFF1C1C1C), 1f), 44.dp, GlassRim.Subtle),
-            rootHaze
-        )
-        DesignLanguage.GOOGLE_EXPRESSIVE -> this.glass(
-            shape,
-            GlassSpec(palette.surface.copy(alpha = 0.86f), palette.surface, 44.dp, GlassRim.Subtle),
-            rootHaze
-        )
-        DesignLanguage.IOS_LIQUID_GLASS -> this.glass(
-            shape,
-            if (palette.isLight) {
-                GlassSpec(Color(0xFFF7F7FA).copy(alpha = 0.78f), Color(0xFFF7F7FA), 44.dp, GlassRim.Liquid)
-            } else {
-                GlassSpec(Color(0xFF1C1C1E).copy(alpha = 0.66f), Color(0xFF1C1C1E), 44.dp, GlassRim.Liquid)
-            },
-            rootHaze
-        )
-        DesignLanguage.XIAOMI_HYPEROS -> this.glass(
-            shape,
-            GlassSpec(palette.surface.copy(alpha = 0.90f), palette.surface, 44.dp, GlassRim.None),
-            rootHaze
-        )
-    }
+    return this.glass(
+        shape,
+        GlassSpec(palette.frost(Color(0xFF1C1C1C), 0.84f), palette.frost(Color(0xFF1C1C1C), 1f), 44.dp, GlassRim.Subtle),
+        rootHaze
+    )
 }
 
 @Composable
 private fun SheetHeader(title: String?, onDismissRequest: () -> Unit) {
-    val theme = LocalAppTheme.current
-    val palette = theme.palette
-    val language = theme.language
+    val palette = LocalAppTheme.current.palette
 
     Box(
         modifier = Modifier
@@ -770,12 +512,9 @@ private fun SheetHeader(title: String?, onDismissRequest: () -> Unit) {
     ) {
         Box(
             modifier = Modifier
-                .size(
-                    width = if (language == DesignLanguage.GOOGLE_EXPRESSIVE) 32.dp else 36.dp,
-                    height = if (language == DesignLanguage.IOS_LIQUID_GLASS) 5.dp else 4.dp
-                )
+                .size(width = 36.dp, height = 4.dp)
                 .clip(CircleShape)
-                .background(palette.onBackground.copy(alpha = if (language == DesignLanguage.GOOGLE_EXPRESSIVE) 0.4f else 0.22f))
+                .background(palette.onBackground.copy(alpha = 0.22f))
         )
     }
 
@@ -784,61 +523,13 @@ private fun SheetHeader(title: String?, onDismissRequest: () -> Unit) {
         return
     }
 
-    when (language) {
-        DesignLanguage.IOS_LIQUID_GLASS -> Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp)
-        ) {
-            val interaction = remember { MutableInteractionSource() }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .pressScale(interaction)
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(if (palette.isLight) Color.Black.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.12f))
-                    .clickable(interactionSource = interaction, indication = null, onClick = onDismissRequest),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Rounded.Close, strings.close, tint = palette.onBackground, modifier = Modifier.size(20.dp))
-            }
-            Text(
-                text = title,
-                color = palette.onBackground,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.align(Alignment.Center)
-            )
-        }
-
-        DesignLanguage.XIAOMI_HYPEROS -> Text(
-            text = title,
-            color = palette.onBackground,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp)
-        )
-
-        DesignLanguage.GOOGLE_EXPRESSIVE -> Text(
-            text = title,
-            color = palette.onBackground,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Normal,
-            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 12.dp)
-        )
-
-        DesignLanguage.SAMSUNG_ONEUI -> Text(
-            text = title,
-            color = palette.onBackground,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 12.dp)
-        )
-    }
+    Text(
+        text = title,
+        color = palette.onBackground,
+        fontSize = 22.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 12.dp)
+    )
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -850,15 +541,12 @@ data class MenuEntry(
     val icon: ImageVector? = null,
     val checked: Boolean = false,
     val destructive: Boolean = false,
-    /** HyperOS shows each group of entries as its own stacked card (e.g. actions, then the view choice). */
-    val group: Int = 0,
     val onClick: () -> Unit
 )
 
 /**
- * A popup menu anchored below [anchorBounds] (root coordinates, right-aligned to the anchor).
- * One UI frosted rounded popup, Material tonal menu with a selected-item container, iOS Liquid Glass
- * context menu with trailing icons and separators, HyperOS white floating card.
+ * A popup menu anchored below [anchorBounds] (root coordinates, right-aligned to the anchor), drawn as
+ * a solid rounded One UI card.
  */
 @Composable
 fun ThemedPopupMenu(
@@ -880,20 +568,13 @@ private fun PopupMenuFrame(
     anchorBounds: Rect?,
     entries: List<MenuEntry>
 ) {
-    val theme = LocalAppTheme.current
-    val palette = theme.palette
-    val language = theme.language
+    val palette = LocalAppTheme.current.palette
 
     BackHandler(enabled = transition.targetState) { onDismissRequest() }
 
     val progress by transition.animateFloat(
         transitionSpec = {
-            if (targetState) {
-                if (language == DesignLanguage.GOOGLE_EXPRESSIVE) spring(dampingRatio = 0.7f, stiffness = 600f)
-                else spring(dampingRatio = 0.85f, stiffness = 800f)
-            } else {
-                tween(130)
-            }
+            if (targetState) spring(dampingRatio = 0.85f, stiffness = 800f) else tween(130)
         },
         label = "menu_progress"
     ) { if (it) 1f else 0f }
@@ -908,14 +589,7 @@ private fun PopupMenuFrame(
         Layout(
             modifier = Modifier.fillMaxSize(),
             content = {
-                val shape = RoundedCornerShape(
-                    when (language) {
-                        DesignLanguage.SAMSUNG_ONEUI -> 26.dp
-                        DesignLanguage.GOOGLE_EXPRESSIVE -> 30.dp
-                        DesignLanguage.IOS_LIQUID_GLASS -> 26.dp
-                        DesignLanguage.XIAOMI_HYPEROS -> 24.dp
-                    }
-                )
+                val shape = RoundedCornerShape(26.dp)
                 val popIn = Modifier.graphicsLayer {
                     val p = progress
                     alpha = p.coerceIn(0f, 1f)
@@ -924,52 +598,18 @@ private fun PopupMenuFrame(
                     scaleY = s
                     transformOrigin = TransformOrigin(1f, 0f)
                 }
-                if (language == DesignLanguage.XIAOMI_HYPEROS) {
-                    Column(
-                        modifier = popIn
-                            .widthIn(min = 236.dp, max = 300.dp)
-                            .width(IntrinsicSize.Max),
-                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)
-                    ) {
-                        entries.groupBy { it.group }.toSortedMap().values.forEach { group ->
-                            val anyChecked = group.any { it.checked }
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .menuSurface(shape)
-                                    .padding(vertical = if (anyChecked) 0.dp else 6.dp)
-                            ) {
-                                group.forEach { entry ->
-                                    MenuRow(entry, anyChecked) {
-                                        onDismissRequest()
-                                        entry.onClick()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    Column(
-                        modifier = popIn
-                            .widthIn(min = 196.dp, max = 290.dp)
-                            .width(IntrinsicSize.Max)
-                            .menuSurface(shape)
-                            .padding(vertical = if (language == DesignLanguage.GOOGLE_EXPRESSIVE) 10.dp else 6.dp)
-                    ) {
-                        val anyChecked = entries.any { it.checked }
-                        entries.forEachIndexed { index, entry ->
-                            if (index > 0 && language == DesignLanguage.IOS_LIQUID_GLASS) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(0.5.dp)
-                                        .background(palette.onBackground.copy(alpha = 0.12f))
-                                )
-                            }
-                            MenuRow(entry, anyChecked) {
-                                onDismissRequest()
-                                entry.onClick()
-                            }
+                Column(
+                    modifier = popIn
+                        .widthIn(min = 196.dp, max = 290.dp)
+                        .width(IntrinsicSize.Max)
+                        .menuSurface(shape)
+                        .padding(vertical = 6.dp)
+                ) {
+                    val anyChecked = entries.any { it.checked }
+                    entries.forEach { entry ->
+                        MenuRow(entry, anyChecked) {
+                            onDismissRequest()
+                            entry.onClick()
                         }
                     }
                 }
@@ -996,134 +636,35 @@ private fun PopupMenuFrame(
 
 @Composable
 private fun Modifier.menuSurface(shape: Shape): Modifier {
-    val theme = LocalAppTheme.current
-    val palette = theme.palette
-    val rootHaze = LocalRootHaze.current
-    return when (theme.language) {
-        // One UI 8 popups are a solid grey card.
-        DesignLanguage.SAMSUNG_ONEUI -> this
-            .shadow(16.dp, shape, ambientColor = Color.Black.copy(alpha = 0.3f), spotColor = Color.Black.copy(alpha = 0.3f))
-            .clip(shape)
-            .background(if (palette.isLight) Color.White else Color(0xFF3A3A3C))
-        // Gemini menus: a black card with a hairline edge; the accent marks the chosen entry.
-        DesignLanguage.GOOGLE_EXPRESSIVE -> this
-            .shadow(14.dp, shape, ambientColor = Color.Black.copy(alpha = 0.35f), spotColor = Color.Black.copy(alpha = 0.35f))
-            .clip(shape)
-            .background(if (palette.isLight) Color.White else Color(0xFF0C0D0E))
-            .border(1.dp, palette.onBackground.copy(alpha = if (palette.isLight) 0.08f else 0.10f), shape)
-        DesignLanguage.IOS_LIQUID_GLASS -> this.glass(
-            shape,
-            if (palette.isLight) {
-                GlassSpec(Color.White.copy(alpha = 0.62f), Color.White.copy(alpha = 0.98f), 30.dp, GlassRim.Liquid)
-            } else {
-                GlassSpec(Color(0xFF2C2C2E).copy(alpha = 0.55f), Color(0xFF2C2C2E).copy(alpha = 0.98f), 30.dp, GlassRim.Liquid)
-            },
-            rootHaze
-        )
-        DesignLanguage.XIAOMI_HYPEROS -> this
-            .shadow(18.dp, shape, ambientColor = Color.Black.copy(alpha = 0.2f), spotColor = Color.Black.copy(alpha = 0.2f))
-            .clip(shape)
-            .background(if (palette.isLight) palette.surface else palette.surfaceVariant)
-    }
+    val palette = LocalAppTheme.current.palette
+    // One UI popups are a solid grey card.
+    return this
+        .shadow(16.dp, shape, ambientColor = Color.Black.copy(alpha = 0.3f), spotColor = Color.Black.copy(alpha = 0.3f))
+        .clip(shape)
+        .background(if (palette.isLight) Color.White else Color(0xFF3A3A3C))
 }
 
 @Composable
 private fun MenuRow(entry: MenuEntry, anyChecked: Boolean, onClick: () -> Unit) {
-    val theme = LocalAppTheme.current
-    val palette = theme.palette
+    val palette = LocalAppTheme.current.palette
     val textColor = when {
         entry.destructive -> palette.destructive
-        entry.checked && theme.language != DesignLanguage.IOS_LIQUID_GLASS -> palette.accent
+        entry.checked -> palette.accent
         else -> palette.onBackground
     }
-    when (theme.language) {
-        DesignLanguage.GOOGLE_EXPRESSIVE -> {
-            // A neutral (white/grey/black) accent on its own tinted pill is unreadable: use the text colour instead.
-            val neutral = isNeutralColor(palette.accent)
-            val rowText = if (entry.checked && neutral) palette.onBackground else textColor
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 2.dp)
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(
-                        when {
-                            !entry.checked -> Color.Transparent
-                            neutral -> palette.onBackground.copy(alpha = if (palette.isLight) 0.08f else 0.12f)
-                            else -> vividAccent(palette.accent).copy(alpha = if (palette.isLight) 0.12f else 0.22f)
-                        }
-                    )
-                    .clickable(onClick = onClick)
-                    .padding(horizontal = 18.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (entry.icon != null) {
-                    Icon(entry.icon, null, tint = rowText, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(12.dp))
-                }
-                Text(entry.text, color = rowText, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                if (entry.checked) {
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Icon(Icons.Rounded.Check, null, tint = if (neutral) palette.onBackground else palette.accent, modifier = Modifier.size(18.dp))
-                }
-            }
-        }
-
-        DesignLanguage.IOS_LIQUID_GLASS -> Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (anyChecked) {
-                Box(modifier = Modifier.width(26.dp)) {
-                    if (entry.checked) {
-                        Icon(Icons.Rounded.Check, null, tint = palette.onBackground, modifier = Modifier.size(18.dp))
-                    }
-                }
-            }
-            Text(entry.text, color = textColor, fontSize = 17.sp, modifier = Modifier.weight(1f))
-            if (entry.icon != null) {
-                Spacer(modifier = Modifier.width(16.dp))
-                Icon(entry.icon, null, tint = textColor, modifier = Modifier.size(20.dp))
-            }
-        }
-
-        DesignLanguage.SAMSUNG_ONEUI -> Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(horizontal = 30.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                entry.text,
-                color = textColor,
-                fontSize = 19.sp,
-                fontWeight = if (entry.checked) FontWeight.SemiBold else FontWeight.Normal,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        // HyperOS: the chosen entry fills its row with an accent wash, with accent icon, text and check.
-        DesignLanguage.XIAOMI_HYPEROS -> Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(if (entry.checked) palette.accent.copy(alpha = if (palette.isLight) 0.10f else 0.18f) else Color.Transparent)
-                .clickable(onClick = onClick)
-                .padding(horizontal = 24.dp, vertical = 17.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (anyChecked && entry.icon != null) {
-                Icon(entry.icon, null, tint = if (entry.checked) palette.accent else palette.onBackground, modifier = Modifier.size(24.dp))
-                Spacer(modifier = Modifier.width(18.dp))
-            }
-            Text(entry.text, color = textColor, fontSize = 17.sp, modifier = Modifier.weight(1f))
-            if (entry.checked) {
-                Spacer(modifier = Modifier.width(16.dp))
-                Icon(Icons.Rounded.Check, null, tint = palette.accent, modifier = Modifier.size(24.dp))
-            }
-        }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 30.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            entry.text,
+            color = textColor,
+            fontSize = 19.sp,
+            fontWeight = if (entry.checked) FontWeight.SemiBold else FontWeight.Normal,
+            modifier = Modifier.weight(1f)
+        )
     }
 }

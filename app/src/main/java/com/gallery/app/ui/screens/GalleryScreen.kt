@@ -7,12 +7,10 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -22,8 +20,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -31,16 +27,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.Videocam
-import androidx.compose.material.icons.rounded.FilterList
-import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
 import androidx.compose.foundation.layout.size
-import com.gallery.app.ui.design.barGlass
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ZoomIn
@@ -61,9 +48,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -71,14 +55,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gallery.app.data.ThumbnailManager
-import com.gallery.app.model.MediaDateSection
 import com.gallery.app.model.MediaItem
 import com.gallery.app.ui.components.DateHeader
-import com.gallery.app.ui.components.ExpressiveHeroCard
 import com.gallery.app.ui.components.FastScroller
 import com.gallery.app.ui.components.FilterChips
 import com.gallery.app.ui.components.LargeHeader
@@ -87,40 +68,27 @@ import com.gallery.app.ui.components.detectPinchToZoomGrid
 import com.gallery.app.ui.components.SelectionTopBar
 import com.gallery.app.ui.components.OneUiSelectAll
 import com.gallery.app.ui.components.detectDragSelect
-import com.gallery.app.ui.design.GlassRim
-import com.gallery.app.ui.design.GlassSpec
 import com.gallery.app.ui.design.MenuEntry
 import com.gallery.app.ui.design.ThemedIconButton
 import com.gallery.app.ui.design.ThemedPopupMenu
 import com.gallery.app.ui.design.ThemedTopBar
 import com.gallery.app.ui.design.bottomBarContentPadding
 import com.gallery.app.ui.design.glass
-import com.gallery.app.ui.design.pressScale
-import com.gallery.app.ui.theme.DesignLanguage
 import com.gallery.app.ui.theme.LocalAppTheme
-import com.gallery.app.ui.theme.isLight
-import com.gallery.app.ui.theme.onAccent
 import com.gallery.app.ui.viewmodel.MediaFilter
 import com.gallery.app.util.DateUtils
 import dev.chrisbanes.haze.HazeState
 import com.gallery.app.ui.design.HazeSource
 import com.gallery.app.ui.design.MediaZoomTransition
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 
 /**
- * The "Bilder" media grid, laid out per design language:
- * - One UI: Samsung Gallery's expanded app bar (big centred title in the upper third), a frosted
- *   pinned bar once scrolled, filters in the ⋮ popup, and One UI 9's floating frosted selection card.
- * - Material 3 Expressive: headline, a hero card with the newest photo, filter chips, rounded tiles.
- * - iOS Photos ("Mediathek"): oldest photos at the top and the newest at the bottom, opening at the
- *   bottom; no date headers; photos run edge-to-edge under a progressive glass title with a filter
- *   button and "Auswählen".
- * - HyperOS: light layout, text-tab filters, compact frosted bars.
+ * The "Bilder" media grid in One UI style: Samsung Gallery's expanded app bar (big centred title in the
+ * upper third), a frosted pinned bar once scrolled, filters in the ⋮ popup, and One UI 9's floating
+ * frosted selection card.
  *
  * Grid behaviour (pinch zoom, long-press drag selection, fast scroller, detail overlay that keeps the
- * LazyGridState intact) is shared by all of them.
+ * LazyGridState intact) is shared by every entry point.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -148,7 +116,7 @@ fun GalleryScreen(
     isSelectionMode: Boolean = false,
     selectedIds: Set<Long> = emptySet(),
     onStartSelection: (Long) -> Unit = {},
-    /** Enters selection mode with nothing selected yet (iOS "Auswählen"). */
+    /** Enters selection mode with nothing selected yet. */
     onEnterSelection: () -> Unit = {},
     onToggleSelection: (Long) -> Unit = {},
     onSetSelection: (Long, Boolean) -> Unit = { _, _ -> },
@@ -172,13 +140,9 @@ fun GalleryScreen(
 
     val theme = LocalAppTheme.current
     val palette = theme.palette
-    val language = theme.language
-    val isIos = language == DesignLanguage.IOS_LIQUID_GLASS
-    // iOS Photos shows its library in chronological order: oldest first, the newest photo last. The grid,
-    // drag selection and the fullscreen viewer all work on this displayed order.
-    val displayItems = remember(items, isIos) { if (isIos) items.asReversed() else items }
-    val screenTitle = if (isIos && onBackClick == null) strings.tabLibrary else title
-    val countText = if (isIos) strings.objects(items.size) else strings.items(items.size)
+    val displayItems = items
+    val screenTitle = title
+    val countText = strings.items(items.size)
     // While the fullscreen viewer covers everything, the grid below it is not drawn at all.
     var gridCoveredByViewer by remember { mutableStateOf(false) }
 
@@ -222,9 +186,7 @@ fun GalleryScreen(
                     FilterChips(
                         selectedFilter = selectedFilter,
                         onFilterSelected = onFilterSelected,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = if (isIos) 20.dp else 0.dp)
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
 
@@ -242,34 +204,20 @@ fun GalleryScreen(
                 }
             }
         } else {
-            // Group items into date sections (Day for columns 2-3, Month for 4-5). iOS shows one continuous
-            // grid without headers.
-            val dateSections = remember(displayItems, columnCount, LanguageState.language, isIos) {
-                if (isIos) listOf(MediaDateSection("", displayItems)) else DateUtils.groupMediaByDate(displayItems, columnCount)
+            // Group items into date sections (Day for columns 2-3, Month for 4-5).
+            val dateSections = remember(displayItems, columnCount, LanguageState.language) {
+                DateUtils.groupMediaByDate(displayItems, columnCount)
             }
 
             val gridSpacing = theme.shapes.gridSpacing
             val gridPadding = theme.shapes.gridHorizontalPadding
 
-            // Preserved in memory permanently because GalleryScreen stays composed! iOS opens at the newest
-            // photo, i.e. at the very bottom (an index past the end is clamped to the last page).
-            val gridState = remember(isIos) {
-                LazyGridState(firstVisibleItemIndex = if (isIos) displayItems.size else 0)
-            }
+            val gridState = remember { LazyGridState() }
             val coroutineScope = rememberCoroutineScope()
             val density = LocalDensity.current
 
-            // iOS: a different filter starts again at the newest photos at the bottom.
-            if (isIos) {
-                LaunchedEffect(selectedFilter) {
-                    gridState.scrollToItem(displayItems.size)
-                }
-            }
-
             // 0f = expanded large header, 1f = scrolled far enough that the compact bar takes over.
-            val collapseDistancePx = with(density) {
-                (if (language == DesignLanguage.SAMSUNG_ONEUI) 220.dp else 110.dp).toPx()
-            }
+            val collapseDistancePx = with(density) { 220.dp.toPx() }
             val headerCollapseFraction by remember(collapseDistancePx) {
                 derivedStateOf {
                     if (gridState.firstVisibleItemIndex > 0) {
@@ -291,7 +239,6 @@ fun GalleryScreen(
             var viewMenuAnchor by remember { mutableStateOf<Rect?>(null) }
 
             val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-            val iosHeaderHeight = statusBarTop + 84.dp
             val bottomPadding = bottomBarContentPadding(extra = 12.dp)
 
             // Compose's low-level long-press-drag detector (used for selection) and each tile's
@@ -361,11 +308,7 @@ fun GalleryScreen(
                     contentPadding = PaddingValues(
                         start = gridPadding,
                         end = gridPadding,
-                        top = when {
-                            onBackClick != null -> statusBarTop + 64.dp
-                            isIos -> iosHeaderHeight
-                            else -> 0.dp
-                        },
+                        top = if (onBackClick != null) statusBarTop + 64.dp else 0.dp,
                         bottom = bottomPadding
                     ),
                     horizontalArrangement = Arrangement.spacedBy(gridSpacing),
@@ -380,14 +323,8 @@ fun GalleryScreen(
                         if (onBackClick == null) {
                             GalleryHeader(
                                 title = screenTitle,
-                                countText = countText,
-                                items = items,
-                                language = language,
                                 collapseFraction = { headerCollapseFraction },
-                                selectedFilter = selectedFilter,
-                                onFilterSelected = onFilterSelected,
                                 onOpenViewMenu = openViewMenu,
-                                onHeroClick = { onItemClick(items.first(), displayItems.indexOf(items.first())) },
                                 hazeState = gridHaze,
                                 isSelectionMode = isSelectionMode,
                                 selectedCount = selectedIds.size,
@@ -408,9 +345,8 @@ fun GalleryScreen(
                                 key = "header_${section.title}_$columnCount",
                                 contentType = "date_header"
                             ) {
-                                // HyperOS: each day can be selected or deselected as a whole while selecting.
-                                val sectionSelectable = isSelectionMode &&
-                                    (language == DesignLanguage.XIAOMI_HYPEROS || language == DesignLanguage.SAMSUNG_ONEUI)
+                                // Each day can be selected or deselected as a whole while selecting.
+                                val sectionSelectable = isSelectionMode
                                 val sectionAllSelected = sectionSelectable && section.items.all { selectedIds.contains(it.id) }
                                 DateHeader(
                                     title = section.title,
@@ -461,27 +397,8 @@ fun GalleryScreen(
 
             val allSelected = items.isNotEmpty() && selectedIds.size == items.size
             val toggleSelectAll = { if (allSelected) onDeselectAll() else onSelectAll() }
-            var selectionMenuOpen by remember { mutableStateOf(false) }
-            var selectionMenuAnchor by remember { mutableStateOf<Rect?>(null) }
 
-            if (isIos && onBackClick == null) {
-                // iOS keeps the Mediathek title while selecting; only its buttons change.
-                IosTitleOverlay(
-                    title = screenTitle,
-                    subtitle = countText,
-                    height = iosHeaderHeight,
-                    hazeState = gridHaze,
-                    selectionMode = isSelectionMode,
-                    onOpenFilter = openViewMenu,
-                    onSelect = onEnterSelection,
-                    onOpenSelectionMenu = { anchor ->
-                        selectionMenuAnchor = anchor
-                        selectionMenuOpen = true
-                    },
-                    onEndSelection = onClearSelection,
-                    modifier = Modifier.align(Alignment.TopCenter)
-                )
-            } else if (!isSelectionMode) {
+            if (!isSelectionMode) {
                 when {
                     onBackClick != null -> ThemedTopBar(
                         title = screenTitle,
@@ -508,7 +425,7 @@ fun GalleryScreen(
                         )
                     }
                 }
-            } else if (language != DesignLanguage.SAMSUNG_ONEUI || (showPinnedBar && onBackClick == null)) {
+            } else if (showPinnedBar && onBackClick == null) {
                 // One UI shows the selection in the big header; this compact bar only takes over once scrolled.
                 SelectionTopBar(
                     selectedCount = selectedIds.size,
@@ -519,50 +436,24 @@ fun GalleryScreen(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .graphicsLayer {
-                            if (language == DesignLanguage.SAMSUNG_ONEUI) alpha = ((headerCollapseFraction - 0.25f) / 0.75f).coerceIn(0f, 1f)
+                            alpha = ((headerCollapseFraction - 0.25f) / 0.75f).coerceIn(0f, 1f)
                         }
                 )
             }
-
-            // iOS selection: the ⋯ in the top capsule.
-            ThemedPopupMenu(
-                expanded = selectionMenuOpen,
-                onDismissRequest = { selectionMenuOpen = false },
-                anchorBounds = selectionMenuAnchor,
-                entries = buildList {
-                    add(MenuEntry(if (allSelected) strings.deselectAllItems else strings.selectAllItems, icon = Icons.Rounded.CheckCircle) { toggleSelectAll() })
-                    if (selectedIds.isNotEmpty()) {
-                        add(MenuEntry(strings.move, icon = Icons.AutoMirrored.Rounded.DriveFileMove) { onMoveClick() })
-                    }
-                }
-            )
 
             ThemedPopupMenu(
                 expanded = viewMenuOpen,
                 onDismissRequest = { viewMenuOpen = false },
                 anchorBounds = viewMenuAnchor,
                 entries = buildList {
-                    if (language == DesignLanguage.SAMSUNG_ONEUI) {
-                        add(MenuEntry(strings.select) { onEnterSelection() })
-                    }
-                    // One UI keeps its filters in the ⋮ popup, iOS in the filter button's menu.
-                    if (onFilterSelected != null && (language == DesignLanguage.SAMSUNG_ONEUI || isIos || language == DesignLanguage.GOOGLE_EXPRESSIVE)) {
+                    add(MenuEntry(strings.select) { onEnterSelection() })
+                    if (onFilterSelected != null) {
                         MediaFilter.entries.forEach { filter ->
                             add(MenuEntry(filter.displayLabel, checked = filter == selectedFilter) { onFilterSelected(filter) })
                         }
                     }
                     add(MenuEntry(strings.largerThumbnails, icon = Icons.Rounded.ZoomIn) { onZoomIn() })
                     add(MenuEntry(strings.smallerThumbnails, icon = Icons.Rounded.ZoomOut) { onZoomOut() })
-                    if (onFilterSelected != null && language == DesignLanguage.XIAOMI_HYPEROS) {
-                        MediaFilter.entries.forEach { filter ->
-                            val icon = when (filter) {
-                                MediaFilter.ALL -> Icons.Outlined.PhotoLibrary
-                                MediaFilter.IMAGES -> Icons.Outlined.Image
-                                MediaFilter.VIDEOS -> Icons.Outlined.Videocam
-                            }
-                            add(MenuEntry(filter.displayLabel, icon = icon, checked = filter == selectedFilter, group = 1) { onFilterSelected(filter) })
-                        }
-                    }
                     add(MenuEntry(strings.settings, icon = Icons.Rounded.Settings) { onOpenSettings() })
                 }
             )
@@ -616,18 +507,12 @@ fun GalleryScreen(
     }
 }
 
-/** The scrolling header at the top of the grid (index 0), per design language. */
+/** The scrolling header at the top of the grid (index 0). */
 @Composable
 private fun GalleryHeader(
     title: String,
-    countText: String,
-    items: List<MediaItem>,
-    language: DesignLanguage,
     collapseFraction: () -> Float,
-    selectedFilter: MediaFilter,
-    onFilterSelected: ((MediaFilter) -> Unit)?,
     onOpenViewMenu: (Rect?) -> Unit,
-    onHeroClick: () -> Unit,
     hazeState: HazeState,
     isSelectionMode: Boolean = false,
     selectedCount: Int = 0,
@@ -646,203 +531,32 @@ private fun GalleryHeader(
         )
     }
 
-    when (language) {
-        // One UI 8 selection: the compact title becomes "14 selected", with All and Cancel on the right.
-        DesignLanguage.SAMSUNG_ONEUI -> if (isSelectionMode) {
-            val palette = LocalAppTheme.current.palette
-            LargeHeader(
-                title = strings.selectionTitle(selectedCount),
-                collapseFraction = collapseFraction,
-                actions = {
-                    OneUiSelectAll(checked = allSelected, onClick = onToggleSelectAll, modifier = Modifier.padding(start = 12.dp))
-                    Text(
-                        text = strings.cancel,
-                        color = palette.onBackground,
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable(onClick = onCancelSelection)
-                            .padding(horizontal = 18.dp, vertical = 10.dp)
-                    )
-                }
-            )
-        } else {
-            LargeHeader(
-                title = title,
-                collapseFraction = collapseFraction,
-                actions = menuButton
-            )
-        }
-
-        // Google Photos without the highlights: the title chip, then straight into the photos. Filters are in ⋮.
-        DesignLanguage.GOOGLE_EXPRESSIVE -> LargeHeader(title = title, subtitle = countText, actions = menuButton)
-
-        // HyperOS keeps its view choice (all / photos / videos / GIFs) in the ⋮ menu's second card.
-        DesignLanguage.XIAOMI_HYPEROS -> LargeHeader(title = title, collapseFraction = collapseFraction, actions = menuButton)
-
-        // iOS draws its title as a fixed glass overlay instead (IosTitleOverlay).
-        DesignLanguage.IOS_LIQUID_GLASS -> Spacer(modifier = Modifier.height(0.dp))
-    }
-}
-
-/**
- * iOS 26 Photos "Mediathek" title: pinned over the photos, which scroll underneath a progressive glass
- * blur that is fully frosted at the top and fades out towards the grid, plus a legibility gradient. The
- * large title and the item count sit on the left, a glass filter button and a glass "Auswählen" capsule
- * on the right.
- */
-@Composable
-private fun IosTitleOverlay(
-    title: String,
-    subtitle: String,
-    height: Dp,
-    hazeState: HazeState,
-    /** Selection mode: the filter and ⋯ share a glass capsule next to a close circle, as in iOS Photos. */
-    selectionMode: Boolean,
-    onOpenFilter: (Rect?) -> Unit,
-    onSelect: () -> Unit,
-    onOpenSelectionMenu: (Rect?) -> Unit,
-    onEndSelection: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val palette = LocalAppTheme.current.palette
-    val light = palette.isLight
-    val shade = if (light) Color.White else Color.Black
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(height + 36.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .glass(
-                    RectangleShape,
-                    GlassSpec(shade.copy(alpha = 0.22f), Color.Transparent, 14.dp, GlassRim.None),
-                    hazeState,
-                    mask = Brush.verticalGradient(0f to Color.Black, 0.55f to Color.Black, 1f to Color.Transparent)
-                )
-        )
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to shade.copy(alpha = if (light) 0.82f else 0.66f),
-                        0.6f to shade.copy(alpha = if (light) 0.36f else 0.28f),
-                        1f to Color.Transparent
-                    )
-                )
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(start = 20.dp, end = 16.dp, top = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
+    // One UI selection: the compact title becomes "14 selected", with All and Cancel on the right.
+    if (isSelectionMode) {
+        val palette = LocalAppTheme.current.palette
+        LargeHeader(
+            title = strings.selectionTitle(selectedCount),
+            collapseFraction = collapseFraction,
+            actions = {
+                OneUiSelectAll(checked = allSelected, onClick = onToggleSelectAll, modifier = Modifier.padding(start = 12.dp))
                 Text(
-                    text = title,
+                    text = strings.cancel,
                     color = palette.onBackground,
-                    fontSize = 34.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.3).sp,
-                    maxLines = 1
-                )
-                Text(
-                    text = subtitle,
-                    color = palette.onBackground,
-                    fontSize = 17.sp,
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 1
-                )
-            }
-            var anchor by remember { mutableStateOf<Rect?>(null) }
-            if (selectionMode) {
-                var moreAnchor by remember { mutableStateOf<Rect?>(null) }
-                Row(
                     modifier = Modifier
-                        .height(44.dp)
-                        .glass(CircleShape, barGlass(), hazeState)
-                        .padding(horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CapsuleIcon(
-                        icon = Icons.Rounded.FilterList,
-                        description = strings.options,
-                        modifier = Modifier.onGloballyPositioned { anchor = it.boundsInRoot() }
-                    ) { onOpenFilter(anchor) }
-                    CapsuleIcon(
-                        icon = Icons.Rounded.MoreHoriz,
-                        description = strings.options,
-                        modifier = Modifier.onGloballyPositioned { moreAnchor = it.boundsInRoot() }
-                    ) { onOpenSelectionMenu(moreAnchor) }
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                ThemedIconButton(
-                    icon = Icons.Rounded.Close,
-                    contentDescription = strings.endSelection,
-                    onClick = onEndSelection,
-                    hazeState = hazeState
+                        .clip(CircleShape)
+                        .clickable(onClick = onCancelSelection)
+                        .padding(horizontal = 18.dp, vertical = 10.dp)
                 )
-            } else {
-                ThemedIconButton(
-                    icon = Icons.Rounded.FilterList,
-                    contentDescription = strings.options,
-                    onClick = { onOpenFilter(anchor) },
-                    hazeState = hazeState,
-                    modifier = Modifier.onGloballyPositioned { anchor = it.boundsInRoot() }
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                GlassTextButton(strings.select, hazeState, prominent = false, onClick = onSelect)
             }
-        }
-    }
-}
-
-@Composable
-private fun GlassTextButton(text: String, hazeState: HazeState, prominent: Boolean, onClick: () -> Unit) {
-    val palette = LocalAppTheme.current.palette
-    val interaction = remember { MutableInteractionSource() }
-    val shape = CircleShape
-    Box(
-        modifier = Modifier
-            .height(44.dp)
-            .then(
-                if (prominent) Modifier.clip(shape).background(palette.accent) else Modifier.glass(shape, state = hazeState)
-            )
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(horizontal = 18.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            color = if (prominent) palette.onAccent else palette.onBackground,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Medium
         )
-    }
-}
-
-/** An icon button inside a glass capsule (the capsule itself provides the glass). */
-@Composable
-private fun CapsuleIcon(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    description: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    val palette = LocalAppTheme.current.palette
-    Box(
-        modifier = modifier
-            .size(width = 48.dp, height = 40.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        androidx.compose.material3.Icon(icon, description, tint = palette.onBackground, modifier = Modifier.size(22.dp))
+    } else {
+        LargeHeader(
+            title = title,
+            collapseFraction = collapseFraction,
+            actions = menuButton
+        )
     }
 }
 

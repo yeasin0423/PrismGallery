@@ -10,7 +10,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -53,7 +52,6 @@ import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
-import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.SdCard
@@ -69,11 +67,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,14 +84,11 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -117,26 +110,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalHapticFeedback
 import com.gallery.app.ui.design.DialogButton
 import com.gallery.app.ui.design.DialogButtonStyle
-import com.gallery.app.ui.design.ListRow
 import com.gallery.app.ui.design.MenuEntry
 import com.gallery.app.ui.design.ThemedButton
 import com.gallery.app.ui.design.ThemedCard
 import com.gallery.app.ui.design.ThemedDialog
 import com.gallery.app.ui.design.ThemedIconButton
-import com.gallery.app.ui.design.ThemedListSection
 import com.gallery.app.ui.design.ThemedPopupMenu
 import com.gallery.app.ui.design.ThemedRadioIndicator
 import com.gallery.app.ui.design.ThemedSheet
 import com.gallery.app.ui.design.ThemedTextField
 import com.gallery.app.ui.design.ThemedTopBar
 import com.gallery.app.ui.design.bottomBarContentPadding
-import com.gallery.app.ui.design.barGlass
-import com.gallery.app.ui.theme.isLight
 import androidx.compose.foundation.layout.statusBarsPadding
-import com.gallery.app.ui.design.geminiChip
-import com.gallery.app.ui.design.glass
-import com.gallery.app.ui.design.pressScale
-import com.gallery.app.ui.theme.DesignLanguage
 import com.gallery.app.ui.theme.LocalAppTheme
 import com.gallery.app.ui.theme.destructive
 import com.gallery.app.ui.theme.onAccent
@@ -161,31 +146,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import com.gallery.app.ui.design.MediaZoomTransition
 import kotlin.math.abs
-import com.gallery.app.ui.design.HyperOsDivider
-import com.gallery.app.ui.design.HyperOsFab
-import com.gallery.app.ui.design.HyperOsIconRow
-import com.gallery.app.ui.design.HyperOsSectionLabel
-import com.gallery.app.ui.design.bleedHorizontally
 
 /**
- * Albums tab. Root albums are laid out per design language:
- * - One UI: 3 columns of rounded covers with name and count underneath.
- * - Material 3 Expressive: 2 columns of tonal cards holding a rounded cover.
- * - iOS: 2 columns of large rounded covers under a "Meine Alben" section title; long-press opens a
- *   Liquid Glass context menu.
- * - HyperOS: 3 columns of white cards with the cover flush on top.
- * One UI, Material and HyperOS let the ⋮ menu (or a pinch) change how many albums share a row; iOS keeps
- * its fixed layout.
+ * Albums tab. Root albums are laid out as 3 columns of rounded covers with name and count on the photo.
+ * The ⋮ menu (or a pinch) changes how many albums share a row.
  *
  * Inside an album a frosted top bar with back navigation replaces the large header; sub-albums and the
- * album's media follow. A pinch changes the media grid. Swiping right opens One UI's album drawer, and
- * goes back to the album list on iOS. Album actions open as a popup (One UI, iOS) or an action sheet
- * (Material, HyperOS), all dialogs use the language's own dialog style.
+ * album's media follow. A pinch changes the media grid. Swiping right opens One UI's album drawer.
+ * Album actions open as a popup anchored on the tile.
  */
 @Composable
 fun AlbumsScreen(
     albums: List<AlbumItem>,
-    trashedCount: Int = 0,
     isSdCardAvailable: Boolean,
     onAlbumClick: (AlbumItem) -> Unit,
     onOpenTrash: () -> Unit = {},
@@ -236,14 +208,8 @@ fun AlbumsScreen(
     onSelectAll: () -> Unit = {},
     onDeselectAll: () -> Unit = {},
     onClearSelection: () -> Unit = {},
-    /** Enters selection mode with nothing selected yet (iOS "Auswählen"). */
+    /** Enters selection mode with nothing selected yet. */
     onEnterSelection: () -> Unit = {},
-    // HyperOS: the "All photos", "Videos" and "Favorites" tiles above the albums.
-    allMedia: List<MediaItem> = emptyList(),
-    favoriteMedia: List<MediaItem> = emptyList(),
-    onOpenAllPhotos: () -> Unit = {},
-    onOpenVideos: () -> Unit = {},
-    onOpenFavorites: () -> Unit = {},
     // Album order: the sort chosen in the ⋮ menu, and moving one album from its own menu.
     albumSort: com.gallery.app.model.AlbumSort = com.gallery.app.model.AlbumSort.STANDARD,
     onSetAlbumSort: (com.gallery.app.model.AlbumSort) -> Unit = {},
@@ -297,74 +263,44 @@ fun AlbumsScreen(
 
     val theme = LocalAppTheme.current
     val palette = theme.palette
-    val language = theme.language
     val albumsHaze = remember { HazeState() }
     val isInsideAlbum = currentAlbum != null
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val density = LocalDensity.current
 
-    // iOS keeps its fixed album layout; the others let the user choose how many albums share a row.
-    val gridOptions = language != DesignLanguage.IOS_LIQUID_GLASS
-    val defaultRootColumns = when (language) {
-        DesignLanguage.GOOGLE_EXPRESSIVE, DesignLanguage.IOS_LIQUID_GLASS -> 2
-        else -> 3
-    }
-    val rootColumns = if (gridOptions) albumColumns ?: defaultRootColumns else defaultRootColumns
-    val subColumns = if (gridOptions) subAlbumColumns ?: 3 else 3
-    val outerPadding = if (isInsideAlbum) theme.shapes.gridHorizontalPadding else when (language) {
-        DesignLanguage.GOOGLE_EXPRESSIVE -> 12.dp
-        DesignLanguage.IOS_LIQUID_GLASS, DesignLanguage.XIAOMI_HYPEROS -> 20.dp
-        else -> 16.dp
-    }
-    val horizontalSpacing = if (isInsideAlbum) theme.shapes.gridSpacing else when (language) {
-        DesignLanguage.SAMSUNG_ONEUI -> if (rootColumns >= 4) 8.dp else 12.dp
-        DesignLanguage.IOS_LIQUID_GLASS -> 16.dp
-        DesignLanguage.XIAOMI_HYPEROS -> if (rootColumns >= 4) 10.dp else 14.dp
-        else -> if (rootColumns >= 4) 8.dp else 10.dp
-    }
-    val verticalSpacing = if (isInsideAlbum) theme.shapes.gridSpacing else when (language) {
-        DesignLanguage.SAMSUNG_ONEUI -> if (rootColumns >= 4) 14.dp else 20.dp
-        DesignLanguage.IOS_LIQUID_GLASS -> 16.dp
-        DesignLanguage.XIAOMI_HYPEROS -> 20.dp
-        else -> 10.dp
-    }
+    // The album list lets the user choose how many albums share a row.
+    val rootColumns = albumColumns ?: 3
+    val subColumns = subAlbumColumns ?: 3
+    val outerPadding = if (isInsideAlbum) theme.shapes.gridHorizontalPadding else 16.dp
+    val horizontalSpacing = if (isInsideAlbum) theme.shapes.gridSpacing else if (rootColumns >= 4) 8.dp else 12.dp
+    val verticalSpacing = if (isInsideAlbum) theme.shapes.gridSpacing else if (rootColumns >= 4) 14.dp else 20.dp
     // Section rows inside an album need their own inset when the media grid runs edge-to-edge.
     val sectionInset = if (outerPadding < 8.dp) 16.dp else 4.dp
-    val isIos = language == DesignLanguage.IOS_LIQUID_GLASS
-    // iOS Photos lists an album's photos oldest first, like the Mediathek. Grid, drag selection and the viewer
-    // all work on this displayed order.
-    val displayAlbumMedia = remember(albumMedia, isIos) { if (isIos) albumMedia.asReversed() else albumMedia }
+    val displayAlbumMedia = albumMedia
 
-    // Opening an album (or going back up) moves the page in with the design language's album motion.
+    // Opening an album (or going back up) moves the page in with One UI's album motion.
     val navProgress = remember { androidx.compose.animation.core.Animatable(1f) }
     val navDirection = remember { intArrayOf(1) }
     val lastAlbumKey = remember { arrayOf(currentAlbum?.bucketId) }
     val lastDepth = remember { intArrayOf(breadcrumbs.size) }
-    // Set by the iOS back swipe: the album list then continues from its parallax position.
-    val popFromSwipe = remember { booleanArrayOf(false) }
-    // iOS back swipe: how far the album page has been pulled to the right (px).
-    var backSwipeOffset by remember { mutableFloatStateOf(0f) }
-    val navSpec = albumNavSpec(language)
+    val navSpec = albumNavSpec()
     val latestLoadedKey = rememberUpdatedState(loadedAlbumKey)
     // The album whose page was last animated in. A different current album means a navigation happened;
     // that is known during composition, so the new page is hidden from its very first frame (an effect
     // only runs a frame later, which briefly flashed the new, still empty page fully visible).
     var animatedAlbumKey by remember { mutableStateOf(currentAlbum?.bucketId) }
     val navPending = currentAlbum?.bucketId != animatedAlbumKey
-    val navStartProgress = if (popFromSwipe[0]) 0.7f else 0f
     if (navPending) {
         navDirection[0] = if (breadcrumbs.size >= lastDepth[0] && currentAlbum != null) 1 else -1
     }
-    val forcedNavProgress = if (navPending) navStartProgress else null
+    val forcedNavProgress = if (navPending) 0f else null
     val context = LocalContext.current
     val latestMedia = rememberUpdatedState(displayAlbumMedia)
     val latestSubAlbums = rememberUpdatedState(albums)
     LaunchedEffect(currentAlbum?.bucketId) {
         val key = currentAlbum?.bucketId
         if (key != animatedAlbumKey) {
-            navProgress.snapTo(navStartProgress)
-            popFromSwipe[0] = false
-            backSwipeOffset = 0f
+            navProgress.snapTo(0f)
             lastDepth[0] = breadcrumbs.size
             animatedAlbumKey = key
             if (key != null) {
@@ -462,15 +398,13 @@ fun AlbumsScreen(
     // While the fullscreen viewer covers everything, the grid below it is not drawn at all.
     var gridCoveredByViewer by remember { mutableStateOf(false) }
 
-    // Horizontal swipe inside an album: One UI's album drawer (0..1 open) or iOS's back swipe (px).
+    // Horizontal swipe inside an album: One UI's album drawer (0..1 open).
     val drawerWidthPx = with(density) { 118.dp.toPx() }
     var drawerProgress by remember { mutableFloatStateOf(0f) }
     var swipeJob by remember { mutableStateOf<Job?>(null) }
-    var pageWidthPx by remember { mutableFloatStateOf(0f) }
     // Whether the drawer was open when the current swipe began: a short pull decides either way.
     val drawerWasOpen = remember { booleanArrayOf(false) }
-    val swipeEnabled = isInsideAlbum && !isSelectionMode && selectedDetailIndex == null &&
-        (language == DesignLanguage.SAMSUNG_ONEUI || language == DesignLanguage.IOS_LIQUID_GLASS)
+    val swipeEnabled = isInsideAlbum && !isSelectionMode && selectedDetailIndex == null
     if (!isInsideAlbum && drawerProgress != 0f) {
         drawerProgress = 0f
     }
@@ -490,41 +424,16 @@ fun AlbumsScreen(
     }
 
     fun onSwipeDrag(dx: Float) {
-        if (language == DesignLanguage.SAMSUNG_ONEUI) {
-            drawerProgress = (drawerProgress + dx / drawerWidthPx).coerceIn(0f, 1f)
-        } else {
-            backSwipeOffset = (backSwipeOffset + dx).coerceAtLeast(0f)
-        }
+        drawerProgress = (drawerProgress + dx / drawerWidthPx).coerceIn(0f, 1f)
     }
 
     /**
      * A swipe decides by its direction alone - however short, slow or long it was: to the right opens the
-     * drawer (One UI) or goes back (iOS), to the left closes the drawer. [netX] is the finger's horizontal
-     * travel over the whole swipe; a [cancelled] swipe (second finger) returns to where it started.
+     * drawer, to the left closes it. [netX] is the finger's horizontal travel over the whole swipe; a
+     * [cancelled] swipe (second finger) returns to where it started.
      */
     fun onSwipeEnd(netX: Float, cancelled: Boolean) {
-        if (language == DesignLanguage.SAMSUNG_ONEUI) {
-            settleDrawer(if (cancelled) drawerWasOpen[0] else netX > 0f)
-        } else {
-            val width = pageWidthPx.coerceAtLeast(1f)
-            val goBack = !cancelled && netX > 0f
-            swipeJob = coroutineScope.launch {
-                if (goBack) {
-                    val remaining = ((width - backSwipeOffset) / width).coerceIn(0f, 1f)
-                    animate(
-                        backSwipeOffset,
-                        width,
-                        animationSpec = androidx.compose.animation.core.tween((80 + 160 * remaining).toInt(), easing = androidx.compose.animation.core.FastOutLinearInEasing)
-                    ) { v, _ -> backSwipeOffset = v }
-                    // The page stays pulled off-screen until the album list is shown; the navigation effect
-                    // then resets the offset in the same step as it starts the list's parallax motion.
-                    popFromSwipe[0] = true
-                    onBreadcrumbClick(breadcrumbs.size - 2)
-                } else {
-                    animate(backSwipeOffset, 0f, animationSpec = androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 520f)) { v, _ -> backSwipeOffset = v }
-                }
-            }
-        }
+        settleDrawer(if (cancelled) drawerWasOpen[0] else netX > 0f)
     }
 
     BackHandler(enabled = drawerProgress > 0.5f) { settleDrawer(false) }
@@ -541,7 +450,6 @@ fun AlbumsScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .onSizeChanged { pageWidthPx = it.width.toFloat() }
             // On the whole screen - the album page and One UI's drawer - so a swipe to the left closes the
             // drawer wherever it starts. Runs after the children (Main pass): a vertical scroll or a drag
             // selection has consumed the moves by then, so only a horizontal swipe is taken over.
@@ -569,7 +477,7 @@ fun AlbumsScreen(
                             total += change.positionChange()
                             if (total.getDistance() > viewConfiguration.touchSlop) {
                                 val horizontal = abs(total.x) > abs(total.y)
-                                val allowed = total.x > 0f || drawerProgress > 0f || backSwipeOffset > 0f
+                                val allowed = total.x > 0f || drawerProgress > 0f
                                 if (!horizontal || !allowed) break
                                 dragging = true
                                 change.consume()
@@ -614,15 +522,14 @@ fun AlbumsScreen(
                     }
                 }
                 .graphicsLayer {
-                    // While a navigation is pending the swiped-away page is already replaced: no offset.
-                    translationX = drawerProgress * drawerWidthPx + if (navPending) 0f else backSwipeOffset
+                    translationX = drawerProgress * drawerWidthPx
                 }
         ) {
             HazeSource(
                 albumsHaze,
                 Modifier
                     .fillMaxSize()
-                    .albumNavTransition(language, { navProgress.value }, { navDirection[0] }, forcedNavProgress)
+                    .albumNavTransition({ navProgress.value }, { navDirection[0] }, forcedNavProgress)
                     .graphicsLayer { alpha = if (gridCoveredByViewer) 0f else 1f }
             ) {
                 LazyVerticalGrid(
@@ -631,15 +538,15 @@ fun AlbumsScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         // One detector for both pages that decides on every pinch: inside an album it sizes the
-                        // photos, on the album list the albums (not on iOS).
+                        // photos, on the album list the albums.
                         .detectPinchToZoomGrid(
                             onZoomIn = {
                                 if (isInsideAlbum) onZoomIn()
-                                else if (gridOptions && rootColumns > 2) onSetAlbumColumns(rootColumns - 1)
+                                else if (rootColumns > 2) onSetAlbumColumns(rootColumns - 1)
                             },
                             onZoomOut = {
                                 if (isInsideAlbum) onZoomOut()
-                                else if (gridOptions && rootColumns < 5) onSetAlbumColumns(rootColumns + 1)
+                                else if (rootColumns < 5) onSetAlbumColumns(rootColumns + 1)
                             }
                         )
                         .onGloballyPositioned { gridOriginInRoot = it.positionInRoot() }
@@ -758,21 +665,14 @@ fun AlbumsScreen(
                     contentPadding = PaddingValues(
                         start = outerPadding,
                         end = outerPadding,
-                        top = when {
-                            // Gemini's bar fades out 28dp below itself; the first row starts below that fade.
-                            isInsideAlbum && language == DesignLanguage.GOOGLE_EXPRESSIVE -> statusBarTop + 96.dp
-                            isInsideAlbum -> statusBarTop + 68.dp
-                            language == DesignLanguage.IOS_LIQUID_GLASS -> statusBarTop + 76.dp
-                            else -> 0.dp
-                        },
+                        top = if (isInsideAlbum) statusBarTop + 68.dp else 0.dp,
                         bottom = bottomBarContentPadding(16.dp)
                     ),
                     horizontalArrangement = Arrangement.spacedBy(horizontalSpacing),
                     verticalArrangement = Arrangement.spacedBy(verticalSpacing)
                 ) {
                     if (!isInsideAlbum) {
-                        // iOS pins its "Alben" title bar over the list instead (see below).
-                        if (language != DesignLanguage.IOS_LIQUID_GLASS) item(span = { GridItemSpan(maxLineSpan) }, key = "albums_header") {
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "albums_header") {
                             // While the search is open the field takes the header's place, so the albums
                             // below it stay on screen and thin out as the name is typed.
                             if (albumSearchOpen) {
@@ -785,9 +685,7 @@ fun AlbumsScreen(
                             } else {
                                 LargeHeader(
                                     title = strings.tabAlbums,
-                                    subtitle = if (language == DesignLanguage.SAMSUNG_ONEUI) null else albumCountText(shownAlbums.size),
-                                    collapseFraction = { rootHeaderCollapse },
-                                    modifier = if (language == DesignLanguage.XIAOMI_HYPEROS) Modifier.bleedHorizontally(outerPadding) else Modifier
+                                    collapseFraction = { rootHeaderCollapse }
                                 ) {
                                     ThemedIconButton(
                                         icon = Icons.Rounded.Search,
@@ -795,40 +693,19 @@ fun AlbumsScreen(
                                         onClick = { albumSearchOpen = true },
                                         hazeState = albumsHaze
                                     )
-                                    // HyperOS creates albums with its floating + button instead.
-                                    if (language != DesignLanguage.XIAOMI_HYPEROS) {
-                                        ThemedIconButton(
-                                            icon = Icons.Rounded.Add,
-                                            contentDescription = strings.newAlbum,
-                                            onClick = { showCreateDialog = true },
-                                            hazeState = albumsHaze
-                                        )
-                                    }
                                     ThemedIconButton(
-                                        icon = if (language == DesignLanguage.IOS_LIQUID_GLASS) Icons.Rounded.MoreHoriz else Icons.Rounded.MoreVert,
+                                        icon = Icons.Rounded.Add,
+                                        contentDescription = strings.newAlbum,
+                                        onClick = { showCreateDialog = true },
+                                        hazeState = albumsHaze
+                                    )
+                                    ThemedIconButton(
+                                        icon = Icons.Rounded.MoreVert,
                                         contentDescription = strings.options,
                                         onClick = { showMenu = true },
                                         hazeState = albumsHaze,
                                         modifier = Modifier.onGloballyPositioned { menuAnchor = it.boundsInRoot() }
                                     )
-                                }
-                            }
-                        }
-
-                        if (language == DesignLanguage.XIAOMI_HYPEROS) {
-                            item(span = { GridItemSpan(maxLineSpan) }, key = "hyperos_featured") {
-                                HyperOsFeaturedAlbums(
-                                    allMedia = allMedia,
-                                    favoriteMedia = favoriteMedia,
-                                    onOpenAllPhotos = onOpenAllPhotos,
-                                    onOpenVideos = onOpenVideos,
-                                    onOpenFavorites = onOpenFavorites
-                                )
-                            }
-                            item(span = { GridItemSpan(maxLineSpan) }, key = "albums_section") {
-                                Column {
-                                    HyperOsDivider()
-                                    HyperOsSectionLabel(strings.allAlbums, Modifier.padding(top = 22.dp))
                                 }
                             }
                         }
@@ -898,30 +775,6 @@ fun AlbumsScreen(
                                         .fillMaxWidth()
                                         .padding(vertical = 48.dp)
                                 )
-                            }
-                        }
-                        if (language == DesignLanguage.XIAOMI_HYPEROS) {
-                            item(span = { GridItemSpan(maxLineSpan) }, key = "hyperos_organize") {
-                                Column(modifier = Modifier.padding(top = 8.dp)) {
-                                    HyperOsDivider()
-                                    HyperOsSectionLabel(strings.organizePhotos, Modifier.padding(top = 22.dp, bottom = 6.dp))
-                                    HyperOsIconRow(
-                                        icon = Icons.Rounded.Delete,
-                                        iconColor = palette.accent,
-                                        title = strings.recentlyDeleted,
-                                        value = "$trashedCount",
-                                        horizontalPadding = 0.dp,
-                                        onClick = onOpenTrash
-                                    )
-                                    HyperOsIconRow(
-                                        icon = Icons.Rounded.VisibilityOff,
-                                        iconColor = Color(0xFF8A90A6),
-                                        title = strings.hiddenAlbums,
-                                        value = "${hiddenAlbums.size}",
-                                        horizontalPadding = 0.dp,
-                                        onClick = { showManageHiddenDialog = true }
-                                    )
-                                }
                             }
                         }
                     } else {
@@ -1091,7 +944,7 @@ fun AlbumsScreen(
                     hazeState = albumsHaze,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .albumNavTransition(language, { navProgress.value }, { navDirection[0] }, forcedNavProgress)
+                        .albumNavTransition({ navProgress.value }, { navDirection[0] }, forcedNavProgress)
                 ) {
                     ThemedIconButton(
                         icon = Icons.Rounded.CreateNewFolder,
@@ -1099,8 +952,8 @@ fun AlbumsScreen(
                         onClick = { showCreateSubDialog = true },
                         hazeState = albumsHaze
                     )
-                    // Grid sizes for the album's photos and (not on iOS) its sub-albums.
-                    if (albumMedia.isNotEmpty() || (gridOptions && albums.isNotEmpty())) {
+                    // Grid sizes for the album's photos and its sub-albums.
+                    if (albumMedia.isNotEmpty() || albums.isNotEmpty()) {
                         ThemedIconButton(
                             icon = Icons.Rounded.MoreVert,
                             contentDescription = strings.options,
@@ -1112,82 +965,10 @@ fun AlbumsScreen(
                 }
             }
 
-            // iOS "Alben": the centred title stays pinned over the list, + and ⋯ share one glass capsule.
-            // With the search open the capsule gives way to the field, in the same spot over the list.
-            if (!isInsideAlbum && language == DesignLanguage.IOS_LIQUID_GLASS && albumSearchOpen) {
-                AlbumSearchBar(
-                    query = albumSearchQuery,
-                    onQueryChange = { albumSearchQuery = it },
-                    onClose = closeAlbumSearch,
-                    hazeState = albumsHaze,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .albumNavTransition(language, { navProgress.value }, { navDirection[0] }, forcedNavProgress)
-                )
-            }
-            if (!isInsideAlbum && language == DesignLanguage.IOS_LIQUID_GLASS && !albumSearchOpen) {
-                ThemedTopBar(
-                    title = strings.tabAlbums,
-                    hazeState = albumsHaze,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .albumNavTransition(language, { navProgress.value }, { navDirection[0] }, forcedNavProgress)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .height(48.dp)
-                            .glass(CircleShape, barGlass(), albumsHaze)
-                            .padding(horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(width = 50.dp, height = 44.dp)
-                                .clip(CircleShape)
-                                .clickable { albumSearchOpen = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Rounded.Search, strings.searchAlbums, tint = palette.onBackground, modifier = Modifier.size(24.dp))
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(width = 50.dp, height = 44.dp)
-                                .clip(CircleShape)
-                                .clickable { showCreateDialog = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Rounded.Add, strings.newAlbum, tint = palette.onBackground, modifier = Modifier.size(26.dp))
-                        }
-                        Box(
-                            modifier = Modifier
-                                .onGloballyPositioned { menuAnchor = it.boundsInRoot() }
-                                .size(width = 50.dp, height = 44.dp)
-                                .clip(CircleShape)
-                                .clickable { showMenu = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Rounded.MoreHoriz, strings.options, tint = palette.onBackground, modifier = Modifier.size(26.dp))
-                        }
-                    }
-                }
-            }
-
-            if (!isInsideAlbum && language == DesignLanguage.XIAOMI_HYPEROS) {
-                HyperOsFab(
-                    icon = Icons.Rounded.Add,
-                    contentDescription = strings.newAlbum,
-                    onClick = { showCreateDialog = true },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 24.dp, bottom = bottomBarContentPadding(20.dp))
-                        .albumNavTransition(language, { navProgress.value }, { navDirection[0] }, forcedNavProgress)
-                )
-            }
-
         }
 
         // One UI: the other albums in a single column at the left edge, revealed by swiping right.
-        if (language == DesignLanguage.SAMSUNG_ONEUI && isInsideAlbum && drawerProgress > 0f) {
+        if (isInsideAlbum && drawerProgress > 0f) {
             AlbumDrawer(
                 albums = rootAlbums,
                 currentRootId = breadcrumbs.firstOrNull()?.bucketId,
@@ -1229,10 +1010,8 @@ fun AlbumsScreen(
         onDismissRequest = { showMenu = false },
         anchorBounds = menuAnchor,
         entries = buildList {
-            if (gridOptions) {
-                add(MenuEntry(strings.largerThumbnails, icon = Icons.Rounded.ZoomIn) { if (rootColumns > 2) onSetAlbumColumns(rootColumns - 1) })
-                add(MenuEntry(strings.smallerThumbnails, icon = Icons.Rounded.ZoomOut) { if (rootColumns < 5) onSetAlbumColumns(rootColumns + 1) })
-            }
+            add(MenuEntry(strings.largerThumbnails, icon = Icons.Rounded.ZoomIn) { if (rootColumns > 2) onSetAlbumColumns(rootColumns - 1) })
+            add(MenuEntry(strings.smallerThumbnails, icon = Icons.Rounded.ZoomOut) { if (rootColumns < 5) onSetAlbumColumns(rootColumns + 1) })
             add(MenuEntry(strings.sortAlbums, icon = Icons.AutoMirrored.Rounded.Sort) { showSortMenu = true })
             // Only offered when the albums really are spread over more than one storage.
             if (albums.map { it.storage }.distinct().size > 1 || storageFilter != null) {
@@ -1288,7 +1067,7 @@ fun AlbumsScreen(
         anchorBounds = subAlbumMenuAnchor,
         entries = buildList {
             // One UI's album ⋮ also starts a selection and creates sub-albums.
-            if (language == DesignLanguage.SAMSUNG_ONEUI && isInsideAlbum) {
+            if (isInsideAlbum) {
                 if (albumMedia.isNotEmpty()) add(MenuEntry(strings.select) { onEnterSelection() })
                 add(MenuEntry(strings.newSubAlbum) { showCreateSubDialog = true })
             }
@@ -1296,7 +1075,7 @@ fun AlbumsScreen(
                 add(MenuEntry(strings.largerThumbnails, icon = Icons.Rounded.ZoomIn) { onZoomIn() })
                 add(MenuEntry(strings.smallerThumbnails, icon = Icons.Rounded.ZoomOut) { onZoomOut() })
             }
-            if (gridOptions && albums.isNotEmpty()) {
+            if (albums.isNotEmpty()) {
                 add(MenuEntry(strings.largerSubAlbums, icon = Icons.Rounded.ZoomIn) { if (subColumns > 2) onSetSubAlbumColumns(subColumns - 1) })
                 add(MenuEntry(strings.smallerSubAlbums, icon = Icons.Rounded.ZoomOut) { if (subColumns < 5) onSetSubAlbumColumns(subColumns + 1) })
             }
@@ -1304,7 +1083,7 @@ fun AlbumsScreen(
         }
     )
 
-    // Album actions: a popup anchored on the tile for One UI / iOS, an action sheet elsewhere.
+    // Album actions: a popup anchored on the tile.
     contextMenuAlbum?.let { album ->
         val canMigrate = album.isSdCard || isSdCardAvailable
         val migrateLabel = when {
@@ -1320,91 +1099,28 @@ fun AlbumsScreen(
         // Only the top-level list has an order to arrange (by dragging, or straight to the top from here);
         // sub-albums stay alphabetical.
         val canArrange = !isInsideAlbum
-        if (language == DesignLanguage.SAMSUNG_ONEUI || language == DesignLanguage.IOS_LIQUID_GLASS) {
-            ThemedPopupMenu(
-                expanded = true,
-                onDismissRequest = { contextMenuAlbum = null },
-                anchorBounds = contextAnchor,
-                entries = buildList {
-                    if (canArrange) {
-                        // Selecting albums starts here rather than from a hold, which stays the way to
-                        // arrange the list.
-                        add(MenuEntry(strings.selectAlbums, icon = Icons.Rounded.Check) {
-                            albumSelectMode = true
-                            selectedAlbumIds = setOf(album.bucketId)
-                        })
-                        add(MenuEntry(strings.moveAlbumToTop, icon = Icons.Rounded.VerticalAlignTop) { onMoveAlbum(album, 0, true) })
-                    }
-                    add(MenuEntry(strings.rename, icon = Icons.Rounded.Edit) { albumToRename = album })
-                    if (canMigrate) {
-                        add(MenuEntry(migrateLabel, icon = migrateIcon) { albumToMigrate = album })
-                    }
-                    add(MenuEntry(strings.hide, icon = Icons.Rounded.VisibilityOff) { albumToHide = album })
-                    add(MenuEntry(strings.delete, icon = Icons.Rounded.Delete, destructive = true) { albumToDelete = album })
+        ThemedPopupMenu(
+            expanded = true,
+            onDismissRequest = { contextMenuAlbum = null },
+            anchorBounds = contextAnchor,
+            entries = buildList {
+                if (canArrange) {
+                    // Selecting albums starts here rather than from a hold, which stays the way to
+                    // arrange the list.
+                    add(MenuEntry(strings.selectAlbums, icon = Icons.Rounded.Check) {
+                        albumSelectMode = true
+                        selectedAlbumIds = setOf(album.bucketId)
+                    })
+                    add(MenuEntry(strings.moveAlbumToTop, icon = Icons.Rounded.VerticalAlignTop) { onMoveAlbum(album, 0, true) })
                 }
-            )
-        } else {
-            ThemedSheet(
-                onDismissRequest = { contextMenuAlbum = null },
-                title = album.name
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 20.dp)
-                ) {
-                    Text(
-                        text = strings.items(album.count) + " · " + (if (album.isSdCard) com.gallery.app.ui.i18n.storageLabel(album.storage) else strings.internal),
-                        color = palette.textMuted,
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
-                    )
-                    ThemedListSection(
-                        inSheet = true,
-                        rows = buildList {
-                            if (canArrange) {
-                                add(ListRow(strings.selectAlbums, icon = Icons.Rounded.Check, iconColor = palette.accent, showChevron = false, onClick = {
-                                    contextMenuAlbum = null
-                                    albumSelectMode = true
-                                    selectedAlbumIds = setOf(album.bucketId)
-                                }))
-                                add(ListRow(strings.moveAlbumToTop, icon = Icons.Rounded.VerticalAlignTop, iconColor = palette.accent, showChevron = false, onClick = {
-                                    contextMenuAlbum = null
-                                    onMoveAlbum(album, 0, true)
-                                }))
-                            }
-                            add(ListRow(strings.renameAlbum, icon = Icons.Rounded.Edit, iconColor = palette.accent, showChevron = false, onClick = {
-                                contextMenuAlbum = null
-                                albumToRename = album
-                            }))
-                            add(ListRow(
-                                migrateLabel,
-                                subtitle = if (!canMigrate) strings.noSdCard else null,
-                                icon = migrateIcon,
-                                iconColor = Color(0xFF34C759),
-                                showChevron = false,
-                                onClick = if (canMigrate) {
-                                    {
-                                        contextMenuAlbum = null
-                                        albumToMigrate = album
-                                    }
-                                } else {
-                                    null
-                                }
-                            ))
-                            add(ListRow(strings.hideAlbum, icon = Icons.Rounded.VisibilityOff, iconColor = Color(0xFF8E8E93), showChevron = false, onClick = {
-                                contextMenuAlbum = null
-                                albumToHide = album
-                            }))
-                            add(ListRow(strings.deleteAlbum, icon = Icons.Rounded.Delete, iconColor = palette.destructive, titleColor = palette.destructive, showChevron = false, onClick = {
-                                contextMenuAlbum = null
-                                albumToDelete = album
-                            }))
-                        }
-                    )
+                add(MenuEntry(strings.rename, icon = Icons.Rounded.Edit) { albumToRename = album })
+                if (canMigrate) {
+                    add(MenuEntry(migrateLabel, icon = migrateIcon) { albumToMigrate = album })
                 }
+                add(MenuEntry(strings.hide, icon = Icons.Rounded.VisibilityOff) { albumToHide = album })
+                add(MenuEntry(strings.delete, icon = Icons.Rounded.Delete, destructive = true) { albumToDelete = album })
             }
-        }
+        )
     }
 
     // Where the ticked albums should go. Only the storage they are not already on is worth offering.
@@ -1550,8 +1266,6 @@ fun AlbumsScreen(
     }
 }
 
-private fun albumCountText(count: Int) = strings.albums(count)
-
 /** One UI's album drawer: every top-level album as a cover with its name, the open one outlined. */
 @Composable
 private fun AlbumDrawer(
@@ -1650,9 +1364,8 @@ private fun AlbumTick(ticked: Boolean, modifier: Modifier = Modifier) {
 }
 
 /**
- * The album search, grown out of the header's magnifier and standing where the title was: a field in
- * each language's own bar shape - One UI's and HyperOS's filled rounded box, Gemini's chip, iOS's glass
- * capsule. The albums keep their place underneath and thin out as the name is typed.
+ * The album search, grown out of the header's magnifier and standing where the title was: a filled
+ * rounded field. The albums keep their place underneath and thin out as the name is typed.
  *
  * The cross clears what was typed, and closes the search once there is nothing left to clear.
  */
@@ -1666,11 +1379,7 @@ private fun AlbumSearchBar(
 ) {
     val theme = LocalAppTheme.current
     val palette = theme.palette
-    val language = theme.language
-    val shape = when (language) {
-        DesignLanguage.GOOGLE_EXPRESSIVE, DesignLanguage.IOS_LIQUID_GLASS -> CircleShape
-        else -> RoundedCornerShape(theme.shapes.cardCornerRadius)
-    }
+    val shape = RoundedCornerShape(theme.shapes.cardCornerRadius)
     val focusRequester = remember { FocusRequester() }
     // The field is what the search is for: it takes the cursor as soon as the bar appears.
     LaunchedEffect(Unit) {
@@ -1684,13 +1393,8 @@ private fun AlbumSearchBar(
             .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 10.dp)
             .height(54.dp)
-            .then(
-                when (language) {
-                    DesignLanguage.GOOGLE_EXPRESSIVE -> Modifier.geminiChip(shape)
-                    DesignLanguage.IOS_LIQUID_GLASS -> Modifier.glass(shape, barGlass(), hazeState)
-                    else -> Modifier.clip(shape).background(palette.surface)
-                }
-            )
+            .clip(shape)
+            .background(palette.surface)
             .padding(start = 18.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1744,9 +1448,7 @@ private fun AlbumTile(
     modifier: Modifier = Modifier,
     compact: Boolean = false
 ) {
-    val theme = LocalAppTheme.current
-    val palette = theme.palette
-    val language = theme.language
+    val palette = LocalAppTheme.current.palette
     var bounds by remember { mutableStateOf<Rect?>(null) }
     val interaction = remember { MutableInteractionSource() }
     val countText = buildString {
@@ -1757,119 +1459,49 @@ private fun AlbumTile(
         .onGloballyPositioned { bounds = it.boundsInRoot() }
         .combinedClickable(
             interactionSource = interaction,
-            indication = if (language == DesignLanguage.SAMSUNG_ONEUI) ripple() else null,
+            indication = ripple(),
             onClick = onClick,
             onLongClick = onLongClick?.let { handler -> { handler(bounds) } }
         )
-    val nameSize = if (compact) 13.sp else 15.sp
-    val countSize = if (compact) 11.sp else 13.sp
+    val shape = RoundedCornerShape(if (compact) 14.dp else 22.dp)
 
-    when (language) {
-        // One UI 8: a large rounded cover with the name and count centred on the photo in white.
-        DesignLanguage.SAMSUNG_ONEUI -> {
-            val shape = RoundedCornerShape(if (compact) 14.dp else 22.dp)
-            Box(
-                modifier = modifier
-                    .fillMaxWidth()
-                    .clip(shape)
-                    .then(clickModifier)
-            ) {
-                AlbumCover(album, shape)
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(
-                            androidx.compose.ui.graphics.Brush.verticalGradient(
-                                0.45f to Color.Transparent,
-                                1f to Color.Black.copy(alpha = 0.55f)
-                            )
-                        )
-                )
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(horizontal = 8.dp, vertical = if (compact) 6.dp else 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    val shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.5f), androidx.compose.ui.geometry.Offset(0f, 1f), 6f)
-                    Text(
-                        text = album.name,
-                        style = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = if (compact) 13.sp else 18.sp, fontWeight = FontWeight.Medium, shadow = shadow),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+    // One UI 8: a large rounded cover with the name and count centred on the photo in white.
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .then(clickModifier)
+    ) {
+        AlbumCover(album, shape)
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0.45f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.55f)
                     )
-                    Text(
-                        text = countText,
-                        style = androidx.compose.ui.text.TextStyle(color = Color.White.copy(alpha = 0.9f), fontSize = if (compact) 11.sp else 15.sp, shadow = shadow),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-
-        // Google Photos: a rounded cover straight on the background, name and count underneath.
-        DesignLanguage.GOOGLE_EXPRESSIVE -> Column(
-            modifier = modifier
-                .fillMaxWidth()
-                .pressScale(interaction, 0.95f)
-                .then(clickModifier)
-        ) {
-            AlbumCover(album, RoundedCornerShape(if (compact) 14.dp else 18.dp))
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(album.name, color = palette.onBackground, fontSize = if (compact) 13.sp else 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(countText, color = palette.textMuted, fontSize = countSize, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-
-        // iOS 26 Photos: a large rounded cover with the album name set in white on the photo itself.
-        DesignLanguage.IOS_LIQUID_GLASS -> {
-            val shape = RoundedCornerShape(if (compact) 16.dp else 24.dp)
-            Box(
-                modifier = modifier
-                    .fillMaxWidth()
-                    .pressScale(interaction, 0.95f)
-                    .clip(shape)
-                    .then(clickModifier)
-            ) {
-                AlbumCover(album, shape)
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(
-                            androidx.compose.ui.graphics.Brush.verticalGradient(
-                                0.55f to Color.Transparent,
-                                1f to Color.Black.copy(alpha = 0.45f)
-                            )
-                        )
                 )
-                Text(
-                    text = album.name,
-                    style = androidx.compose.ui.text.TextStyle(
-                        color = Color.White,
-                        fontSize = if (compact) 14.sp else 18.sp,
-                        fontWeight = FontWeight.Medium,
-                        shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.45f), androidx.compose.ui.geometry.Offset(0f, 1f), 6f)
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = if (compact) 10.dp else 14.dp, end = 10.dp, bottom = if (compact) 8.dp else 12.dp)
-                )
-            }
-        }
-
-        // HyperOS: a rounded cover straight on the background, name and count underneath; squeezes on touch.
-        DesignLanguage.XIAOMI_HYPEROS -> Column(
-            modifier = modifier
-                .fillMaxWidth()
-                .pressScale(interaction, 0.95f)
-                .then(clickModifier)
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 8.dp, vertical = if (compact) 6.dp else 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            AlbumCover(album, RoundedCornerShape(if (compact) 16.dp else 22.dp))
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(album.name, color = palette.onBackground, fontSize = if (compact) 14.sp else 17.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(countText, color = palette.textMuted, fontSize = if (compact) 12.sp else 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.5f), androidx.compose.ui.geometry.Offset(0f, 1f), 6f)
+            Text(
+                text = album.name,
+                style = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = if (compact) 13.sp else 18.sp, fontWeight = FontWeight.Medium, shadow = shadow),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = countText,
+                style = androidx.compose.ui.text.TextStyle(color = Color.White.copy(alpha = 0.9f), fontSize = if (compact) 11.sp else 15.sp, shadow = shadow),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -1930,23 +1562,11 @@ private fun AlbumCover(album: AlbumItem, shape: Shape) {
 
 @Composable
 private fun AlbumsSectionTitle(text: String, count: Int, modifier: Modifier = Modifier) {
-    val theme = LocalAppTheme.current
-    val palette = theme.palette
-    when (theme.language) {
-        DesignLanguage.SAMSUNG_ONEUI -> Row(modifier = modifier.padding(top = 8.dp), verticalAlignment = Alignment.Bottom) {
-            Text(text, color = palette.onBackground, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("$count", color = palette.textMuted, fontSize = 15.sp)
-        }
-        DesignLanguage.GOOGLE_EXPRESSIVE -> Row(modifier = modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(text, color = palette.onBackground, fontSize = 18.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-            Text("$count", color = palette.textMuted, fontSize = 14.sp)
-        }
-        DesignLanguage.IOS_LIQUID_GLASS -> Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(text, color = palette.onBackground, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Text("$count", color = palette.textMuted, fontSize = 17.sp)
-        }
-        DesignLanguage.XIAOMI_HYPEROS -> HyperOsSectionLabel(text, modifier.padding(top = 10.dp, bottom = 4.dp))
+    val palette = LocalAppTheme.current.palette
+    Row(modifier = modifier.padding(top = 8.dp), verticalAlignment = Alignment.Bottom) {
+        Text(text, color = palette.onBackground, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.width(8.dp))
+        Text("$count", color = palette.textMuted, fontSize = 15.sp)
     }
 }
 
@@ -1956,51 +1576,30 @@ private fun Breadcrumbs(
     onBreadcrumbClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val theme = LocalAppTheme.current
-    val palette = theme.palette
-    val language = theme.language
+    val palette = LocalAppTheme.current.palette
     Row(
         modifier = modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState()),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(if (language == DesignLanguage.GOOGLE_EXPRESSIVE) 6.dp else 0.dp)
+        verticalAlignment = Alignment.CenterVertically
     ) {
         val crumbs = listOf(strings.tabAlbums) + breadcrumbs.map { it.name }
         crumbs.forEachIndexed { position, name ->
             val index = position - 1
             val isCurrent = position == crumbs.lastIndex
-            if (position > 0 && language != DesignLanguage.GOOGLE_EXPRESSIVE) {
+            if (position > 0) {
                 Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = palette.textMuted, modifier = Modifier.size(18.dp))
             }
-            if (language == DesignLanguage.GOOGLE_EXPRESSIVE) {
-                Text(
-                    text = name,
-                    color = if (isCurrent) palette.onAccent else palette.onBackground,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (isCurrent) palette.accent else lerp(palette.surfaceVariant, palette.accent, 0.08f))
-                        .clickable(enabled = !isCurrent) { onBreadcrumbClick(index) }
-                        .padding(horizontal = 12.dp, vertical = 7.dp)
-                )
-            } else {
-                Text(
-                    text = name,
-                    color = when {
-                        isCurrent -> palette.onBackground
-                        language == DesignLanguage.IOS_LIQUID_GLASS -> palette.accent
-                        else -> palette.textMuted
-                    },
-                    fontSize = 15.sp,
-                    fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(enabled = !isCurrent) { onBreadcrumbClick(index) }
-                        .padding(horizontal = 6.dp, vertical = 6.dp)
-                )
-            }
+            Text(
+                text = name,
+                color = if (isCurrent) palette.onBackground else palette.textMuted,
+                fontSize = 15.sp,
+                fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(enabled = !isCurrent) { onBreadcrumbClick(index) }
+                    .padding(horizontal = 6.dp, vertical = 6.dp)
+            )
         }
     }
 }

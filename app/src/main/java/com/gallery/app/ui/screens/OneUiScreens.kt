@@ -229,7 +229,7 @@ private fun AppearanceContent() {
             PaletteRow(
                 presets = presetsFor(currentLanguage, lightMode),
                 currentPaletteId = currentPalette.id,
-                onSelectPreset = { preset -> ThemeState.apply(currentLanguage, preset, context = context) },
+                onSelectPreset = { preset -> ThemeState.apply(preset, context = context) },
                 onOpenCustomEditor = { showCustomEditor = true }
             )
         }
@@ -238,11 +238,10 @@ private fun AppearanceContent() {
 
     if (showCustomEditor) {
         CustomAccentDialog(
-            language = currentLanguage,
             lightMode = lightMode,
             initialAccent = currentPalette.accent,
             onConfirm = { accent ->
-                applyCustomAccent(context, currentLanguage, lightMode, accent)
+                applyCustomAccent(context, lightMode, accent)
                 showCustomEditor = false
             },
             onDismiss = { showCustomEditor = false }
@@ -531,5 +530,18 @@ private fun Suggestion(text: String, button: String, onClick: () -> Unit) {
         ) {
             Text(button, color = palette.onBackground, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
+    }
+}
+
+/** "843,5 MB" / "62,42 GB" in the app language. */
+internal fun formatStorageSize(bytes: Long): String {
+    val kb = bytes / 1024.0
+    val mb = kb / 1024.0
+    val gb = mb / 1024.0
+    val locale = LanguageState.locale
+    return when {
+        gb >= 1.0 -> String.format(locale, "%.2f GB", gb)
+        mb >= 1.0 -> String.format(locale, "%.1f MB", mb)
+        else -> String.format(locale, "%.0f KB", kb)
     }
 }

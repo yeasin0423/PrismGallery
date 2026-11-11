@@ -5,23 +5,12 @@ package com.gallery.app.ui.screens
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
-import com.gallery.app.ui.i18n.LanguageState
 import com.gallery.app.ui.i18n.strings
-import com.gallery.app.ui.components.HyperOsDetailInfoPage
-import com.gallery.app.ui.design.geminiGlass
-import com.gallery.app.ui.design.geminiChip
-import com.gallery.app.ui.design.screenBackground
-import com.gallery.app.ui.design.blockTouchesBelow
-import com.gallery.app.ui.design.pushSpec
-import com.gallery.app.ui.design.pushTransition
-import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.rounded.MoreVert
 
 import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
@@ -47,11 +36,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -60,7 +47,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DeleteForever
@@ -70,12 +56,8 @@ import androidx.compose.material.icons.outlined.Wallpaper
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.material.icons.rounded.Favorite
@@ -85,11 +67,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -97,7 +77,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -111,7 +90,6 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Velocity
@@ -126,13 +104,8 @@ import com.gallery.app.ui.design.DialogButton
 import com.gallery.app.ui.design.DialogButtonStyle
 import com.gallery.app.ui.design.ThemedDialog
 import com.gallery.app.ui.design.ThemedTextField
-import com.gallery.app.ui.design.barGlass
-import com.gallery.app.ui.design.glass
 import com.gallery.app.ui.design.pressScale
-import com.gallery.app.ui.theme.DesignLanguage
 import com.gallery.app.ui.theme.LocalAppTheme
-import com.gallery.app.ui.theme.destructive
-import com.gallery.app.ui.theme.isLight
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -146,9 +119,6 @@ import com.gallery.app.ui.design.HazeSource
 import com.gallery.app.ui.design.OverlayWindow
 import com.gallery.app.ui.editor.MediaEditorScreen
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.material.icons.outlined.DriveFileRenameOutline
-import java.text.SimpleDateFormat
-import java.util.Date
 import kotlin.math.abs
 
 /** Share of the screen height the details panel takes when it is open underneath the photo. */
@@ -157,12 +127,8 @@ private const val INFO_PANEL_FRACTION = 0.52f
 /**
  * Fullscreen media viewer: pager, pinch/double-tap zoom, swipe down to close, swipe up for details.
  * The details open like the OS galleries do: the photo moves up and the panel opens underneath it.
- * The chrome follows the design language:
- * - One UI: date/time title and icon-only action row on soft black gradients.
- * - Material 3 Expressive: tonal floating circles on top, a floating toolbar pill at the bottom.
- * - iOS: glass circle buttons, a glass date capsule and a glass toolbar blurring the photo.
- * - HyperOS: white chrome with labelled actions while controls are shown; tapping hides the chrome
- *   and turns the background black.
+ * The chrome is One UI: a dark circle with the back chevron on the left, a ⋮ circle on the right, and
+ * a floating dark capsule with the actions at the bottom.
  *
  * In [trashMode] (opened from the trash) only restore, delete permanently and details are offered.
  * In [viewOnly] mode (a file another app opened with "Open with") only sharing and details are offered.
@@ -252,11 +218,9 @@ fun MediaDetailScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     /** The photo whose "set as wallpaper" sheet is open. */
     var wallpaperItem by remember { mutableStateOf<MediaItem?>(null) }
-    // iOS: the ⋯ menu in the top bar.
+    // The ⋯ menu in the top bar.
     var showMoreMenu by remember { mutableStateOf(false) }
     var moreMenuAnchor by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-    // HyperOS: details open as a full "Detail info" page instead of a panel.
-    var hyperInfoOpen by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<MediaItem?>(null) }
     var viewerSize by remember { mutableStateOf(IntSize.Zero) }
 
@@ -274,33 +238,22 @@ fun MediaDetailScreen(
 
     val theme = LocalAppTheme.current
     val palette = theme.palette
-    val language = theme.language
     val detailHaze = remember { HazeState() }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val statusBarPx = with(density) { WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx() }
     val topChromePx = statusBarPx + with(density) { 64.dp.toPx() }
-    val isIos = language == DesignLanguage.IOS_LIQUID_GLASS
-    val isHyperOs = language == DesignLanguage.XIAOMI_HYPEROS
 
-    // iOS opens the details the way Photos does: the photo moves up together with the panel, which starts at
-    // 46 % of the height. The panel can then be pulled further up over the photo ("expand") until it reaches
-    // the status bar; pulling down undoes the expand before it closes the panel.
-    val panelHeightPx = viewerSize.height * (if (isIos) 0.54f else INFO_PANEL_FRACTION)
-    val infoExpandMaxPx = if (isIos) (viewerSize.height - panelHeightPx - statusBarPx).coerceAtLeast(0f) else 0f
+    // The panel opens underneath the photo and grows upwards only as far as its details need to be seen
+    // whole (what does not fit is its scroll range), and never over the top bar.
+    val panelHeightPx = viewerSize.height * INFO_PANEL_FRACTION
     var infoExpand by remember { mutableFloatStateOf(0f) }
     androidx.compose.runtime.LaunchedEffect(pagerState.currentPage) { infoExpand = 0f }
-    // The other designs' panel grows upwards too, but only as far as its details need to be seen whole
-    // (what does not fit is its scroll range), and never over the top bar.
     val infoScroll = rememberScrollState()
-    fun infoExpandMax(): Float = when {
-        isIos -> infoExpandMaxPx
-        isHyperOs -> 0f
-        else -> minOf(
-            infoScroll.maxValue + infoExpand,
-            viewerSize.height - viewerSize.height * INFO_PANEL_FRACTION - topChromePx
-        ).coerceAtLeast(0f)
-    }
+    fun infoExpandMax(): Float = minOf(
+        infoScroll.maxValue + infoExpand,
+        viewerSize.height - viewerSize.height * INFO_PANEL_FRACTION - topChromePx
+    ).coerceAtLeast(0f)
     // Only read inside callbacks and small child scopes: read here, crossing the halfway point would
     // recompose the whole viewer (pager and images included) in the middle of the panel animation.
     val infoMostlyOpen by remember { derivedStateOf { infoProgress > 0.5f } }
@@ -314,8 +267,8 @@ fun MediaDetailScreen(
 
     /**
      * Applies a vertical finger movement ([dy] > 0 = downwards) to the details and returns the part of it that
-     * was used. iOS: upwards past the open position expands the panel over the photo, downwards first undoes
-     * that expand before closing the panel.
+     * was used. Upwards past the open position expands the panel over the photo; downwards first undoes that
+     * expand before closing the panel.
      */
     fun applyInfoDrag(dy: Float): Float {
         val expandMax = infoExpandMax()
@@ -367,36 +320,9 @@ fun MediaDetailScreen(
 
     // Pull-down-to-close: the photo follows the finger and shrinks, the background fades; released past
     // the threshold it closes (zooming back into the grid), otherwise it springs back.
-    val dismissShrink = when (language) {
-        DesignLanguage.IOS_LIQUID_GLASS -> 0.45f
-        DesignLanguage.GOOGLE_EXPRESSIVE -> 0.3f
-        DesignLanguage.SAMSUNG_ONEUI -> 0.25f
-        DesignLanguage.XIAOMI_HYPEROS -> 0.2f
-    }
+    val dismissShrink = 0.25f
     val favoriteBurst = remember { androidx.compose.animation.core.Animatable(1f) }
-
-    // HyperOS shows photos on white while the controls are visible, black in immersive mode.
-    val lightChrome = language == DesignLanguage.XIAOMI_HYPEROS && palette.isLight
-    val backgroundColor by animateColorAsState(
-        targetValue = if (lightChrome && showControls) palette.background else Color.Black,
-        animationSpec = tween(220),
-        label = "viewer_background"
-    )
-
-    val dateMillis = currentItem.date * 1000L
-    // iOS Photos names the day relatively ("Heute", "Gestern") and shows the bare time below it.
-    // A file handed over by another app may have no date at all; its name is shown instead of 1 January 1970.
-    val hasDate = dateMillis > 0L
-    val dateTitle = remember(dateMillis, LanguageState.language, isIos, currentItem.displayName) {
-        if (!hasDate) return@remember currentItem.displayName
-        val longDate = SimpleDateFormat(strings.longDatePattern, LanguageState.locale).format(Date(dateMillis))
-        if (isIos) relativeDayTitle(dateMillis) ?: longDate else longDate
-    }
-    val timeText = remember(dateMillis, LanguageState.language, isIos) {
-        if (!hasDate) return@remember ""
-        val time = SimpleDateFormat("HH:mm", LanguageState.locale).format(Date(dateMillis))
-        if (isIos || isHyperOs) time else strings.timeLabel(time)
-    }
+    val backgroundColor = Color.Black
 
     val actions = DetailActions(
         isFavorite = isFav,
@@ -423,7 +349,7 @@ fun MediaDetailScreen(
         },
         onRename = { showRenameDialog = true },
         onEdit = { editingItem = currentItem },
-        onInfo = { if (isHyperOs) hyperInfoOpen = true else settleInfo(if (infoMostlyOpen) 0f else 1f) },
+        onInfo = { settleInfo(if (infoMostlyOpen) 0f else 1f) },
         onDelete = { onTrashItem(currentItem) },
         onRestore = { onRestoreItem(currentItem) },
         onDeletePermanently = { onDeletePermanently(currentItem) },
@@ -431,8 +357,7 @@ fun MediaDetailScreen(
         onMore = { anchor ->
             moreMenuAnchor = anchor
             showMoreMenu = true
-        },
-        infoOpen = { infoMostlyOpen }
+        }
     )
     val onPhotoTap: () -> Unit = {
         if (infoMostlyOpen) settleInfo(0f) else showControls = !showControls
@@ -460,18 +385,12 @@ fun MediaDetailScreen(
                     if (p > 0f && h > 0f && w > 0f) {
                         val aspect = currentItem.displayAspectRatio
                         val fittedHeight = if (aspect > 0f) minOf(h, w / aspect) else h
-                        if (isIos) {
-                            // iOS: the photo keeps its size and moves up with the panel to the top of the screen,
-                            // then further up while the panel is pulled over it.
-                            infoShift = -((h - fittedHeight) / 2f) * p - infoExpand
-                        } else {
-                            // Details: shrink the photo just enough to fit the space above the panel and centre it there.
-                            // A panel pulled higher leaves less room, so the photo shrinks further.
-                            val available = (h - panelHeightPx - infoExpand - topChromePx).coerceAtLeast(h * 0.2f)
-                            val targetScale = (available / fittedHeight).coerceAtMost(1f)
-                            infoScale = 1f + (targetScale - 1f) * p
-                            infoShift = (topChromePx + available / 2f - h / 2f) * p
-                        }
+                        // Details: shrink the photo just enough to fit the space above the panel and centre it there.
+                        // A panel pulled higher leaves less room, so the photo shrinks further.
+                        val available = (h - panelHeightPx - infoExpand - topChromePx).coerceAtLeast(h * 0.2f)
+                        val targetScale = (available / fittedHeight).coerceAtMost(1f)
+                        infoScale = 1f + (targetScale - 1f) * p
+                        infoShift = (topChromePx + available / 2f - h / 2f) * p
                     }
                     val offset = dismissOffset
                     val fraction = (offset / h).coerceIn(0f, 1f)
@@ -479,10 +398,6 @@ fun MediaDetailScreen(
                     val s = (1f - fraction * dismissShrink) * infoScale
                     scaleX = s
                     scaleY = s
-                    if (language == DesignLanguage.GOOGLE_EXPRESSIVE && fraction > 0f) {
-                        shape = RoundedCornerShape((fraction * 120f).dp)
-                        clip = true
-                    }
                 }
                 .pointerInput(isZoomed, panelHeightPx) {
                     if (isZoomed) return@pointerInput
@@ -505,8 +420,7 @@ fun MediaDetailScreen(
                                     val vy = if (multiTouch) 0f else velocity.calculateVelocity().y
                                     if (dismissing) {
                                         if (dismissOffset > 170f || vy > 1800f) onBack() else settleDismiss()
-                                    } else if (!(isIos && infoProgress >= 1f)) {
-                                        // iOS: a panel that is fully open stays where it was pulled to.
+                                    } else {
                                         val target = when {
                                             vy < -700f -> 1f
                                             vy > 700f -> 0f
@@ -528,12 +442,6 @@ fun MediaDetailScreen(
                                     vertical = true
                                     settleJob?.cancel()
                                     dismissing = infoProgress <= 0.001f && total.y > 0f && dismissOffset >= 0f
-                                    if (isHyperOs && !dismissing) {
-                                        // HyperOS has no panel under the photo, and like Xiaomi's gallery its Detail page
-                                        // opens only from More > Details: swiping up does nothing.
-                                        change.consume()
-                                        break
-                                    }
                                     if (!dismissing) panelComposed = true
                                 }
                             }
@@ -609,72 +517,44 @@ fun MediaDetailScreen(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .graphicsLayer {
-                    // iOS hides the top bar while the details are open, so the photo reaches up to the status bar.
-                    val infoFade = if (isIos) (1f - infoProgress * 1.5f).coerceIn(0f, 1f) else 1f
-                    alpha = (1f - (dismissOffset / 220f).coerceIn(0f, 1f)) * infoFade
+                    alpha = 1f - (dismissOffset / 220f).coerceIn(0f, 1f)
                 }
         ) {
-            DetailTopBar(language, dateTitle, timeText, lightChrome, detailHaze, actions)
+            DetailTopBar(actions)
         }
 
         val bottomBar: @Composable BoxScope.() -> Unit = {
             AnimatedVisibility(
                 // Fades with the panel through its alpha below (no visibility switch halfway, which recomposed);
-                // once the panel is up it covers the bar and takes its touches. iOS keeps its toolbar on top of
-                // the details instead.
+                // once the panel is up it covers the bar and takes its touches.
                 visible = showControls,
                 enter = fadeIn(tween(160)),
                 exit = fadeOut(tween(160)),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .graphicsLayer {
-                        val infoFade = if (isIos) 1f else (1f - infoProgress * 2f).coerceIn(0f, 1f)
+                        val infoFade = (1f - infoProgress * 2f).coerceIn(0f, 1f)
                         alpha = (1f - (dismissOffset / 220f).coerceIn(0f, 1f)) * infoFade
                     }
             ) {
                 if (viewOnly) {
-                    DetailViewOnlyBar(language, lightChrome, detailHaze, actions)
+                    DetailViewOnlyBar(actions)
                 } else if (trashMode) {
-                    DetailTrashBar(language, lightChrome, detailHaze, actions)
-                } else if (language == DesignLanguage.SAMSUNG_ONEUI && mediaList.size > 1) {
-                    // One UI: the strip of neighbouring photos above the toolbar.
+                    DetailTrashBar(actions)
+                } else if (mediaList.size > 1) {
+                    // The strip of neighbouring photos above the toolbar.
                     Column(modifier = Modifier.fillMaxWidth()) {
                         OneUiFilmstrip(mediaList, pagerState)
-                        DetailBottomBar(language, lightChrome, detailHaze, actions, canEdit = !currentItem.isVideo)
+                        DetailBottomBar(actions, canEdit = !currentItem.isVideo)
                     }
                 } else {
-                    DetailBottomBar(language, lightChrome, detailHaze, actions, canEdit = !currentItem.isVideo)
+                    DetailBottomBar(actions, canEdit = !currentItem.isVideo)
                 }
             }
         }
-        if (!isIos) bottomBar()
+        bottomBar()
 
-        if (panelComposed && panelHeightPx > 0f && isIos) {
-            IosInfoPanel(
-                item = currentItem,
-                viewerHeightPx = viewerSize.height.toFloat(),
-                openHeightPx = panelHeightPx,
-                expandMaxPx = infoExpandMaxPx,
-                progress = { infoProgress },
-                expand = { infoExpand },
-                onDrag = { dy ->
-                    settleJob?.cancel()
-                    applyInfoDrag(dy)
-                },
-                onSettle = { vy ->
-                    settleInfo(
-                        when {
-                            vy < -700f -> 1f
-                            vy > 700f -> 0f
-                            else -> if (infoProgress > 0.5f) 1f else 0f
-                        }
-                    )
-                }
-            )
-        }
-        if (isIos) bottomBar()
-
-        if (panelComposed && panelHeightPx > 0f && !isIos && !isHyperOs) {
+        if (panelComposed && panelHeightPx > 0f) {
             InfoPanel(
                 item = currentItem,
                 onEdit = if (viewOnly || currentItem.isVideo) null else actions.onEdit,
@@ -698,60 +578,22 @@ fun MediaDetailScreen(
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
-
-        if (isHyperOs) {
-            val infoPush by animateFloatAsState(
-                targetValue = if (hyperInfoOpen) 1f else 0f,
-                animationSpec = pushSpec(language),
-                label = "hyperos_info_push"
-            )
-            if (hyperInfoOpen || infoPush > 0.001f) {
-                if (hyperInfoOpen) BackHandler { hyperInfoOpen = false }
-                HyperOsDetailInfoPage(
-                    item = currentItem,
-                    onBack = { hyperInfoOpen = false },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pushTransition(language, { infoPush }, isTop = true)
-                        .blockTouchesBelow()
-                )
-            }
-        }
     }
 
     com.gallery.app.ui.design.ThemedPopupMenu(
         expanded = showMoreMenu,
         onDismissRequest = { showMoreMenu = false },
         anchorBounds = moreMenuAnchor,
-        entries = if (language == DesignLanguage.SAMSUNG_ONEUI) {
-            // One UI: the ⋮ circle at the top right.
-            buildList {
-                add(com.gallery.app.ui.design.MenuEntry(strings.copyToClipboard) {
-                    context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(
-                        android.content.ClipData.newUri(context.contentResolver, currentItem.displayName, currentItem.uri)
-                    )
-                })
-                // Photos become the wallpaper; videos and GIFs become a live wallpaper (see the sheet).
-                add(com.gallery.app.ui.design.MenuEntry(strings.setAsWallpaper) { wallpaperItem = currentItem })
-                if (actions.showRename) {
-                    add(com.gallery.app.ui.design.MenuEntry(strings.rename) { showRenameDialog = true })
-                }
-            }
-        } else if (isHyperOs) {
-            // HyperOS: the "More" menu above the toolbar.
-            buildList {
-                if (actions.showRename) add(com.gallery.app.ui.design.MenuEntry(strings.rename) { showRenameDialog = true })
-                // Photos become the wallpaper; videos and GIFs become a live wallpaper (see the sheet).
-                add(com.gallery.app.ui.design.MenuEntry(strings.setAsWallpaper) { wallpaperItem = currentItem })
-                add(com.gallery.app.ui.design.MenuEntry(strings.details) { hyperInfoOpen = true })
-            }
-        } else {
-            buildList {
-                if (actions.showRename) {
-                    add(com.gallery.app.ui.design.MenuEntry(strings.rename, icon = Icons.Outlined.DriveFileRenameOutline) { showRenameDialog = true })
-                }
-                add(com.gallery.app.ui.design.MenuEntry(strings.edit, icon = Icons.Outlined.Edit) { editingItem = currentItem })
-                add(com.gallery.app.ui.design.MenuEntry(strings.setAsWallpaper, icon = Icons.Outlined.Wallpaper) { wallpaperItem = currentItem })
+        entries = buildList {
+            add(com.gallery.app.ui.design.MenuEntry(strings.copyToClipboard) {
+                context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(
+                    android.content.ClipData.newUri(context.contentResolver, currentItem.displayName, currentItem.uri)
+                )
+            })
+            // Photos become the wallpaper; videos and GIFs become a live wallpaper (see the sheet).
+            add(com.gallery.app.ui.design.MenuEntry(strings.setAsWallpaper) { wallpaperItem = currentItem })
+            if (actions.showRename) {
+                add(com.gallery.app.ui.design.MenuEntry(strings.rename) { showRenameDialog = true })
             }
         }
     )
@@ -994,9 +836,7 @@ private fun InfoPanel(
     onSettle: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val theme = LocalAppTheme.current
-    val palette = theme.palette
-    val language = theme.language
+    val palette = LocalAppTheme.current.palette
     val latestOnDrag by androidx.compose.runtime.rememberUpdatedState(onDrag)
     val latestOnSettle by androidx.compose.runtime.rememberUpdatedState(onSettle)
     val connection = remember {
@@ -1028,14 +868,8 @@ private fun InfoPanel(
             }
         }
     }
-    val corner = when (language) {
-        DesignLanguage.IOS_LIQUID_GLASS -> 26.dp
-        DesignLanguage.GOOGLE_EXPRESSIVE -> 28.dp
-        // One UI: the details simply continue on the black page below the photo.
-        DesignLanguage.SAMSUNG_ONEUI -> 0.dp
-        else -> 20.dp
-    }
-    val isOneUi = language == DesignLanguage.SAMSUNG_ONEUI
+    // The details simply continue on the black page below the photo.
+    val corner = 0.dp
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -1053,128 +887,17 @@ private fun InfoPanel(
                 alpha = if (p <= 0f) 0f else 1f
             }
             .clip(RoundedCornerShape(topStart = corner, topEnd = corner))
-            .then(
-                // Google (Gemini): a Gemini glass sheet with its colour glow along the edge, like the bars.
-                if (language == DesignLanguage.GOOGLE_EXPRESSIVE) {
-                    Modifier.geminiGlass(RoundedCornerShape(topStart = corner, topEnd = corner), state = null, tintAlpha = 0.96f)
-                } else {
-                    Modifier.background(if (palette.isLight || isOneUi) palette.background else palette.surface)
-                }
-            )
+            .background(palette.background)
             .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false) } }
             .nestedScroll(connection)
             .verticalScroll(scrollState)
             .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
-            .padding(horizontal = if (isOneUi) 24.dp else 16.dp)
+            .padding(horizontal = 24.dp)
             .padding(bottom = 24.dp)
     ) {
-        if (isOneUi) {
-            Spacer(modifier = Modifier.height(28.dp))
-        } else {
-            Box(modifier = Modifier.fillMaxWidth().padding(top = 10.dp), contentAlignment = Alignment.Center) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 36.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(palette.onBackground.copy(alpha = 0.22f))
-                )
-            }
-            if (language == DesignLanguage.GOOGLE_EXPRESSIVE) {
-                // Gemini: no title - the date heading of the details leads.
-                Spacer(modifier = Modifier.height(18.dp))
-            } else {
-                Text(
-                    text = strings.details,
-                    color = palette.onBackground,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 8.dp, top = 14.dp, bottom = 14.dp)
-                )
-            }
-        }
+        Spacer(modifier = Modifier.height(28.dp))
         MediaInfoContent(item = item, onEdit = onEdit)
     }
-}
-
-/**
- * iOS Photos' details: the info cards open underneath the photo (which moves up with them) and can be pulled
- * further up over the photo. Scrolling upwards first opens the panel, then pulls it up, then scrolls the list;
- * scrolling downwards at the top of the list lowers it again and finally closes it. The toolbar stays on top.
- */
-@Composable
-private fun IosInfoPanel(
-    item: MediaItem,
-    viewerHeightPx: Float,
-    openHeightPx: Float,
-    expandMaxPx: Float,
-    progress: () -> Float,
-    expand: () -> Float,
-    onDrag: (Float) -> Float,
-    onSettle: (Float) -> Unit
-) {
-    val palette = LocalAppTheme.current.palette
-    val density = LocalDensity.current
-    val latestOnDrag by androidx.compose.runtime.rememberUpdatedState(onDrag)
-    val latestOnSettle by androidx.compose.runtime.rememberUpdatedState(onSettle)
-    val connection = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < 0f && source == NestedScrollSource.UserInput) {
-                    return Offset(0f, latestOnDrag(available.y))
-                }
-                return Offset.Zero
-            }
-
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                if (available.y > 0f && source == NestedScrollSource.UserInput) {
-                    return Offset(0f, latestOnDrag(available.y))
-                }
-                return Offset.Zero
-            }
-
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                if (progress() < 1f) {
-                    latestOnSettle(available.y)
-                    return available
-                }
-                return Velocity.Zero
-            }
-        }
-    }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(with(density) { (openHeightPx + expandMaxPx).toDp() })
-            .graphicsLayer {
-                val p = progress()
-                translationY = viewerHeightPx - openHeightPx - expand() + (1f - p) * openHeightPx
-                // Kept composed while closed; a zero alpha layer skips drawing it entirely.
-                alpha = if (p <= 0f) 0f else 1f
-            }
-            .background(palette.background)
-            .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false) } }
-            .nestedScroll(connection)
-            .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, end = 16.dp, top = 16.dp)
-            .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
-            // Room to scroll the last card above the floating toolbar.
-            .padding(bottom = 100.dp)
-    ) {
-        MediaInfoContent(item = item)
-    }
-}
-
-/** "Heute" / "Gestern" for photos of those days, null for any other day. */
-private fun relativeDayTitle(millis: Long): String? {
-    val day = java.util.Calendar.getInstance().apply { timeInMillis = millis }
-    val today = java.util.Calendar.getInstance()
-    fun sameDay(a: java.util.Calendar, b: java.util.Calendar) =
-        a.get(java.util.Calendar.YEAR) == b.get(java.util.Calendar.YEAR) &&
-            a.get(java.util.Calendar.DAY_OF_YEAR) == b.get(java.util.Calendar.DAY_OF_YEAR)
-    if (sameDay(day, today)) return strings.today
-    today.add(java.util.Calendar.DAY_OF_YEAR, -1)
-    if (sameDay(day, today)) return strings.yesterday
-    return null
 }
 
 private class DetailActions(
@@ -1193,148 +916,43 @@ private class DetailActions(
     val onDeletePermanently: () -> Unit,
     /** False in the trash, where a deleted item cannot be renamed. */
     val showRename: Boolean,
-    /** iOS: opens the ⋯ menu (anchored at the given bounds) holding the less frequent actions. */
-    val onMore: (androidx.compose.ui.geometry.Rect?) -> Unit = {},
-    /** Whether the details are open; read only inside the toolbar, so only the toolbar recomposes. */
-    val infoOpen: () -> Boolean = { false }
+    /** Opens the ⋯ menu (anchored at the given bounds) holding the less frequent actions. */
+    val onMore: (androidx.compose.ui.geometry.Rect?) -> Unit = {}
 )
 
 @Composable
-private fun DetailTopBar(
-    language: DesignLanguage,
-    dateTitle: String,
-    timeText: String,
-    lightChrome: Boolean,
-    hazeState: HazeState,
-    actions: DetailActions
-) {
-    val palette = LocalAppTheme.current.palette
-    when (language) {
-        // One UI 8 viewer: a dark circle with the back chevron on the left, a dark ⋮ circle on the right.
-        DesignLanguage.SAMSUNG_ONEUI -> Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OneUiChromeCircle(Icons.AutoMirrored.Rounded.ArrowBackIos, strings.back, Modifier, actions.onBack)
-            Spacer(modifier = Modifier.weight(1f))
-            var moreBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-            OneUiChromeCircle(
-                Icons.Rounded.MoreVert,
-                strings.options,
-                Modifier.onGloballyPositioned { moreBounds = it.boundsInRoot() }
-            ) { actions.onMore(moreBounds) }
-        }
-
-        DesignLanguage.GOOGLE_EXPRESSIVE -> Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TonalCircle(Icons.AutoMirrored.Rounded.ArrowBack, strings.back, actions.onBack)
-            // Balances the circles on the right so the date pill stays centred.
-            Spacer(modifier = Modifier.width(56.dp))
-            Spacer(modifier = Modifier.weight(1f))
-            Column(
-                modifier = Modifier
-                    .geminiChip(CircleShape)
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(dateTitle, color = palette.onBackground, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            // ⋮ holds rename, edit and "set as wallpaper".
-            var moreBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-            TonalCircle(
-                Icons.Rounded.MoreVert,
-                strings.options,
-                { actions.onMore(moreBounds) },
-                Modifier.onGloballyPositioned { moreBounds = it.boundsInRoot() }
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            TonalCircle(Icons.Outlined.Info, strings.details, actions.onInfo)
-        }
-
-        DesignLanguage.IOS_LIQUID_GLASS -> Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-        ) {
-            GlassCircle(Icons.AutoMirrored.Rounded.ArrowBackIos, strings.back, palette.onBackground, hazeState, 48.dp, Modifier.align(Alignment.CenterStart), actions.onBack)
-            // iOS 26 Photos: a wide glass capsule with the day ("Heute") and the time underneath.
-            Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .widthIn(min = 170.dp)
-                    .glass(RoundedCornerShape(percent = 50), barGlass(), hazeState)
-                    .padding(horizontal = 36.dp, vertical = 5.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(dateTitle, color = palette.onBackground, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                Text(timeText, color = palette.onBackground, fontSize = 13.sp, maxLines = 1)
-            }
-            // Less frequent actions (rename) sit behind the ⋯ circle.
-            if (actions.showRename) {
-                var moreBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-                GlassCircle(
-                    Icons.Rounded.MoreHoriz,
-                    strings.options,
-                    palette.onBackground,
-                    hazeState,
-                    48.dp,
-                    Modifier
-                        .align(Alignment.CenterEnd)
-                        .onGloballyPositioned { moreBounds = it.boundsInRoot() }
-                ) { actions.onMore(moreBounds) }
-            }
-        }
-
-        // HyperOS: a solid dark bar with the back arrow, the date and the time underneath; rename lives in "More".
-        DesignLanguage.XIAOMI_HYPEROS -> {
-            val chrome = if (lightChrome) palette.onBackground else Color.White
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(if (lightChrome) palette.background else Color(0xFF121212).copy(alpha = 0.94f))
-                    .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
-                    .height(76.dp)
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ChromeIcon(Icons.AutoMirrored.Rounded.ArrowBack, strings.back, chrome, actions.onBack)
-                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text(dateTitle, color = chrome, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                    Text(timeText, color = chrome.copy(alpha = 0.7f), fontSize = 15.sp, maxLines = 1)
-                }
-            }
-        }
+private fun DetailTopBar(actions: DetailActions) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OneUiChromeCircle(Icons.AutoMirrored.Rounded.ArrowBackIos, strings.back, Modifier, actions.onBack)
+        Spacer(modifier = Modifier.weight(1f))
+        var moreBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+        OneUiChromeCircle(
+            Icons.Rounded.MoreVert,
+            strings.options,
+            Modifier.onGloballyPositioned { moreBounds = it.boundsInRoot() }
+        ) { actions.onMore(moreBounds) }
     }
 }
 
 @Composable
 private fun DetailBottomBar(
-    language: DesignLanguage,
-    lightChrome: Boolean,
-    hazeState: HazeState,
     actions: DetailActions,
     /** Editing is for photos only; videos hide the edit action. */
     canEdit: Boolean = true
 ) {
-    val palette = LocalAppTheme.current.palette
     val favoriteIcon = if (actions.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder
-    val burstColor = if (language == DesignLanguage.GOOGLE_EXPRESSIVE) palette.accent else Color(0xFFFF4D6D)
     val favoriteModifier = Modifier
         .drawBehind {
             val b = actions.favoriteBurst()
             if (b < 1f) {
                 drawCircle(
-                    color = burstColor.copy(alpha = (1f - b) * 0.85f),
+                    color = Color(0xFFFF4D6D).copy(alpha = (1f - b) * 0.85f),
                     radius = size.minDimension * (0.45f + b * 0.5f),
                     style = Stroke(width = 3.dp.toPx() * (1f - b))
                 )
@@ -1346,228 +964,71 @@ private fun DetailBottomBar(
             scaleY = s
         }
 
-    when (language) {
-        // One UI 8 viewer: a floating dark capsule with favourite, edit, details, share and delete.
-        DesignLanguage.SAMSUNG_ONEUI -> Box(
+    // One UI 8 viewer: a floating dark capsule with favourite, edit, details, share and delete.
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
+            .padding(top = 8.dp, bottom = 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
-                .padding(top = 8.dp, bottom = 14.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(
-                modifier = Modifier
-                    .height(64.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF232325).copy(alpha = 0.94f))
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ChromeIcon(favoriteIcon, strings.favorite, if (actions.isFavorite) Color(0xFFFF4D6D) else Color.White, actions.onToggleFavorite, favoriteModifier)
-                if (canEdit) ChromeIcon(Icons.Outlined.Edit, strings.edit, Color.White, actions.onEdit)
-                ChromeIcon(Icons.Outlined.Info, strings.details, Color.White, actions.onInfo)
-                ChromeIcon(Icons.Outlined.Share, strings.share, Color.White, actions.onShare)
-                ChromeIcon(Icons.Outlined.Delete, strings.delete, Color.White, actions.onDelete)
-            }
-        }
-
-        DesignLanguage.GOOGLE_EXPRESSIVE -> Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
-                .padding(bottom = 18.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            val pill = RoundedCornerShape(percent = 50)
-            Row(
-                modifier = Modifier
-                    .geminiGlass(pill, hazeState, tintAlpha = 0.5f)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                ChromeIcon(Icons.Outlined.Share, strings.share, palette.onBackground, actions.onShare)
-                ChromeIcon(Icons.Outlined.Edit, strings.edit, palette.onBackground, actions.onEdit)
-                ChromeIcon(favoriteIcon, strings.favorite, if (actions.isFavorite) palette.accent else palette.onBackground, actions.onToggleFavorite, favoriteModifier)
-                ChromeIcon(Icons.Outlined.Delete, strings.delete, palette.onBackground, actions.onDelete)
-            }
-        }
-
-        // iOS 26 Photos: share and trash as separate glass circles at the edges, favourite / details / edit
-        // (the adjust sliders) in a compact glass capsule in the middle.
-        DesignLanguage.IOS_LIQUID_GLASS -> Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
-                .padding(start = 28.dp, end = 28.dp, top = 8.dp, bottom = 14.dp),
+                .height(64.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF232325).copy(alpha = 0.94f))
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            GlassCircle(Icons.Outlined.IosShare, strings.share, palette.onBackground, hazeState, 56.dp, Modifier, actions.onShare)
-            Spacer(modifier = Modifier.weight(1f))
-            Row(
-                modifier = Modifier
-                    .height(56.dp)
-                    .glass(RoundedCornerShape(percent = 50), barGlass(), hazeState)
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ChromeIcon(favoriteIcon, strings.favorite, if (actions.isFavorite) Color(0xFFFF375F) else palette.onBackground, actions.onToggleFavorite, favoriteModifier)
-                // Filled while the details are open, like Photos' info button.
-                ChromeIcon(if (actions.infoOpen()) Icons.Rounded.Info else Icons.Outlined.Info, strings.details, palette.onBackground, actions.onInfo)
-                ChromeIcon(Icons.Outlined.Tune, strings.edit, palette.onBackground, actions.onEdit)
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            GlassCircle(Icons.Outlined.Delete, strings.delete, palette.onBackground, hazeState, 56.dp, Modifier, actions.onDelete)
-        }
-
-        // HyperOS: five labelled actions - send, edit, favourite, delete, more (rename, details).
-        DesignLanguage.XIAOMI_HYPEROS -> {
-            val chrome = if (lightChrome) palette.onBackground else Color.White.copy(alpha = 0.9f)
-            var moreBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(if (lightChrome) palette.background else Color.Black.copy(alpha = 0.55f))
-                    .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
-                    .height(80.dp)
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LabeledChromeAction(Icons.AutoMirrored.Outlined.OpenInNew, strings.send, chrome, actions.onShare, modifier = Modifier.weight(1f))
-                LabeledChromeAction(Icons.Outlined.Edit, strings.edit, chrome, actions.onEdit, modifier = Modifier.weight(1f))
-                LabeledChromeAction(favoriteIcon, strings.favorites, if (actions.isFavorite) Color(0xFFFF5C7A) else chrome, actions.onToggleFavorite, favoriteModifier, modifier = Modifier.weight(1f))
-                LabeledChromeAction(Icons.Outlined.Delete, strings.delete, chrome, actions.onDelete, modifier = Modifier.weight(1f))
-                LabeledChromeAction(
-                    Icons.Outlined.MoreHoriz,
-                    strings.moreActions,
-                    chrome,
-                    { actions.onMore(moreBounds) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .onGloballyPositioned { moreBounds = it.boundsInRoot() }
-                )
-            }
+            ChromeIcon(favoriteIcon, strings.favorite, if (actions.isFavorite) Color(0xFFFF4D6D) else Color.White, actions.onToggleFavorite, favoriteModifier)
+            if (canEdit) ChromeIcon(Icons.Outlined.Edit, strings.edit, Color.White, actions.onEdit)
+            ChromeIcon(Icons.Outlined.Info, strings.details, Color.White, actions.onInfo)
+            ChromeIcon(Icons.Outlined.Share, strings.share, Color.White, actions.onShare)
+            ChromeIcon(Icons.Outlined.Delete, strings.delete, Color.White, actions.onDelete)
         }
     }
 }
 
 /** Reduced action bar for an item in the trash: restore, details, delete permanently. */
 @Composable
-private fun DetailTrashBar(
-    language: DesignLanguage,
-    lightChrome: Boolean,
-    hazeState: HazeState,
-    actions: DetailActions
-) {
-    val palette = LocalAppTheme.current.palette
-    when (language) {
-        DesignLanguage.GOOGLE_EXPRESSIVE, DesignLanguage.IOS_LIQUID_GLASS -> Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
-                .padding(bottom = if (language == DesignLanguage.IOS_LIQUID_GLASS) 14.dp else 18.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(
-                modifier = Modifier
-                    .glass(RoundedCornerShape(percent = 50), barGlass(), hazeState)
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LabeledChromeAction(Icons.Outlined.Restore, strings.restore, palette.accent, actions.onRestore, height = 60.dp)
-                LabeledChromeAction(Icons.Outlined.Info, strings.details, palette.onBackground, actions.onInfo, height = 60.dp)
-                LabeledChromeAction(Icons.Outlined.DeleteForever, strings.deletePermanently, palette.destructive, actions.onDeletePermanently, height = 60.dp)
-            }
-        }
-
-        DesignLanguage.SAMSUNG_ONEUI, DesignLanguage.XIAOMI_HYPEROS -> {
-            val chrome = if (lightChrome) palette.onBackground else Color.White
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .then(
-                        if (lightChrome) Modifier.background(palette.background)
-                        else Modifier.background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))))
-                    )
-                    .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
-                    .height(72.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LabeledChromeAction(Icons.Outlined.Restore, strings.restore, chrome, actions.onRestore)
-                LabeledChromeAction(Icons.Outlined.Info, strings.details, chrome, actions.onInfo)
-                LabeledChromeAction(Icons.Outlined.DeleteForever, strings.deletePermanently, if (lightChrome) palette.destructive else Color(0xFFFF6961), actions.onDeletePermanently)
-            }
-        }
+private fun DetailTrashBar(actions: DetailActions) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))))
+            .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
+            .height(72.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LabeledChromeAction(Icons.Outlined.Restore, strings.restore, Color.White, actions.onRestore)
+        LabeledChromeAction(Icons.Outlined.Info, strings.details, Color.White, actions.onInfo)
+        LabeledChromeAction(Icons.Outlined.DeleteForever, strings.deletePermanently, Color(0xFFFF6961), actions.onDeletePermanently)
     }
 }
 
 /** Action bar for a file another app opened with "Open with": share and details only. */
 @Composable
-private fun DetailViewOnlyBar(
-    language: DesignLanguage,
-    lightChrome: Boolean,
-    hazeState: HazeState,
-    actions: DetailActions
-) {
-    val palette = LocalAppTheme.current.palette
-    when (language) {
-        DesignLanguage.GOOGLE_EXPRESSIVE, DesignLanguage.IOS_LIQUID_GLASS -> Box(
+private fun DetailViewOnlyBar(actions: DetailActions) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
+            .padding(top = 8.dp, bottom = 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
-                .padding(bottom = if (language == DesignLanguage.IOS_LIQUID_GLASS) 14.dp else 18.dp),
-            contentAlignment = Alignment.Center
+                .height(64.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF232325).copy(alpha = 0.94f))
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier
-                    .glass(RoundedCornerShape(percent = 50), barGlass(), hazeState)
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LabeledChromeAction(Icons.Outlined.Share, strings.share, palette.onBackground, actions.onShare, height = 60.dp)
-                LabeledChromeAction(Icons.Outlined.Info, strings.details, palette.onBackground, actions.onInfo, height = 60.dp)
-            }
-        }
-
-        DesignLanguage.SAMSUNG_ONEUI -> Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
-                .padding(top = 8.dp, bottom = 14.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(
-                modifier = Modifier
-                    .height(64.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF232325).copy(alpha = 0.94f))
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ChromeIcon(Icons.Outlined.Info, strings.details, Color.White, actions.onInfo)
-                ChromeIcon(Icons.Outlined.Share, strings.share, Color.White, actions.onShare)
-            }
-        }
-
-        DesignLanguage.XIAOMI_HYPEROS -> {
-            val chrome = if (lightChrome) palette.onBackground else Color.White.copy(alpha = 0.9f)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(if (lightChrome) palette.background else Color.Black.copy(alpha = 0.55f))
-                    .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
-                    .height(80.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LabeledChromeAction(Icons.AutoMirrored.Outlined.OpenInNew, strings.send, chrome, actions.onShare)
-                LabeledChromeAction(Icons.Outlined.Info, strings.details, chrome, actions.onInfo)
-            }
+            ChromeIcon(Icons.Outlined.Info, strings.details, Color.White, actions.onInfo)
+            ChromeIcon(Icons.Outlined.Share, strings.share, Color.White, actions.onShare)
         }
     }
 }
@@ -1608,44 +1069,6 @@ private fun OneUiChromeCircle(icon: ImageVector, description: String, modifier: 
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, description, tint = Color.White, modifier = Modifier.size(25.dp))
-    }
-}
-
-@Composable
-private fun TonalCircle(icon: ImageVector, description: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val palette = LocalAppTheme.current.palette
-    val interaction = remember { MutableInteractionSource() }
-    Box(
-        modifier = modifier
-            .pressScale(interaction, 0.9f)
-            .size(48.dp)
-            .geminiChip(CircleShape)
-            .clickable(interactionSource = interaction, indication = ripple(), onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(icon, description, tint = palette.onBackground, modifier = Modifier.size(23.dp))
-    }
-}
-
-@Composable
-private fun GlassCircle(
-    icon: ImageVector,
-    description: String,
-    tint: Color,
-    hazeState: HazeState,
-    size: Dp,
-    modifier: Modifier,
-    onClick: () -> Unit
-) {
-    val interaction = remember { MutableInteractionSource() }
-    Box(
-        modifier = modifier
-            .size(size)
-            .glass(CircleShape, barGlass(), hazeState)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(icon, description, tint = tint, modifier = Modifier.size(23.dp))
     }
 }
 

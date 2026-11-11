@@ -41,7 +41,7 @@ import com.gallery.app.ui.design.HazeSource
 import com.gallery.app.ui.design.MediaZoomTransition
 
 /**
- * Favorites: the grid scrolls underneath the language's frosted top bar; tapping opens the
+ * Favorites: the grid scrolls underneath the frosted top bar; tapping opens the
  * fullscreen viewer as an overlay so the scroll position survives.
  */
 @Composable
@@ -93,8 +93,8 @@ fun FavoritesScreen(
                     contentPadding = PaddingValues(
                         start = theme.shapes.gridHorizontalPadding,
                         end = theme.shapes.gridHorizontalPadding,
-                        // Gemini's bar fades out 28dp below itself; the first row starts below that fade.
-                        top = statusBarTop + if (theme.language == com.gallery.app.ui.theme.DesignLanguage.GOOGLE_EXPRESSIVE) 96.dp else 72.dp,
+                        // The first row starts below the top bar.
+                        top = statusBarTop + 72.dp,
                         bottom = navigationBottom + 24.dp
                     ),
                     horizontalArrangement = Arrangement.spacedBy(theme.shapes.gridSpacing),
@@ -121,8 +121,7 @@ fun FavoritesScreen(
 
         ThemedTopBar(
             title = strings.favorites,
-            // HyperOS shows just the centred title.
-            subtitle = if (theme.language == com.gallery.app.ui.theme.DesignLanguage.XIAOMI_HYPEROS) null else strings.items(favoriteItems.size),
+            subtitle = strings.items(favoriteItems.size),
             onBack = onBack,
             hazeState = favoritesHaze,
             modifier = Modifier.align(Alignment.TopCenter)

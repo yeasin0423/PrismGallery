@@ -31,7 +31,7 @@ this fork intentionally keeps only One UI and English.
 │   │   │   │   ├── design/             # design-system primitives, motion, overlays
 │   │   │   │   ├── editor/             # photo/video editor
 │   │   │   │   ├── i18n/Strings.kt     # English strings (only language)
-│   │   │   │   ├── screens/            # feature screens + per-design settings pages
+│   │   │   │   ├── screens/            # feature screens + One UI settings pages
 │   │   │   │   ├── theme/              # palettes, shapes, ThemeState
 │   │   │   │   └── viewmodel/          # GalleryViewModel
 │   │   │   └── util/                   # launcher icon, wallpaper accents, helpers
@@ -65,9 +65,9 @@ There is no local JDK/Android SDK guarantee in every environment. Prefer CI as t
 
 ## Current styling/translation state (important)
 
-- `DesignLanguage` still contains all four enum values because per-design composables are shared and
-  branching on the enum throughout `ui/`. **Do not add UI to select a design.** `ThemeState.load` and
-  `ThemeState.apply` force `SAMSUNG_ONEUI`, so only the One UI paths are reachable.
+- `DesignLanguage` has a single value, `SAMSUNG_ONEUI`. The Gemini, iOS Liquid Glass and HyperOS
+  screens, helpers and enum values were deleted; only the One UI paths exist. **Do not add a design
+  picker or reintroduce those styles.**
 - `AppLanguage` is reduced to `ENGLISH`; `LanguageState.language`/`locale` are constants. `strings`
   always returns `EnglishStrings`. Do not reintroduce a language picker or `GermanStrings`.
 - The manifest has a single launcher alias, `.LauncherOneUi`. `LauncherIcon.apply` also disables the old

@@ -29,10 +29,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gallery.app.R
-import com.gallery.app.ui.design.ExpressiveCookieShape
 import com.gallery.app.ui.design.ThemedButton
 import com.gallery.app.ui.design.ThemedCard
-import com.gallery.app.ui.theme.DesignLanguage
 import com.gallery.app.ui.theme.LocalAppTheme
 import com.gallery.app.ui.theme.destructive
 
@@ -64,7 +62,7 @@ fun PermissionScreen(
             Box(
                 modifier = Modifier
                     .size(92.dp)
-                    .clip(if (theme.language == DesignLanguage.GOOGLE_EXPRESSIVE) ExpressiveCookieShape else CircleShape)
+                    .clip(CircleShape)
                     .background(palette.accent.copy(alpha = 0.18f)),
                 contentAlignment = Alignment.Center
             ) {

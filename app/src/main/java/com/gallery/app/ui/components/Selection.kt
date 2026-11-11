@@ -4,11 +4,9 @@ import com.gallery.app.ui.i18n.strings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,41 +15,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Checklist
-import androidx.compose.material.icons.rounded.RemoveDone
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gallery.app.model.MediaItem
 import com.gallery.app.ui.design.GlassRim
 import com.gallery.app.ui.design.GlassSpec
-import com.gallery.app.ui.design.ThemedIconButton
-import com.gallery.app.ui.design.ThemedTopBar
 import com.gallery.app.ui.design.glass
-import com.gallery.app.ui.design.pressScale
-import com.gallery.app.ui.theme.DesignLanguage
 import com.gallery.app.ui.theme.LocalAppTheme
-import com.gallery.app.ui.theme.frost
 import com.gallery.app.ui.theme.isLight
-import com.gallery.app.ui.theme.onAccent
 import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -60,10 +44,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Top bar shown while items are selected, shared by the Bilder grid and album media grids:
- * - One UI 9: a floating frosted card with back chevron, n/total and "Alle".
- * - iOS: glass bar with "Alle" on the left, the count centred, a prominent strings.done on the right.
- * - Material / HyperOS: contextual top bar with a close icon and an "Alle" text action.
+ * Top bar shown while items are selected, shared by the Bilder grid and album media grids: a floating
+ * frosted One UI card with a back chevron, n/total and the select-all circle.
  */
 @Composable
 fun SelectionTopBar(
@@ -74,129 +56,44 @@ fun SelectionTopBar(
     hazeState: HazeState?,
     modifier: Modifier = Modifier
 ) {
-    val theme = LocalAppTheme.current
-    val palette = theme.palette
+    val palette = LocalAppTheme.current.palette
     val allSelected = totalCount > 0 && selectedCount == totalCount
     val toggleLabel = if (allSelected) strings.none else strings.all
     val title = strings.selectionTitle(selectedCount)
 
-    when (theme.language) {
-        // One UI 8: "Alle" check circle, the count and "Abbrechen" on a frosted bar (the expanded form of this
-        // is the big "14 ausgewählt" title at the top of the grid).
-        DesignLanguage.SAMSUNG_ONEUI -> Box(modifier = modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .glass(
-                        RectangleShape,
-                        GlassSpec(palette.background.copy(alpha = 0.72f), palette.background.copy(alpha = 0.97f), 30.dp, GlassRim.None),
-                        hazeState
-                    )
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .height(70.dp)
-                    .padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OneUiSelectAll(checked = allSelected, onClick = onToggleSelectAll)
-                Text(
-                    text = title,
-                    color = palette.onBackground,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 14.dp)
+    // One UI: the select-all check circle, the count and "Cancel" on a frosted bar (the expanded form
+    // of this is the big "14 selected" title at the top of the grid).
+    Box(modifier = modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .glass(
+                    RectangleShape,
+                    GlassSpec(palette.background.copy(alpha = 0.72f), palette.background.copy(alpha = 0.97f), 30.dp, GlassRim.None),
+                    hazeState
                 )
-                SelectionTextAction(strings.cancel, palette.onBackground, onClose)
-            }
-        }
-
-        DesignLanguage.IOS_LIQUID_GLASS -> {
-            val shade = if (palette.isLight) Color.White else Color.Black
-            Box(modifier = modifier.fillMaxWidth()) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .glass(
-                            RectangleShape,
-                            GlassSpec(shade.copy(alpha = 0.45f), shade.copy(alpha = 0.92f), 18.dp, GlassRim.None),
-                            hazeState,
-                            mask = Brush.verticalGradient(0f to Color.Black, 0.7f to Color.Black, 1f to Color.Transparent)
-                        )
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 18.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SelectionGlassButton(toggleLabel, hazeState, prominent = false, onClick = onToggleSelectAll)
-                    Text(
-                        text = title,
-                        color = palette.onBackground,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 10.dp)
-                    )
-                    SelectionGlassButton(strings.done, hazeState, prominent = true, onClick = onClose)
-                }
-            }
-        }
-
-        // HyperOS: a close icon and a select-all icon over a big thin "Select items" / "10 selected" title.
-        DesignLanguage.XIAOMI_HYPEROS -> androidx.compose.foundation.layout.Column(
-            modifier = modifier
+        )
+        Row(
+            modifier = Modifier
                 .fillMaxWidth()
-                .background(palette.background)
+                .statusBarsPadding()
+                .height(70.dp)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .height(56.dp)
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ThemedIconButton(icon = Icons.Rounded.Close, contentDescription = strings.endSelection, onClick = onClose)
-                androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
-                ThemedIconButton(
-                    icon = if (allSelected) Icons.Rounded.RemoveDone else Icons.Rounded.Checklist,
-                    contentDescription = toggleLabel,
-                    onClick = onToggleSelectAll
-                )
-            }
+            OneUiSelectAll(checked = allSelected, onClick = onToggleSelectAll)
             Text(
                 text = title,
                 color = palette.onBackground,
-                fontSize = 40.sp,
-                fontWeight = FontWeight.Light,
-                letterSpacing = (-0.5).sp,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 28.dp, end = 28.dp, top = 30.dp, bottom = 18.dp)
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 14.dp)
             )
-        }
-
-        else -> ThemedTopBar(
-            title = title,
-            navigationIcon = Icons.Rounded.Close,
-            onBack = onClose,
-            hazeState = hazeState,
-            modifier = modifier
-        ) {
-            SelectionTextAction(toggleLabel, palette.accent, onToggleSelectAll)
+            SelectionTextAction(strings.cancel, palette.onBackground, onClose)
         }
     }
 }
@@ -254,31 +151,6 @@ private fun SelectionTextAction(text: String, color: Color, onClick: () -> Unit)
     )
 }
 
-@Composable
-private fun SelectionGlassButton(text: String, hazeState: HazeState?, prominent: Boolean, onClick: () -> Unit) {
-    val palette = LocalAppTheme.current.palette
-    val interaction = remember { MutableInteractionSource() }
-    Box(
-        modifier = Modifier
-            .height(44.dp)
-            .then(
-                if (prominent) Modifier.clip(CircleShape).background(palette.accent)
-                else Modifier.glass(CircleShape, state = hazeState)
-            )
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(horizontal = 18.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            color = if (prominent) palette.onAccent else palette.onBackground,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1
-        )
-    }
-}
-
 /**
  * Samsung Gallery style continuous block drag-to-select, shared by every media grid:
  * - Starts when long-pressing directly on a media tile (never on headers or album tiles).
@@ -286,8 +158,8 @@ private fun SelectionGlassButton(text: String, hazeState: HazeState?, prominent:
  * - Scrolls automatically when dragging near the top/bottom edge.
  *
  * Pointer positions are mapped into the grid's item coordinate space by adding the viewport start
- * offset, which is minus the top content padding. Without that, grids with a large top padding (the
- * iOS title overlay) hit-tested rows below the finger.
+ * offset, which is minus the top content padding. Without that, grids with a large top padding
+ * hit-tested rows below the finger.
  */
 @Composable
 internal fun Modifier.detectDragSelect(

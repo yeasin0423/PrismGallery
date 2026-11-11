@@ -37,8 +37,6 @@ import com.gallery.app.ui.components.MediaGridItem
 import androidx.compose.ui.draw.clipToBounds
 import com.gallery.app.ui.design.DialogButton
 import com.gallery.app.ui.design.DialogButtonStyle
-import com.gallery.app.ui.design.ThemedChipAction
-import com.gallery.app.ui.theme.DesignLanguage
 import com.gallery.app.ui.design.ThemedDialog
 import com.gallery.app.ui.design.ThemedEmptyState
 import com.gallery.app.ui.design.ThemedTopBar
@@ -63,8 +61,6 @@ fun TrashScreen(
     var showEmptyConfirmDialog by remember { mutableStateOf(false) }
     val theme = LocalAppTheme.current
     val palette = theme.palette
-    val compactActions = trashedItems.isNotEmpty() &&
-        (theme.language == DesignLanguage.GOOGLE_EXPRESSIVE || theme.language == DesignLanguage.IOS_LIQUID_GLASS)
     val trashHaze = remember { HazeState() }
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navigationBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -84,7 +80,7 @@ fun TrashScreen(
                     contentPadding = PaddingValues(
                         start = theme.shapes.gridHorizontalPadding,
                         end = theme.shapes.gridHorizontalPadding,
-                        top = statusBarTop + if (compactActions) 112.dp else 64.dp,
+                        top = statusBarTop + 64.dp,
                         bottom = navigationBottom + 24.dp
                     ),
                     horizontalArrangement = Arrangement.spacedBy(theme.shapes.gridSpacing),
@@ -119,19 +115,9 @@ fun TrashScreen(
             subtitle = if (trashedItems.isEmpty()) null else strings.items(trashedItems.size),
             onBack = onBack,
             hazeState = trashHaze,
-            modifier = Modifier.align(Alignment.TopCenter),
-            // iOS and Material center/size their title so that two text actions beside it would leave
-            // no room for strings.trash; they get a compact second row instead.
-            secondaryActions = if (compactActions) {
-                {
-                    ThemedChipAction(strings.restore, palette.accent, onRestoreAll, trashHaze)
-                    ThemedChipAction(strings.emptyAction, palette.destructive, { showEmptyConfirmDialog = true }, trashHaze)
-                }
-            } else {
-                null
-            }
+            modifier = Modifier.align(Alignment.TopCenter)
         ) {
-            if (trashedItems.isNotEmpty() && !compactActions) {
+            if (trashedItems.isNotEmpty()) {
                 TopBarTextAction(strings.restore, palette.accent, onRestoreAll)
                 TopBarTextAction(strings.emptyAction, palette.destructive) { showEmptyConfirmDialog = true }
             }

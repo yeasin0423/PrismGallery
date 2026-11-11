@@ -1,16 +1,11 @@
 package com.gallery.app.ui.components
 import com.gallery.app.ui.i18n.strings
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -30,28 +25,21 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
 import androidx.compose.material.icons.outlined.Collections
-import androidx.compose.material.icons.outlined.AddBox
-import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.rounded.Collections
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Image
-import androidx.compose.material.icons.rounded.PhotoLibrary
-import androidx.compose.material.icons.rounded.AutoAwesomeMotion
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -62,11 +50,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -78,23 +63,12 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.gallery.app.ui.design.GlassRim
 import com.gallery.app.ui.design.glass
-import com.gallery.app.ui.design.geminiGlass
-import com.gallery.app.ui.design.glassRim
-import com.gallery.app.ui.design.pressScale
 import com.gallery.app.ui.design.selectionPop
 import com.gallery.app.ui.design.SamsungGalleryIcons
 import androidx.compose.animation.core.snap
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.isSpecified
-import androidx.compose.ui.graphics.Brush
-import com.gallery.app.ui.theme.DesignLanguage
 import com.gallery.app.ui.theme.LocalAppTheme
-import com.gallery.app.ui.theme.destructive
 import com.gallery.app.ui.theme.isLight
-import com.gallery.app.ui.theme.onAccent
 import com.gallery.app.ui.viewmodel.GalleryTab
 import kotlin.math.abs
 
@@ -124,13 +98,9 @@ private val NAV_TABS = listOf(
 )
 
 /**
- * Bottom navigation whose whole *structure* changes per [DesignLanguage]:
+ * Bottom navigation: a floating One UI frosted pill with the content tabs.
  * - One UI (Samsung Gallery): a floating frosted pill spanning the width, icon above label, with a
  *   lighter capsule sliding behind the active tab.
- * - Material 3 Expressive: an attached tonal bar; the active indicator springs open around the icon.
- * - iOS 26 Photos: a Liquid Glass capsule for the content tabs with a selection bubble that stretches as
- *   it glides. The glass swells slightly while touched.
- * - HyperOS: a small frosted icon-only pill centred above the gesture bar.
  *
  * Holding a tab for [HOLD_TO_SLIDE_TIMEOUT_MS] and dragging slides the selection across tabs; the
  * highlight follows the finger and the tab under it is selected on release.
@@ -149,8 +119,6 @@ fun BottomNavigationBar(
     var gestureRootX by remember { mutableFloatStateOf(0f) }
     var slideRootX by remember { mutableStateOf<Float?>(null) }
     var pressed by remember { mutableStateOf(false) }
-    // Where the finger touches the bar (local to the bar), for the iOS glass glint.
-    var touchPoint by remember { mutableStateOf(Offset.Unspecified) }
     val latestTab by rememberUpdatedState(currentTab)
     val latestOnTabSelected by rememberUpdatedState(onTabSelected)
 
@@ -167,7 +135,6 @@ fun BottomNavigationBar(
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 pressed = true
-                touchPoint = down.position
                 val downTime = System.currentTimeMillis()
                 var slideActive = false
                 var hoveredIndex = -1
@@ -179,7 +146,6 @@ fun BottomNavigationBar(
                         pressed = false
                         break
                     }
-                    touchPoint = change.position
                     // Sliding starts after a short hold, or as soon as the finger clearly moves sideways.
                     if (!slideActive && (System.currentTimeMillis() - downTime >= HOLD_TO_SLIDE_TIMEOUT_MS ||
                             abs(change.position.x - down.position.x) > viewConfiguration.touchSlop)
@@ -210,8 +176,7 @@ fun BottomNavigationBar(
 
     val palette = theme.palette
 
-    when (theme.language) {
-        DesignLanguage.SAMSUNG_ONEUI -> Box(
+    Box(
             modifier = modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
@@ -262,7 +227,8 @@ fun BottomNavigationBar(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .then(reportCenter(index))                                .clip(pill)
+                                .then(reportCenter(index))
+                                .clip(pill)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = ripple(color = palette.onBackground)
@@ -291,280 +257,11 @@ fun BottomNavigationBar(
                 }
             }
         }
-
-        // Google Photos: a floating dark pill with the content tabs - the active one opens into a lighter pill with
-        // its label - and a detached circle for the menu.
-        DesignLanguage.GOOGLE_EXPRESSIVE -> Row(
-            modifier = modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val pill = RoundedCornerShape(percent = 50)
-            // The open tab: darker than the glass bar, with a hairline edge (as in Prism Camera).
-            val activeFill = com.gallery.app.ui.design.geminiSelectionFill(palette.isLight)
-            val activeEdge = com.gallery.app.ui.design.geminiSelectionEdge(palette.isLight)
-            val barScale by animateFloatAsState(if (pressed) 0.98f else 1f, label = "google_bar_press")
-            Row(
-                modifier = Modifier
-                    .height(70.dp)
-                    .graphicsLayer {
-                        scaleX = barScale
-                        scaleY = barScale
-                    }
-                    .geminiGlass(pill, tintAlpha = 0.62f)
-                    .then(holdSlideModifier)
-                    .padding(horizontal = 9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                NAV_TABS.take(2).forEachIndexed { index, tab ->
-                    val selected = index == highlighted
-                    val container by animateColorAsState(
-                        targetValue = if (selected) activeFill else activeFill.copy(alpha = 0f),
-                        animationSpec = spring(stiffness = 700f),
-                        label = "google_tab_container"
-                    )
-                    Row(
-                        modifier = Modifier
-                            .then(reportCenter(index))
-                            .height(52.dp)
-                            .clip(pill)
-                            .background(container)
-                            .border(0.8.dp, activeEdge.copy(alpha = activeEdge.alpha * (container.alpha / activeFill.alpha.coerceAtLeast(0.01f))), pill)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(color = palette.onBackground)
-                            ) { onTabSelected(tab.tab) }
-                            .animateContentSize(spring(dampingRatio = 0.7f, stiffness = 500f))
-                            .padding(horizontal = if (selected) 22.dp else 18.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = if (selected) tab.selectedIcon else tab.icon,
-                            contentDescription = tab.label,
-                            tint = palette.onBackground,
-                            modifier = Modifier
-                                .size(26.dp)
-                                .selectionPop(selected, fromScale = 0.7f, dampingRatio = 0.45f, stiffness = 600f)
-                        )
-                        if (selected) {
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = tab.label,
-                                color = palette.onBackground,
-                                fontSize = 19.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        DesignLanguage.IOS_LIQUID_GLASS -> Row(
-            modifier = modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(start = 22.dp, end = 22.dp, top = 8.dp, bottom = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val swell by animateFloatAsState(
-                targetValue = if (pressed) 1.045f else 1f,
-                animationSpec = spring(dampingRatio = 0.5f, stiffness = 480f),
-                label = "ios_swell"
-            )
-            val pill = RoundedCornerShape(percent = 50)
-            // Specular glint: a soft light spot under the finger while the glass is touched.
-            val glint by animateFloatAsState(
-                targetValue = if (pressed) 1f else 0f,
-                animationSpec = tween(if (pressed) 90 else 420),
-                label = "ios_glint"
-            )
-            BoxWithConstraints(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(64.dp)
-                    // Swelling and the fingertip glow come from the Liquid Glass itself.
-                    .glass(pill)
-                    .then(holdSlideModifier)
-            ) {
-                val inset = 4.dp
-                val contentTabs = 2
-                val itemWidth = (maxWidth - inset * 2) / contentTabs
-                val itemWidthPx = with(LocalDensity.current) { itemWidth.toPx() }
-                val bubbleIndex = highlighted.coerceAtMost(contentTabs - 1)
-                val bubbleX = remember { Animatable(bubbleIndex * itemWidthPx) }
-                // While sliding, the bubble sits exactly under the finger. A fast spring "follower" trails
-                // it only to derive the liquid stretch, which relaxes as soon as the finger stops. After
-                // release the bubble springs from the finger position to the selected tab.
-                val slideTarget = slideRootX?.let {
-                    (it - gestureRootX - itemWidthPx / 2f).coerceIn(0f, itemWidthPx * (contentTabs - 1))
-                }
-                val follower = remember { Animatable(bubbleIndex * itemWidthPx) }
-                val lastFinger = remember { floatArrayOf(Float.NaN) }
-                if (slideTarget != null) lastFinger[0] = slideTarget
-                LaunchedEffect(slideTarget) {
-                    if (slideTarget != null) follower.animateTo(slideTarget, spring(dampingRatio = 1f, stiffness = 700f))
-                }
-                LaunchedEffect(slideTarget == null, bubbleIndex, itemWidthPx) {
-                    if (slideTarget == null) {
-                        if (!lastFinger[0].isNaN()) {
-                            bubbleX.snapTo(lastFinger[0])
-                            lastFinger[0] = Float.NaN
-                        }
-                        bubbleX.animateTo(bubbleIndex * itemWidthPx, spring(dampingRatio = 0.55f, stiffness = 450f))
-                    } else {
-                        follower.snapTo(bubbleX.value)
-                    }
-                }
-                val bubbleAlpha by animateFloatAsState(
-                    targetValue = if (highlighted < contentTabs) 1f else 0f,
-                    label = "ios_bubble_alpha"
-                )
-                Box(
-                    modifier = Modifier
-                        .padding(inset)
-                        .width(itemWidth)
-                        .fillMaxHeight()
-                        .graphicsLayer {
-                            val finger = slideTarget
-                            translationX = finger ?: bubbleX.value
-                            // Liquid stretch: elongates with speed and settles back round.
-                            val stretch = if (finger != null) {
-                                (abs(finger - follower.value) / itemWidthPx * 0.45f).coerceAtMost(0.2f)
-                            } else {
-                                (abs(bubbleX.velocity) / 4500f).coerceAtMost(0.2f)
-                            }
-                            scaleX = 1f + stretch
-                            scaleY = 1f - stretch * 0.3f
-                            alpha = bubbleAlpha
-                        }
-                        .clip(pill)
-                        // iOS 26 Photos: the selected tab sits in a darker well of the glass (a light one on light glass).
-                        .background(if (palette.isLight) Color.Black.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.42f))
-                        .glassRim(pill, GlassRim.Subtle, palette.isLight)
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(inset)
-                ) {
-                    NAV_TABS.take(contentTabs).forEachIndexed { index, tab ->
-                        val selected = index == highlighted
-                        val tint by animateColorAsState(
-                            targetValue = if (selected) palette.accent else palette.onBackground,
-                            label = "ios_tab_tint"
-                        )
-                        // Photos calls its tabs "Mediathek" and "Sammlungen".
-                        val label = if (index == 0) strings.tabLibrary else strings.tabCollections
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .then(reportCenter(index))
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
-                                ) { onTabSelected(tab.tab) },
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = if (index == 0) Icons.Rounded.PhotoLibrary else Icons.Rounded.AutoAwesomeMotion,
-                                contentDescription = label,
-                                tint = tint,
-                                modifier = Modifier
-                                    .size(26.dp)
-                                    .selectionPop(selected, fromScale = 0.84f, dampingRatio = 0.5f, stiffness = 700f)
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = label,
-                                color = tint,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // HyperOS Gallery: a solid full-width bar under a hairline, filled icons over their labels. The active
-        // tab is bright and bold, the others grey.
-        DesignLanguage.XIAOMI_HYPEROS -> Column(
-            modifier = modifier
-                .fillMaxWidth()
-                .background(palette.background)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(0.5.dp)
-                    .background(palette.onBackground.copy(alpha = if (palette.isLight) 0.08f else 0.12f))
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .height(64.dp)
-                    .then(holdSlideModifier),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                NAV_TABS.forEachIndexed { index, tab ->
-                    val selected = index == highlighted
-                    val tint by animateColorAsState(
-                        targetValue = if (selected) palette.onBackground else palette.textMuted.copy(alpha = 0.75f),
-                        animationSpec = tween(150),
-                        label = "hyperos_tint"
-                    )
-                    val tabInteraction = remember { MutableInteractionSource() }
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .then(reportCenter(index))
-                            .clickable(
-                                interactionSource = tabInteraction,
-                                indication = null
-                            ) { onTabSelected(tab.tab) },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = tab.selectedIcon,
-                            contentDescription = tab.label,
-                            tint = tint,
-                            modifier = Modifier
-                                // HyperOS icons squeeze on touch and snap back quickly.
-                                .pressScale(tabInteraction, 0.84f)
-                                .selectionPop(selected, fromScale = 0.82f, dampingRatio = 0.6f, stiffness = 800f)
-                                .size(26.dp)
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = tab.label,
-                            color = tint,
-                            fontSize = 13.sp,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                            maxLines = 1
-                        )
-                    }
-                }
-            }
-        }
-    }
 }
 
 /**
- * Replaces the tab bar while items are selected, in each OS's own form: One UI's frosted action pill,
- * Material's floating toolbar with a separate FAB, the iOS glass toolbar with a centred count, and
- * HyperOS's full-width frosted action bar.
+ * Replaces the tab bar while items are selected: a floating One UI action card with the count and the
+ * actions that apply to the selection.
  */
 @Composable
 fun SelectionActionBar(
@@ -578,9 +275,8 @@ fun SelectionActionBar(
     val palette = theme.palette
     val enabled = selectedCount > 0
 
-    when (theme.language) {
-        // One UI 8: a compact floating frosted capsule with labelled actions.
-        DesignLanguage.SAMSUNG_ONEUI -> Box(
+    // One UI 8: a compact floating frosted capsule with labelled actions.
+    Box(
             modifier = modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
@@ -599,81 +295,6 @@ fun SelectionActionBar(
             }
         }
 
-        // Google (Gemini): the actions in a glowing translucent glass capsule.
-        DesignLanguage.GOOGLE_EXPRESSIVE -> Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(top = 8.dp, bottom = 14.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(
-                modifier = Modifier
-                    .height(72.dp)
-                    .geminiGlass(RoundedCornerShape(percent = 50), tintAlpha = 0.62f)
-                    .padding(horizontal = 14.dp, vertical = 4.dp)
-            ) {
-                LabeledAction(Icons.Outlined.Share, strings.share, enabled, palette.onBackground, Modifier.width(88.dp), onShare)
-                LabeledAction(Icons.AutoMirrored.Rounded.DriveFileMove, strings.move, enabled, palette.onBackground, Modifier.width(88.dp), onMove)
-                LabeledAction(Icons.Outlined.Delete, strings.delete, enabled, palette.onBackground, Modifier.width(88.dp), onDelete)
-            }
-        }
-
-        // iOS 26 Photos: share and trash as glass circles, the selection count in a glass capsule between them
-        // ("Objekte auswählen" until something is selected). Moving lives in the ⋯ menu at the top.
-        DesignLanguage.IOS_LIQUID_GLASS -> Row(
-            modifier = modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(start = 28.dp, end = 28.dp, top = 8.dp, bottom = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            GlassCircleAction(Icons.Outlined.IosShare, strings.share, enabled, palette.onBackground, onShare)
-            Spacer(modifier = Modifier.weight(1f))
-            Box(
-                modifier = Modifier
-                    .height(56.dp)
-                    .glass(RoundedCornerShape(percent = 50))
-                    .padding(horizontal = 28.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = if (enabled) strings.showSelection(selectedCount) else strings.selectItems,
-                    color = palette.onBackground,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1
-                )
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            GlassCircleAction(Icons.Outlined.Delete, strings.delete, enabled, palette.onBackground, onDelete)
-        }
-
-        DesignLanguage.XIAOMI_HYPEROS -> Column(
-            modifier = modifier
-                .fillMaxWidth()
-                .background(palette.background)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(0.5.dp)
-                    .background(palette.onBackground.copy(alpha = if (palette.isLight) 0.08f else 0.12f))
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .height(64.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val tint = palette.onBackground.copy(alpha = 0.85f)
-                LabeledAction(Icons.AutoMirrored.Outlined.OpenInNew, strings.send, enabled, tint, Modifier.weight(1f), onShare)
-                LabeledAction(Icons.Outlined.AddBox, strings.move, enabled, tint, Modifier.weight(1f), onMove)
-                LabeledAction(Icons.Outlined.Delete, strings.delete, enabled, tint, Modifier.weight(1f), onDelete)
-            }
-        }
-    }
 }
 
 @Composable
@@ -697,44 +318,5 @@ private fun LabeledAction(
         Icon(icon, label, tint = color, modifier = Modifier.size(24.dp))
         Spacer(modifier = Modifier.height(3.dp))
         Text(label, color = color, fontSize = 12.sp, maxLines = 1)
-    }
-}
-
-@Composable
-private fun ToolbarIcon(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
-    val palette = LocalAppTheme.current.palette
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            icon,
-            label,
-            tint = if (enabled) palette.onBackground else palette.onBackground.copy(alpha = 0.35f),
-            modifier = Modifier.size(24.dp)
-        )
-    }
-}
-
-@Composable
-private fun GlassCircleAction(
-    icon: ImageVector,
-    label: String,
-    enabled: Boolean,
-    tint: Color,
-    onClick: () -> Unit
-) {
-    val interaction = remember { MutableInteractionSource() }
-    Box(
-        modifier = Modifier
-            .size(56.dp)
-            .glass(CircleShape)
-            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(icon, label, tint = if (enabled) tint else tint.copy(alpha = 0.35f), modifier = Modifier.size(23.dp))
     }
 }

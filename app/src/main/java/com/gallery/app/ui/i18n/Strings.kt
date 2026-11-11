@@ -55,7 +55,6 @@ interface AppStrings {
     val none: String
     val options: String
     val unknown: String
-    val notAvailable: String
     val restore: String
     val emptyAction: String
     val apply: String
@@ -68,20 +67,8 @@ interface AppStrings {
     // Tabs, filters, grid
     val tabPictures: String
     val tabAlbums: String
-    /** iOS Photos' names for the two content tabs. */
-    val tabLibrary: String
-    val tabCollections: String
     val select: String
-    /** Item count as iOS Photos words it ("153 Objekte"). */
-    fun objects(count: Int): String
-    /** iOS selection bar: "Objekte auswählen" while nothing is selected, "Auswahl (15) anzeigen" after. */
-    val selectItems: String
-    /** iOS details: "Samstag, 18. April 2026 um 12:10". */
     val infoDatePattern: String
-    val noCameraInfo: String
-    /** iOS details: "Im Album" followed by the album name. */
-    val inAlbumPrefix: String
-    fun showSelection(count: Int): String
     val selectAllItems: String
     val deselectAllItems: String
     val filterAll: String
@@ -89,10 +76,6 @@ interface AppStrings {
     val filterVideos: String
     fun items(count: Int): String
     fun selectionTitle(count: Int): String
-    fun itemsSelected(count: Int): String
-    val endSelection: String
-    val newBadge: String
-    val latestShot: String
     val largerThumbnails: String
     val smallerThumbnails: String
     val largerSubAlbums: String
@@ -103,11 +86,9 @@ interface AppStrings {
     val dayPattern: String
     val dayWithYearPattern: String
     val longDatePattern: String
-    fun timeLabel(time: String): String
 
     // Albums
     fun albums(count: Int): String
-    val myAlbums: String
     val allAlbums: String
     val noAlbums: String
     val subAlbums: String
@@ -136,7 +117,6 @@ interface AppStrings {
     fun selectionSize(count: Int, size: String): String
     val sdCard: String
     val internal: String
-    val noSdCard: String
     val renameAlbum: String
     val hideAlbum: String
     val deleteAlbum: String
@@ -175,8 +155,6 @@ interface AppStrings {
     val trashEmpty: String
     val trashEmptyMessage: String
     val trashInfo: String
-    val deletedItem: String
-    val itemFallback: String
     val deletePermanently: String
     val emptyTrashTitle: String
     fun emptyTrashMessage(count: Int): String
@@ -186,19 +164,11 @@ interface AppStrings {
     val shareMedia: String
     val renameFile: String
     val loadingMetadata: String
-    val dateTime: String
     val fileName: String
     val resolution: String
-    val fileSize: String
     val videoDuration: String
     val bitrate: String
-    val filePath: String
     val cameraModel: String
-    val captureSettings: String
-    val infoAperture: String
-    val infoShutter: String
-    val infoFocalLength: String
-    val infoExposure: String
     val captureLocation: String
     val map: String
     val gallery: String
@@ -208,19 +178,14 @@ interface AppStrings {
     // Menu & settings
     fun freeOf(free: String, total: String): String
     fun free(amount: String): String
-    fun percentUsed(percent: Int): String
     fun version(versionName: String): String
     val design: String
-    val designAndColors: String
     val appearance: String
     val settings: String
     val graphicsQuality: String
     val storage: String
     val info: String
-    val aboutGallery: String
-    val deviceStorage: String
     val library: String
-    val mediaLibrary: String
     val general: String
     val colors: String
     val light: String
@@ -236,42 +201,24 @@ interface AppStrings {
     fun qualityDescription(tier: PerformanceProfile): String
     fun paletteLabel(palette: AppColorPalette): String
 
-    // iOS settings pages
-    fun storageUsed(used: String, total: String): String
+    // Settings pages
     val legendPhotos: String
     val legendVideos: String
     val legendOther: String
-    val storageRecommendations: String
-    val recentlyDeletedAlbum: String
     fun freeUpTrash(size: String): String
-    val emptyShort: String
     val reviewMedia: String
     fun reviewMediaMessage(size: String): String
-    val sortBySize: String
     val storageCalculating: String
-    val designFooterText: String
     val appearanceModeHeader: String
     val accentColorHeader: String
     val fromWallpaper: String
     val accentFooterText: String
-    val languageFooterText: String
     val appNameLabel: String
     val colorPaletteLabel: String
 
-    // HyperOS pages
-    val allPhotos: String
-    val organizePhotos: String
-    val storageSpaceTitle: String
+    // Storage and info
     val storageAvailable: String
     val emptyTrashAction: String
-    fun hyperStorageSummary(used: String, total: String, free: String): String
-    val detailInfo: String
-    val takenOn: String
-    val fileInfo: String
-    val exifData: String
-    val localPath: String
-    val flashFired: String
-    val moreActions: String
 
     // One UI
     val copyToClipboard: String
@@ -284,11 +231,9 @@ interface AppStrings {
     val liveWallpaperTooLong: String
     val wallpaperFailed: String
     val imageInfo: String
-    val recent: String
     val manageStorage: String
     val usedWord: String
     val suggestions: String
-    fun imagesAndVideos(images: Int, videos: Int): String
 
     // Permissions
     val permissionTitle: String
@@ -378,7 +323,6 @@ object EnglishStrings : AppStrings {
     override val none = "None"
     override val options = "Options"
     override val unknown = "Unknown"
-    override val notAvailable = "Not available"
     override val restore = "Restore"
     override val emptyAction = "Empty"
     override val apply = "Apply"
@@ -390,15 +334,8 @@ object EnglishStrings : AppStrings {
 
     override val tabPictures = "Photos"
     override val tabAlbums = "Albums"
-    override val tabLibrary = "Library"
-    override val tabCollections = "Collections"
     override val select = "Select"
-    override fun objects(count: Int) = if (count == 1) "1 Item" else "$count Items"
-    override val selectItems = "Select Items"
     override val infoDatePattern = "EEEE, MMMM d, yyyy 'at' HH:mm"
-    override val noCameraInfo = "No camera information"
-    override val inAlbumPrefix = "In album"
-    override fun showSelection(count: Int) = "Show Selection ($count)"
     override val selectAllItems = "Select All"
     override val deselectAllItems = "Deselect All"
     override val filterAll = "All"
@@ -406,10 +343,6 @@ object EnglishStrings : AppStrings {
     override val filterVideos = "Videos"
     override fun items(count: Int) = if (count == 1) "1 item" else "$count items"
     override fun selectionTitle(count: Int) = if (count == 0) "Select items" else "$count selected"
-    override fun itemsSelected(count: Int) = if (count == 1) "1 item selected" else "$count items selected"
-    override val endSelection = "End selection"
-    override val newBadge = "New"
-    override val latestShot = "Latest capture"
     override val largerThumbnails = "Larger thumbnails"
     override val smallerThumbnails = "Smaller thumbnails"
     override val largerSubAlbums = "Larger sub-albums"
@@ -420,10 +353,8 @@ object EnglishStrings : AppStrings {
     override val dayPattern = "MMMM d"
     override val dayWithYearPattern = "MMMM d, yyyy"
     override val longDatePattern = "MMMM d, yyyy"
-    override fun timeLabel(time: String) = time
 
     override fun albums(count: Int) = if (count == 1) "1 album" else "$count albums"
-    override val myAlbums = "My albums"
     override val allAlbums = "All albums"
     override val noAlbums = "No albums yet"
     override val subAlbums = "Sub-albums"
@@ -452,7 +383,6 @@ object EnglishStrings : AppStrings {
     override fun selectionSize(count: Int, size: String) = "$count item(s) · $size"
     override val sdCard = "SD card"
     override val internal = "Internal"
-    override val noSdCard = "No SD card inserted"
     override val renameAlbum = "Rename album"
     override val hideAlbum = "Hide album"
     override val deleteAlbum = "Delete album"
@@ -493,8 +423,6 @@ object EnglishStrings : AppStrings {
     override val trashEmpty = "Trash is empty"
     override val trashEmptyMessage = "Deleted media is kept here for 30 days."
     override val trashInfo = "Items in the trash are deleted permanently after 30 days."
-    override val deletedItem = "Deleted item"
-    override val itemFallback = "Item"
     override val deletePermanently = "Delete permanently"
     override val emptyTrashTitle = "Empty trash?"
     override fun emptyTrashMessage(count: Int) = "All $count items in the trash will be deleted permanently."
@@ -503,19 +431,11 @@ object EnglishStrings : AppStrings {
     override val shareMedia = "Share media"
     override val renameFile = "Rename file"
     override val loadingMetadata = "Loading metadata…"
-    override val dateTime = "Date & time"
     override val fileName = "File name"
     override val resolution = "Resolution"
-    override val fileSize = "File size"
     override val videoDuration = "Video length"
     override val bitrate = "Bitrate"
-    override val filePath = "File path"
     override val cameraModel = "Camera model"
-    override val captureSettings = "Capture settings"
-    override val infoAperture = "Aperture"
-    override val infoShutter = "Shutter"
-    override val infoFocalLength = "Focal length"
-    override val infoExposure = "Exposure"
     override val captureLocation = "Location"
     override val map = "Map"
     override val gallery = "Gallery"
@@ -525,45 +445,25 @@ object EnglishStrings : AppStrings {
 
     override fun freeOf(free: String, total: String) = "$free free of $total"
     override fun free(amount: String) = "$amount free"
-    override fun percentUsed(percent: Int) = "$percent% used"
     override fun version(versionName: String) = "Version ${versionName.ifBlank { "unknown" }}"
     override val design = "Design"
-    override val designAndColors = "Design & colors"
     override val appearance = "Appearance"
     override val settings = "Settings"
-    override fun storageUsed(used: String, total: String) = "$used of $total used"
     override val legendPhotos = "Photos"
     override val legendVideos = "Videos"
     override val legendOther = "Other"
-    override val storageRecommendations = "Recommendations"
-    override val recentlyDeletedAlbum = "“Recently Deleted” Album"
     override fun freeUpTrash(size: String) = "Free up $size. All photos and videos in “Recently Deleted” will be permanently deleted."
-    override val emptyShort = "Empty"
     override val reviewMedia = "Review Photos and Videos"
     override fun reviewMediaMessage(size: String) = "Photos and videos use $size. Review them in the library and delete the ones you no longer need."
-    override val sortBySize = "Size"
     override val storageCalculating = "Calculating…"
-    override val designFooterText = "The design shapes the bars, dialogs, lists and animations of the whole app."
     override val appearanceModeHeader = "Appearance"
     override val accentColorHeader = "Accent Color"
     override val fromWallpaper = "From wallpaper"
     override val accentFooterText = "The accent color is used for icons, selections and highlighted text."
-    override val languageFooterText = "The app's language, independent of the system language."
     override val appNameLabel = "Name"
     override val colorPaletteLabel = "Color Palette"
-    override val allPhotos = "All photos"
-    override val organizePhotos = "Organize photos"
-    override val storageSpaceTitle = "Storage space"
     override val storageAvailable = "Available"
     override val emptyTrashAction = "Empty trash"
-    override fun hyperStorageSummary(used: String, total: String, free: String) = "$used/$total occupied | $free available"
-    override val detailInfo = "Detail info"
-    override val takenOn = "Taken on:"
-    override val fileInfo = "File info:"
-    override val exifData = "EXIF data:"
-    override val localPath = "Local path:"
-    override val flashFired = "Flash used"
-    override val moreActions = "More"
     override val copyToClipboard = "Copy to clipboard"
     override val setAsWallpaper = "Set as wallpaper"
     override val wallpaperHome = "Home screen"
@@ -574,21 +474,13 @@ object EnglishStrings : AppStrings {
     override val liveWallpaperTooLong = "Only videos up to 15 seconds can be a live wallpaper."
     override val wallpaperFailed = "Could not set the wallpaper"
     override val imageInfo = "Image info"
-    override val recent = "Recent"
     override val manageStorage = "Manage storage"
     override val usedWord = "used"
     override val suggestions = "Suggestions"
-    override fun imagesAndVideos(images: Int, videos: Int) = listOfNotNull(
-        if (images > 0 || videos == 0) (if (images == 1) "1 image" else "$images images") else null,
-        if (videos > 0) (if (videos == 1) "1 video" else "$videos videos") else null
-    ).joinToString(" ")
     override val graphicsQuality = "Graphics quality"
     override val storage = "Storage"
     override val info = "Info"
-    override val aboutGallery = "About Gallery"
-    override val deviceStorage = "Device storage"
     override val library = "Library"
-    override val mediaLibrary = "Library"
     override val general = "General"
     override val colors = "Colors"
     override val light = "Light"
@@ -616,24 +508,6 @@ object EnglishStrings : AppStrings {
         "oneui_light_blue" -> "OneUI Light Blue"
         "oneui_light_lavender" -> "OneUI Light Lavender"
         "oneui_light_green" -> "OneUI Light Green"
-        "expressive_mint" -> "Gemini Blue"
-        "expressive_violet" -> "Gemini Violet"
-        "expressive_amber" -> "Gemini Green"
-        "expressive_light_mint" -> "Gemini Light Blue"
-        "expressive_light_violet" -> "Gemini Light Violet"
-        "expressive_light_amber" -> "Gemini Light Green"
-        "glass_blue" -> "Glass Blue"
-        "glass_purple" -> "Glass Purple"
-        "glass_mint" -> "Glass Mint"
-        "glass_light" -> "Glass Light Blue"
-        "glass_light_purple" -> "Glass Light Purple"
-        "glass_light_mint" -> "Glass Light Mint"
-        "hyperos_light" -> "HyperOS Light Blue"
-        "hyperos_orange" -> "HyperOS Light Orange"
-        "hyperos_green" -> "HyperOS Light Green"
-        "hyperos_dark" -> "HyperOS Dark Blue"
-        "hyperos_dark_orange" -> "HyperOS Dark Orange"
-        "hyperos_dark_green" -> "HyperOS Dark Green"
         else -> palette.label
     }
 

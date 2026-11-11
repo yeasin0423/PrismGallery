@@ -56,7 +56,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -66,14 +65,10 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gallery.app.model.MediaItem
-import com.gallery.app.ui.design.GlassRim
-import com.gallery.app.ui.design.GlassSpec
 import com.gallery.app.ui.design.ThemedProgressBar
 import com.gallery.app.ui.design.blockTouchesBelow
-import com.gallery.app.ui.design.glass
 import com.gallery.app.ui.design.pressScale
 import com.gallery.app.ui.i18n.strings
-import com.gallery.app.ui.theme.DesignLanguage
 import com.gallery.app.ui.theme.LocalAppTheme
 import com.gallery.app.ui.theme.onAccent
 import kotlinx.coroutines.launch
@@ -315,7 +310,7 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
                     // Corner handles
                     val handleLength = 20.dp.toPx()
                     val handleStroke = 3.5.dp.toPx()
-                    val handleColor = if (theme.language == DesignLanguage.GOOGLE_EXPRESSIVE) palette.accent else Color.White
+                    val handleColor = Color.White
                     listOf(
                         Triple(cropRect.topLeft, 1f, 1f),
                         Triple(Offset(cropRect.right, cropRect.top), -1f, 1f),
@@ -414,7 +409,7 @@ private fun applyDrag(crop: NormalizedRect, handle: CropHandle, dx: Float, dy: F
     return NormalizedRect(left, top, right, bottom)
 }
 
-/** Rotate / mirror / reset tools in the design language's toolbar style. */
+/** Rotate / mirror / reset tools in the One UI toolbar style. */
 @Composable
 private fun EditorToolbar(
     enabled: Boolean,
@@ -423,8 +418,6 @@ private fun EditorToolbar(
     onMirrorVertically: () -> Unit,
     onReset: () -> Unit
 ) {
-    val theme = LocalAppTheme.current
-    val palette = theme.palette
     val tools: @Composable (Color) -> Unit = { tint ->
         EditorTool(Icons.Rounded.Rotate90DegreesCw, strings.rotate, tint, enabled, onRotate)
         EditorTool(Icons.Rounded.Flip, strings.flipHorizontal, tint, enabled, onMirrorHorizontally)
@@ -439,31 +432,10 @@ private fun EditorToolbar(
             .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
         contentAlignment = Alignment.Center
     ) {
-        when (theme.language) {
-            DesignLanguage.GOOGLE_EXPRESSIVE -> Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(percent = 50))
-                    .background(lerp(palette.surfaceVariant, palette.accent, 0.12f))
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) { tools(palette.onBackground) }
-
-            DesignLanguage.IOS_LIQUID_GLASS -> Row(
-                modifier = Modifier
-                    .glass(
-                        RoundedCornerShape(percent = 50),
-                        GlassSpec(Color(0xFF2C2C2E).copy(alpha = 0.9f), Color(0xFF2C2C2E), 0.dp, GlassRim.Liquid),
-                        state = null
-                    )
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) { tools(Color.White) }
-
-            else -> Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) { tools(Color.White) }
-        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) { tools(Color.White) }
     }
 }
 
@@ -480,7 +452,8 @@ private fun EditorTool(
     Column(
         modifier = Modifier
             .pressScale(interaction, 0.88f)
-            .clip(RoundedCornerShape(16.dp))            .clickable(interactionSource = interaction, indication = ripple(), enabled = enabled, onClick = onClick)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(interactionSource = interaction, indication = ripple(), enabled = enabled, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

@@ -92,7 +92,6 @@ import com.gallery.app.ui.design.pushSpec
 import com.gallery.app.ui.design.pushTransition
 import com.gallery.app.ui.design.tabSwitchSpec
 import com.gallery.app.ui.design.tabSwitchTransition
-import com.gallery.app.ui.design.ultraEffects
 import kotlin.math.sign
 import dev.chrisbanes.haze.HazeState
 import com.gallery.app.ui.design.HazeSource
@@ -375,21 +374,18 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
         }
 
         // Favoriten and Papierkorb are pushed over the main tabs instead of replacing them, so the tabs
-        // (and their scroll positions) stay alive underneath and each design can animate the push.
-        val language = LocalAppTheme.current.language
+        // (and their scroll positions) stay alive underneath while the push animates.
         val pushedScreen = when {
             isFavoritesOpen -> PushedScreen.FAVORITES
             isTrashOpen -> PushedScreen.TRASH
             isSettingsOpen -> PushedScreen.SETTINGS
             else -> null
         }
-        // Opening a tab or a pushed screen lets the Gemini glass surfaces on it play their animation once.
-        LaunchedEffect(selectedTab, pushedScreen) { com.gallery.app.ui.design.GeminiVisits.bump() }
         val lastPushedScreen = remember { arrayOf(PushedScreen.FAVORITES) }
         if (pushedScreen != null) lastPushedScreen[0] = pushedScreen
         val pushProgress = animateFloatAsState(
             targetValue = if (pushedScreen != null) 1f else 0f,
-            animationSpec = pushSpec(language),
+            animationSpec = pushSpec(),
             label = "push_screen"
         )
         val pushStillVisible by remember { derivedStateOf { pushProgress.value > 0.001f } }
@@ -398,15 +394,14 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pushTransition(language, { pushProgress.value }, isTop = false)
+                .pushTransition({ pushProgress.value }, isTop = false)
         ) {
             val isFullscreenViewer = selectedItemIndex != null
             val allItems = (uiState as? GalleryUiState.Success)?.items ?: emptyList()
 
             val tabTransition = remember { SwitchTransitionState(selectedTab) }
-            val tabSpec = tabSwitchSpec(language)
+            val tabSpec = tabSwitchSpec()
             LaunchedEffect(selectedTab) { tabTransition.animateTo(selectedTab, tabSpec) }
-            val blurTabs = ultraEffects()
 
             Box(modifier = Modifier.fillMaxSize()) {
                 // Tab content draws edge-to-edge underneath the (floating) bottom bar, which blurs it.
@@ -429,8 +424,8 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                     val p = tabTransition.progress.value
                                     val direction = (GalleryTab.entries.indexOf(to) - GalleryTab.entries.indexOf(from)).sign.toFloat()
                                     when (tab) {
-                                        to -> tabSwitchTransition(language, (1f - p) * direction, blurTabs)
-                                        from -> tabSwitchTransition(language, -p * direction, blurTabs)
+                                        to -> tabSwitchTransition((1f - p) * direction)
+                                        from -> tabSwitchTransition(-p * direction)
                                         else -> alpha = 0f
                                     }
                                 }
@@ -531,19 +526,7 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                         onDeselectAll = { viewModel.deselectAll() },
                                         onClearSelection = { viewModel.clearSelection() },
                                         onEnterSelection = { viewModel.startSelection(null) },
-                                        trashedCount = trashedMedia.size,
                                         onOpenTrash = { viewModel.openTrash() },
-                                        allMedia = allItems,
-                                        favoriteMedia = favoriteMedia,
-                                        onOpenAllPhotos = {
-                                            viewModel.selectFilter(com.gallery.app.ui.viewmodel.MediaFilter.ALL)
-                                            viewModel.selectTab(GalleryTab.BILDER)
-                                        },
-                                        onOpenVideos = {
-                                            viewModel.selectFilter(com.gallery.app.ui.viewmodel.MediaFilter.VIDEOS)
-                                            viewModel.selectTab(GalleryTab.BILDER)
-                                        },
-                                        onOpenFavorites = { isFavoritesOpen = true },
                                         albumSort = albumSort,
                                         onSetAlbumSort = { viewModel.setAlbumSort(it) },
                                         onMoveAlbum = { album, steps, toTop -> viewModel.moveAlbum(album, steps, toTop) },
@@ -580,13 +563,8 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                         fadeOut(animationSpec = qualityTween(graphicsQuality, 160))
                 }
 
-                // One UI and HyperOS hide the tab bar inside an album.
-                val oneUiPushedPage = when (language) {
-                    com.gallery.app.ui.theme.DesignLanguage.SAMSUNG_ONEUI,
-                    com.gallery.app.ui.theme.DesignLanguage.XIAOMI_HYPEROS ->
-                        selectedTab == GalleryTab.ALBEN && breadcrumbStack.isNotEmpty()
-                    else -> false
-                }
+                // One UI hides the tab bar inside an album.
+                val oneUiPushedPage = selectedTab == GalleryTab.ALBEN && breadcrumbStack.isNotEmpty()
                 AnimatedVisibility(
                     visible = !isFullscreenViewer && !isSelectionMode && !oneUiPushedPage,
                     enter = barEnter,
@@ -659,7 +637,7 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pushTransition(language, { pushProgress.value }, isTop = true)
+                    .pushTransition({ pushProgress.value }, isTop = true)
                     .screenBackground()
                     .blockTouchesBelow()
             ) {
@@ -745,7 +723,7 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
         }
     }
 
-    // In-app progress dialog for media move / album migration, styled per design language.
+    // In-app progress dialog for media move / album migration, in One UI style.
     // Rendered outside the tab-dependent content so it stays visible regardless of the active tab.
     if (moveProgress.isMoving) {
         val palette = LocalAppTheme.current.palette

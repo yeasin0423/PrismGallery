@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.SdCard
@@ -40,9 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.gallery.app.model.AlbumItem
-import com.gallery.app.ui.design.ExpressiveCookieShape
 import com.gallery.app.ui.design.ThemedSheet
-import com.gallery.app.ui.theme.DesignLanguage
 import com.gallery.app.ui.theme.LocalAppTheme
 import com.gallery.app.ui.theme.onAccent
 import com.gallery.app.ui.theme.destructive
@@ -152,15 +149,8 @@ private fun MoveTargetRow(
     /** How deep the album sits; each level is indented a little further. */
     depth: Int = 0
 ) {
-    val theme = LocalAppTheme.current
-    val palette = theme.palette
-    val language = theme.language
-    val coverShape: Shape = when (language) {
-        DesignLanguage.GOOGLE_EXPRESSIVE -> if (highlighted) ExpressiveCookieShape else RoundedCornerShape(16.dp)
-        DesignLanguage.IOS_LIQUID_GLASS -> RoundedCornerShape(10.dp)
-        DesignLanguage.SAMSUNG_ONEUI -> RoundedCornerShape(14.dp)
-        DesignLanguage.XIAOMI_HYPEROS -> RoundedCornerShape(12.dp)
-    }
+    val palette = LocalAppTheme.current.palette
+    val coverShape: Shape = RoundedCornerShape(14.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -200,7 +190,7 @@ private fun MoveTargetRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                color = if (highlighted && language != DesignLanguage.SAMSUNG_ONEUI) palette.accent else palette.onBackground,
+                color = palette.onBackground,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -213,9 +203,6 @@ private fun MoveTargetRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-        }
-        if (language == DesignLanguage.IOS_LIQUID_GLASS || language == DesignLanguage.XIAOMI_HYPEROS) {
-            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = palette.textMuted.copy(alpha = 0.6f), modifier = Modifier.size(22.dp))
         }
     }
 }

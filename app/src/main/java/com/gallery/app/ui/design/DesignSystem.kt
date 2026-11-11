@@ -16,7 +16,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -25,12 +24,10 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.gallery.app.GalleryApplication
 import com.gallery.app.PerformanceProfile
-import com.gallery.app.ui.theme.DesignLanguage
 import com.gallery.app.ui.theme.LocalAppTheme
 import com.gallery.app.ui.theme.isLight
 import com.gallery.app.ui.theme.frost
@@ -69,9 +66,7 @@ fun HazeSource(
     // Without real blur (LOW/MEDIUM, API < 31) nothing samples the backdrop, so don't record the content
     // into an extra backdrop layer on every frame at all.
     val recordBackdrop = glassEnabled()
-    // iOS Liquid Glass refracts a recording of the content itself instead of a blurred copy (API 33+).
-    val liquidRecorder = if (recordBackdrop && liquidRefractionEnabled()) Modifier.liquidBackdropSource(state) else Modifier
-    Box(modifier = (if (recordBackdrop) Modifier.haze(state) else Modifier).then(liquidRecorder).then(modifier)) {
+    Box(modifier = (if (recordBackdrop) Modifier.haze(state) else Modifier).then(modifier)) {
         CompositionLocalProvider(LocalEnclosingHazeSources provides if (recordBackdrop) enclosing + state else enclosing) {
             content()
         }
@@ -98,10 +93,8 @@ fun ultraEffects(): Boolean = LocalGraphicsQuality.current == PerformanceProfile
 enum class GlassRim {
     /** Flat frosted surface, no highlight. */
     None,
-    /** Faint edge highlight (One UI / HyperOS frosted glass). */
-    Subtle,
-    /** Bright specular rim and top sheen (iOS Liquid Glass). */
-    Liquid
+    /** Faint edge highlight (One UI frosted glass). */
+    Subtle
 }
 
 data class GlassSpec(
@@ -118,38 +111,19 @@ data class GlassSpec(
 @Composable
 @ReadOnlyComposable
 fun barGlass(): GlassSpec {
-    val theme = LocalAppTheme.current
-    val light = theme.palette.isLight
-    return when (theme.language) {
-        DesignLanguage.SAMSUNG_ONEUI -> GlassSpec(
-            tint = theme.palette.frost(Color(0xFF1E1E1E), if (light) 0.72f else 0.66f),
-            fallback = theme.palette.frost(Color(0xFF1E1E1E), 0.97f),
-            blur = 30.dp,
-            rim = GlassRim.Subtle
-        )
-        // Google Photos' floating bar: a dark frosted pill without a rim.
-        DesignLanguage.GOOGLE_EXPRESSIVE -> GlassSpec(
-            tint = theme.palette.surface.copy(alpha = if (light) 0.84f else 0.86f),
-            fallback = theme.palette.surface.copy(alpha = 0.98f),
-            blur = 28.dp,
-            rim = GlassRim.None
-        )
-        DesignLanguage.IOS_LIQUID_GLASS -> if (light) {
-            GlassSpec(Color.White.copy(alpha = 0.46f), Color.White.copy(alpha = 0.96f), 12.dp, GlassRim.Liquid)
-        } else {
-            GlassSpec(Color(0xFF242428).copy(alpha = 0.42f), Color(0xFF242428).copy(alpha = 0.96f), 12.dp, GlassRim.Liquid)
-        }
-        DesignLanguage.XIAOMI_HYPEROS -> if (light) {
-            GlassSpec(Color.White.copy(alpha = 0.74f), Color.White.copy(alpha = 0.98f), 26.dp, GlassRim.Subtle, noise = 0.03f)
-        } else {
-            GlassSpec(Color(0xFF232323).copy(alpha = 0.72f), Color(0xFF232323).copy(alpha = 0.98f), 26.dp, GlassRim.Subtle, noise = 0.03f)
-        }
-    }
+    val palette = LocalAppTheme.current.palette
+    val light = palette.isLight
+    return GlassSpec(
+        tint = palette.frost(Color(0xFF1E1E1E), if (light) 0.72f else 0.66f),
+        fallback = palette.frost(Color(0xFF1E1E1E), 0.97f),
+        blur = 30.dp,
+        rim = GlassRim.Subtle
+    )
 }
 
 /**
  * Draws a glass surface in [shape]: the blurred [state] backdrop (or [GlassSpec.fallback] when blur is
- * off), the tint, and the language's rim highlight. Content placed inside draws on top.
+ * off), the tint, and the rim highlight. Content placed inside draws on top.
  */
 @Composable
 fun Modifier.glass(
@@ -159,11 +133,6 @@ fun Modifier.glass(
     mask: Brush? = null
 ): Modifier {
     val theme = LocalAppTheme.current
-    // iOS controls (buttons, capsules, the tab bar) are Liquid Glass: refraction instead of frosting, and a
-    // touch response. Large frosted surfaces - dialogs, sheets, menus, masked bars - keep their blur.
-    if (theme.language == DesignLanguage.IOS_LIQUID_GLASS && spec.rim == GlassRim.Liquid && spec.blur <= 16.dp && mask == null) {
-        return liquidGlass(shape, spec, state?.takeIf { it !in LocalEnclosingHazeSources.current })
-    }
     val palette = theme.palette
     val blur = spec.blur > 0.dp && glassEnabled() &&
         state !in LocalEnclosingHazeSources.current
@@ -188,85 +157,26 @@ fun Modifier.glass(
 
 /** Specular rim + sheen that turns a frosted rectangle into a piece of glass. Drawn behind content. */
 fun Modifier.glassRim(shape: Shape, rim: GlassRim, light: Boolean): Modifier =
-    if (rim == GlassRim.Liquid) liquidGlassRim(shape, light) else frostedGlassRim(shape, rim, light)
-
-/**
- * Apple's Liquid Glass look: a thick, rounded pane. Its edge bends the light - a bright band hugging the rim,
- * lit from above and shaded below - with sharp specular highlights on the top-left and bottom-right edges, a
- * soft glow towards the middle and a fine dark outline that lifts it off the content behind.
- */
-private fun Modifier.liquidGlassRim(shape: Shape, light: Boolean): Modifier = drawWithCache {
-    val outline = shape.createOutline(size, layoutDirection, this)
-    val minDim = size.minDimension
-    // Strokes are centred on the (already clipped) edge, so each one is doubled to get its visible width.
-    val bandWidth = (minDim * 0.16f).coerceIn(3.dp.toPx(), 9.dp.toPx())
-    val band = Stroke(width = bandWidth * 2f)
-    val glow = Stroke(width = bandWidth * 4f)
-    val specularStroke = Stroke(width = 1.2.dp.toPx() * 2f)
-    val outlineStroke = Stroke(width = 0.6.dp.toPx() * 2f)
-
-    val sheen = Brush.verticalGradient(
-        0f to Color.White.copy(alpha = if (light) 0.34f else 0.10f),
-        0.4f to Color.Transparent,
-        1f to Color.Transparent
-    )
-    // Kept light: the refraction itself now shapes the edge; these only add the sheen of the glass surface.
-    val glowBrush = Brush.verticalGradient(
-        0f to Color.White.copy(alpha = if (light) 0.08f else 0.025f),
-        0.5f to Color.Transparent,
-        1f to Color.White.copy(alpha = if (light) 0.04f else 0.012f)
-    )
-    val bandBrush = Brush.verticalGradient(
-        0f to Color.White.copy(alpha = if (light) 0.32f else 0.10f),
-        0.35f to Color.White.copy(alpha = if (light) 0.08f else 0.025f),
-        0.7f to Color.Transparent,
-        1f to Color.White.copy(alpha = if (light) 0.18f else 0.05f)
-    )
-    val shadeBrush = Brush.verticalGradient(
-        0f to Color.Transparent,
-        0.62f to Color.Transparent,
-        1f to Color.Black.copy(alpha = if (light) 0.06f else 0.20f)
-    )
-    val specular = Brush.linearGradient(
-        0f to Color.White.copy(alpha = if (light) 0.95f else 0.80f),
-        0.18f to Color.White.copy(alpha = 0.24f),
-        0.42f to Color.White.copy(alpha = 0.04f),
-        0.58f to Color.White.copy(alpha = 0.04f),
-        0.82f to Color.White.copy(alpha = 0.20f),
-        1f to Color.White.copy(alpha = if (light) 0.70f else 0.55f),
-        start = Offset.Zero,
-        end = Offset(size.width, size.height)
-    )
-    onDrawWithContent {
-        drawOutline(outline, sheen)
-        drawOutline(outline, glowBrush, style = glow)
-        drawOutline(outline, bandBrush, style = band)
-        drawOutline(outline, shadeBrush, style = band)
-        drawOutline(outline, Color.Black.copy(alpha = if (light) 0.08f else 0.28f), style = outlineStroke)
-        drawOutline(outline, specular, style = specularStroke)
-        drawContent()
-    }
-}
+    frostedGlassRim(shape, rim, light)
 
 private fun Modifier.frostedGlassRim(shape: Shape, rim: GlassRim, light: Boolean): Modifier = drawWithCache {
     val outline = shape.createOutline(size, layoutDirection, this)
-    val liquid = rim == GlassRim.Liquid
     // The stroke is centred on the (already clipped) edge, so double it to get the visible width.
-    val rimStroke = Stroke(width = (if (liquid) 1.4.dp else 0.8.dp).toPx() * 2f)
+    val rimStroke = Stroke(width = 0.8.dp.toPx() * 2f)
     val hairline = Stroke(width = 0.5.dp.toPx() * 2f)
     val rimBrush = Brush.linearGradient(
-        0f to Color.White.copy(alpha = if (liquid) 0.62f else 0.20f),
-        0.28f to Color.White.copy(alpha = if (liquid) 0.12f else 0.05f),
+        0f to Color.White.copy(alpha = 0.20f),
+        0.28f to Color.White.copy(alpha = 0.05f),
         0.72f to Color.White.copy(alpha = 0.03f),
-        1f to Color.White.copy(alpha = if (liquid) 0.34f else 0.08f),
+        1f to Color.White.copy(alpha = 0.08f),
         start = Offset.Zero,
         end = Offset(size.width, size.height)
     )
     val sheen = Brush.verticalGradient(
-        0f to Color.White.copy(alpha = if (liquid) (if (light) 0.40f else 0.13f) else 0.04f),
+        0f to Color.White.copy(alpha = 0.04f),
         0.45f to Color.Transparent,
         0.88f to Color.Transparent,
-        1f to Color.White.copy(alpha = if (liquid) 0.07f else 0f)
+        1f to Color.White.copy(alpha = 0f)
     )
     onDrawWithContent {
         drawOutline(outline, sheen)
@@ -276,26 +186,11 @@ private fun Modifier.frostedGlassRim(shape: Shape, rim: GlassRim, light: Boolean
     }
 }
 
-/** Screen background for the active language - flat, except Material's soft tonal glow. */
+/** Screen background: the flat palette background. */
 @Composable
 fun Modifier.screenBackground(): Modifier {
-    val theme = LocalAppTheme.current
-    val palette = theme.palette
-    return if (theme.language == DesignLanguage.GOOGLE_EXPRESSIVE) {
-        this
-            .background(palette.background)
-            .drawBehind {
-                // Gemini: black (or near-white) with a glow in the accent's hue rising from the bottom edge.
-                val glow = if (palette.isLight) {
-                    accentTone(palette.accent, 0.36f, 0.97f).copy(alpha = 0.95f)
-                } else {
-                    accentTone(palette.accent, 0.75f, 0.42f).copy(alpha = 0.6f)
-                }
-                drawRect(Brush.verticalGradient(0f to Color.Transparent, if (palette.isLight) 0.5f to Color.Transparent else 0.52f to Color.Transparent, 1f to glow))
-            }
-    } else {
-        this.background(palette.background)
-    }
+    val palette = LocalAppTheme.current.palette
+    return this.background(palette.background)
 }
 
 /** Bottom content padding so the last row can scroll clear of the (floating) bottom bar. */
@@ -305,7 +200,7 @@ fun bottomBarContentPadding(extra: Dp = 0.dp): Dp {
     return LocalAppTheme.current.shapes.bottomBarHeight + inset + extra
 }
 
-/** Springy press feedback (iOS glass, Material buttons). */
+/** Springy press feedback for tappable controls. */
 @Composable
 fun Modifier.pressScale(interactionSource: MutableInteractionSource, pressedScale: Float = 0.94f): Modifier {
     val pressed by interactionSource.collectIsPressedAsState()
