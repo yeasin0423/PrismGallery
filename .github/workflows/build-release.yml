@@ -9,7 +9,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # Required so the workflow can publish a GitHub release for the run.
+  contents: write
 
 jobs:
   build:
@@ -44,3 +45,24 @@ jobs:
           name: Gallery-unsigned-${{ github.ref_name }}
           path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
+
+      # Every workflow run publishes a (previously empty) GitHub release, so the maintainer can sign the
+      # APK locally and attach it there. The APK itself is deliberately not uploaded: it is unsigned.
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION_NAME=$(awk -F'"' '/^[[:space:]]*versionName = / { print $2; exit }' app/build.gradle.kts)
+          if [ -z "$VERSION_NAME" ]; then
+            echo "Could not read versionName from app/build.gradle.kts" >&2
+            exit 1
+          fi
+          TAG="v${VERSION_NAME}-b${{ github.run_number }}"
+          TITLE="Gallery ${VERSION_NAME} (build ${{ github.run_number }})"
+          BODY="Unsigned release built from commit ${{ github.sha }}. The APK is not attached yet: sign it locally and attach it to this release manually."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; leaving it as is."
+          else
+            gh release create "$TAG" --target "${{ github.sha }}" --title "$TITLE" --notes "$BODY"
+          fi

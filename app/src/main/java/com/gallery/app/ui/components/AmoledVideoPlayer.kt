@@ -93,8 +93,9 @@ private val preferHardwareVideoCodecSelector = MediaCodecSelector { mimeType, re
  * - Direct hardware decoding via Media3
  * - Minimalist center Play/Pause control
  * - Minimalist bottom scrubber and timestamp overlay
- * - Plays as soon as it opens; stays paused only when paused with the button
-  * - Controls that belong to the viewer's: they appear and fade with its top and bottom bars
+ * - Opens paused on its first frame; playback starts only with the Play button
+ * - Stays paused also after coming back to the app
+ * - Controls that belong to the viewer's: they appear and fade with its top and bottom bars
  * - Proper lifecycle cleanup
  */
 @OptIn(UnstableApi::class)
@@ -158,8 +159,8 @@ private fun ActiveVideoPlayer(
     var currentPositionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(item.durationMs) }
     var isScrubbing by remember { mutableStateOf(false) }
-    /** Paused with the button: then it stays paused, also after coming back to the app. */
-    var pausedByUser by remember { mutableStateOf(false) }
+    /** Paused until the user presses Play; returning to the app does not start playback. */
+    var pausedByUser by remember { mutableStateOf(true) }
     var playbackError by remember(item.uri) { mutableStateOf<PlaybackException?>(null) }
 
     val exoPlayer = remember(item.uri) {
@@ -170,8 +171,8 @@ private fun ActiveVideoPlayer(
         ExoPlayer.Builder(context, renderersFactory).build().apply {
             setMediaItem(Media3Item.fromUri(item.uri))
             repeatMode = Player.REPEAT_MODE_ONE
-            // Opening a video in the viewer plays it straight away.
-            playWhenReady = true
+            // Opening a video in the viewer opens it paused on the first frame; the user starts playback.
+            playWhenReady = false
             prepare()
         }
     }
