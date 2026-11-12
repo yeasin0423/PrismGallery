@@ -101,6 +101,7 @@ import coil3.compose.AsyncImage
 import com.gallery.app.model.MediaItem
 import com.gallery.app.ui.components.AmoledVideoPlayer
 import com.gallery.app.ui.components.MediaInfoContent
+import com.gallery.app.ui.components.VideoPlayerScreen
 import com.gallery.app.ui.components.ZoomableBox
 import com.gallery.app.ui.design.DialogButton
 import com.gallery.app.ui.design.DialogButtonStyle
@@ -185,12 +186,8 @@ fun MediaDetailScreen(
     }
 
     var showControls by remember { mutableStateOf(true) }
-    // A video's play button and scrubber are part of these controls, not a second set of their own:
-    // both fade away together while it plays and come back together on a tap. They used to keep their
-    // own visibility and ended up contradicting each other - bars without a scrubber or the other way
-    // round - which showed up most clearly in landscape.
-    var videoPlaying by remember { mutableStateOf(false) }
-    var videoScrubbing by remember { mutableStateOf(false) }
+    // The video opened by the Play button, shown on its own full-screen page above the viewer.
+    var playingVideo by remember { mutableStateOf<MediaItem?>(null) }
     // Hiding the controls also hides Android's status and navigation bars (a swipe from the edge shows them briefly).
     val hostView = androidx.compose.ui.platform.LocalView.current
     androidx.compose.runtime.LaunchedEffect(showControls) {
@@ -209,12 +206,6 @@ fun MediaDetailScreen(
                 androidx.core.view.WindowCompat.getInsetsController(window, hostView)
                     .show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             }
-        }
-    }
-    androidx.compose.runtime.LaunchedEffect(showControls, videoPlaying, videoScrubbing) {
-        if (showControls && videoPlaying && !videoScrubbing) {
-            kotlinx.coroutines.delay(2500)
-            showControls = false
         }
     }
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -462,6 +453,9 @@ fun MediaDetailScreen(
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
+                // Keep the neighbouring page composed so its sharp preview is decoded before the
+                // user swipes to it; the soft cached thumbnail covers it until then.
+                beyondViewportPageCount = 1,
                 key = { index -> mediaList[index].id }
             ) { page ->
                 val currentMedia = mediaList[page]
@@ -469,14 +463,11 @@ fun MediaDetailScreen(
                 if (currentMedia.isVideo) {
                     AmoledVideoPlayer(
                         item = currentMedia,
-                        // A video page counts as active only once the swipe has settled, so dragging
-                        // past a video never starts it, not even for a frame.
+                        // The Play button belongs to the page that is actually on screen.
                         isActivePage = pagerState.currentPage == page && !pagerState.isScrollInProgress,
                         controlsVisible = showControls,
                         onTap = onPhotoTap,
-                        onShowControls = { showControls = true },
-                        onPlayingChange = { videoPlaying = it },
-                        onScrubbingChange = { videoScrubbing = it },
+                        onPlay = { playingVideo = currentMedia },
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
@@ -581,6 +572,15 @@ fun MediaDetailScreen(
                     )
                 },
                 modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+
+        // The video page opened by the Play button, above the viewer's bars and details panel.
+        playingVideo?.let { video ->
+            VideoPlayerScreen(
+                item = video,
+                onClose = { playingVideo = null },
+                modifier = Modifier.fillMaxSize()
             )
         }
     }
