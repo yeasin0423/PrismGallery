@@ -298,11 +298,9 @@ private fun ActiveVideoPlayer(
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize()
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.35f))
-            ) {
+            // No scrim: a video page must look as bright as a photo. The play button has its own
+            // backing circle, and the scrubber sits over the viewer's bottom gradient.
+            Box(modifier = Modifier.fillMaxSize()) {
                 // Center Play/Pause Button
                 IconButton(
                     onClick = {
