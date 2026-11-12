@@ -67,8 +67,8 @@ import com.gallery.app.ui.theme.presetsFor
 import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.flow.first
 
-/** The app's full name, shown on the info pages; the launcher label (app_name) is the same. */
-internal const val APP_FULL_NAME = "Gallery"
+/** The app's full name, shown on the info pages; the launcher label (launcher_name) is "Gallery". */
+internal const val APP_FULL_NAME = "YS Gallery"
 
 /** Sections of the settings sheet; every menu entry opens the sheet scrolled to its own section. */
 enum class SettingsSection { DESIGN, SETTINGS, STORAGE, INFO }

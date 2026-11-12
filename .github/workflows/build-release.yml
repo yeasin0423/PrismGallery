@@ -58,9 +58,15 @@ jobs:
             echo "Could not read versionName from app/build.gradle.kts" >&2
             exit 1
           fi
-          TAG="v${VERSION_NAME}-b${{ github.run_number }}"
-          TITLE="Gallery ${VERSION_NAME} (build ${{ github.run_number }})"
-          BODY="Unsigned release built from commit ${{ github.sha }}. The APK is not attached yet: sign it locally and attach it to this release manually."
+          TAG="v${VERSION_NAME}"
+          TITLE="YS Gallery ${VERSION_NAME}"
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          COMMIT_SUBJECT=$(git log -1 --pretty=%s)
+          COMMIT_BODY=$(git log -1 --pretty=%b)
+          BODY="Built from commit ${COMMIT_SHA}: ${COMMIT_SUBJECT}"
+          if [ -n "$COMMIT_BODY" ]; then
+            BODY="${BODY}"$'\n\n'"${COMMIT_BODY}"
+          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists; leaving it as is."
           else

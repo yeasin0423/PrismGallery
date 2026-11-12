@@ -1,4 +1,4 @@
-# Gallery
+# YS Gallery
 
 A fast, private photo and video gallery for Android, with a Samsung One UI-inspired design and smooth animations.
 It works entirely offline: no internet permission, no ads, no tracking, no account.

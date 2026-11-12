@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Launcher label. -->
-    <string name="app_name">Gallery</string>
+    <!-- The app's own name, shown in Settings, the recents card and the About page. -->
+    <string name="app_name">YS Gallery</string>
+    <!-- Label under the launcher icon: the short, familiar name. -->
+    <string name="launcher_name">Gallery</string>
     <!-- Shown in the system wallpaper picker for the video / GIF live wallpaper. -->
     <string name="live_wallpaper_label">Gallery</string>
     <string name="live_wallpaper_description">The video or GIF you picked in Gallery</string>
