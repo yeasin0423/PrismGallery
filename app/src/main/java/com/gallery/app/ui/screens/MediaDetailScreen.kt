@@ -463,8 +463,10 @@ fun MediaDetailScreen(
                 if (currentMedia.isVideo) {
                     AmoledVideoPlayer(
                         item = currentMedia,
-                        // The Play button belongs to the page that is actually on screen.
-                        isActivePage = pagerState.currentPage == page && !pagerState.isScrollInProgress,
+                        // The Play button belongs to the page that is actually on screen. It is
+                        // composed a page ahead and only enabled here, so it is ready the instant
+                        // the pager makes this page current instead of fading in after the settle.
+                        isActivePage = pagerState.currentPage == page,
                         controlsVisible = showControls,
                         onTap = onPhotoTap,
                         onPlay = { playingVideo = currentMedia },
@@ -575,13 +577,33 @@ fun MediaDetailScreen(
             )
         }
 
-        // The video page opened by the Play button, above the viewer's bars and details panel.
+        // The video page opened by the Play button. It lives in the overlay host and settles in from
+        // a slight zoom while fading, exactly like the editor, so opening it follows the app's motion.
         playingVideo?.let { video ->
-            VideoPlayerScreen(
-                item = video,
-                onClose = { playingVideo = null },
-                modifier = Modifier.fillMaxSize()
-            )
+            OverlayWindow { transition ->
+                val progress by transition.animateFloat(
+                    transitionSpec = {
+                        if (targetState) spring(dampingRatio = 0.9f, stiffness = 420f) else tween(180)
+                    },
+                    label = "player_enter"
+                ) { visible -> if (visible) 1f else 0f }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = (progress * 1.6f).coerceIn(0f, 1f)
+                            val s = 1.06f - 0.06f * progress
+                            scaleX = s
+                            scaleY = s
+                        }
+                ) {
+                    VideoPlayerScreen(
+                        item = video,
+                        onClose = { playingVideo = null },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
         }
     }
 

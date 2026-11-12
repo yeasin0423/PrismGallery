@@ -149,6 +149,8 @@ internal fun OneUiSettingsPage(
     trashedCount: Int,
     graphicsQuality: PerformanceProfile,
     onSetGraphicsQuality: (PerformanceProfile) -> Unit,
+    videoSeekSeconds: Int,
+    onSetVideoSeekSeconds: (Int) -> Unit,
     loadStorageStats: suspend () -> MediaRepository.MediaStorageStats?,
     onEmptyTrash: () -> Unit,
     onOpenLibrary: () -> Unit,
@@ -188,7 +190,12 @@ internal fun OneUiSettingsPage(
         ) {
             when (section) {
                 SettingsSection.DESIGN -> AppearanceContent()
-                SettingsSection.SETTINGS -> GeneralContent(graphicsQuality, onSetGraphicsQuality)
+                SettingsSection.SETTINGS -> GeneralContent(
+                    graphicsQuality = graphicsQuality,
+                    onSetGraphicsQuality = onSetGraphicsQuality,
+                    videoSeekSeconds = videoSeekSeconds,
+                    onSetVideoSeekSeconds = onSetVideoSeekSeconds
+                )
                 SettingsSection.STORAGE -> StorageContent(
                     internalFreeBytes, internalTotalBytes, sdCardFreeBytes, sdCardTotalBytes,
                     trashedCount, loadStorageStats, onEmptyTrash, onOpenLibrary, onOpenTrash
@@ -250,10 +257,20 @@ private fun AppearanceContent() {
 }
 
 @Composable
-private fun GeneralContent(graphicsQuality: PerformanceProfile, onSetGraphicsQuality: (PerformanceProfile) -> Unit) {
+private fun GeneralContent(
+    graphicsQuality: PerformanceProfile,
+    onSetGraphicsQuality: (PerformanceProfile) -> Unit,
+    videoSeekSeconds: Int,
+    onSetVideoSeekSeconds: (Int) -> Unit
+) {
     Header(strings.graphicsQuality)
     ChoiceCard(PerformanceProfile.entries, graphicsQuality, { graphicsQualityLabel(it) }) { onSetGraphicsQuality(it) }
     Footer(strings.qualityDescription(graphicsQuality))
+
+    Header(strings.videoPlayback)
+    Footer(strings.videoPlaybackDescription)
+    Header(strings.seekDuration)
+    ChoiceCard(listOf(5, 10, 15, 30), videoSeekSeconds, { strings.secondsLabel(it) }) { onSetVideoSeekSeconds(it) }
 }
 
 @Composable

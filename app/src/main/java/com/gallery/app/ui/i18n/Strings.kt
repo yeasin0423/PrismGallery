@@ -62,6 +62,13 @@ interface AppStrings {
     val pause: String
     val retry: String
     val videoPlaybackFailed: String
+    val playbackSpeed: String
+    fun speedLabel(speed: Float): String
+    val rotateAuto: String
+    val rotateLandscape: String
+    val rotatePortrait: String
+    fun seekBackward(seconds: Int): String
+    fun seekForward(seconds: Int): String
     val name: String
 
     // Tabs, filters, grid
@@ -185,6 +192,10 @@ interface AppStrings {
     val appearance: String
     val settings: String
     val graphicsQuality: String
+    val videoPlayback: String
+    val videoPlaybackDescription: String
+    val seekDuration: String
+    fun secondsLabel(seconds: Int): String
     val storage: String
     val info: String
     val library: String
@@ -332,6 +343,13 @@ object EnglishStrings : AppStrings {
     override val pause = "Pause"
     override val retry = "Retry"
     override val videoPlaybackFailed = "This video can't be played."
+    override val playbackSpeed = "Playback speed"
+    override fun speedLabel(speed: Float) = if (speed == speed.toInt().toFloat()) "${speed.toInt()}×" else "${speed}×"
+    override val rotateAuto = "Auto rotate"
+    override val rotateLandscape = "Lock landscape"
+    override val rotatePortrait = "Lock portrait"
+    override fun seekBackward(seconds: Int) = "−${seconds}s"
+    override fun seekForward(seconds: Int) = "+${seconds}s"
     override val name = "Name"
 
     override val tabPictures = "Photos"
@@ -483,6 +501,10 @@ object EnglishStrings : AppStrings {
     override val usedWord = "used"
     override val suggestions = "Suggestions"
     override val graphicsQuality = "Graphics quality"
+    override val videoPlayback = "Video playback"
+    override val videoPlaybackDescription = "Double-tap the left or right side of a playing video to skip backward or forward."
+    override val seekDuration = "Seek duration"
+    override fun secondsLabel(seconds: Int) = if (seconds == 1) "1 second" else "$seconds seconds"
     override val storage = "Storage"
     override val info = "Info"
     override val library = "Library"

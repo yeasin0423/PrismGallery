@@ -51,6 +51,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gallery.app.ui.components.BottomNavigationBar
+import com.gallery.app.ui.components.LocalVideoSeekSeconds
 import com.gallery.app.ui.components.MoveToAlbumBottomSheet
 import com.gallery.app.ui.components.SelectionActionBar
 import com.gallery.app.ui.design.LocalContentHaze
@@ -176,6 +177,7 @@ fun GalleryApp(
     onCloseViewRequest: () -> Unit = {}
 ) {
     val graphicsQuality by viewModel.graphicsQuality.collectAsStateWithLifecycle()
+    val videoSeekSeconds by viewModel.videoSeekSeconds.collectAsStateWithLifecycle()
 
     // Two blur backdrops: the whole window (behind dialogs, sheets and menus) and the tab content
     // (behind the floating bottom bar). Overlays render in-window through the OverlayHost so they can
@@ -189,6 +191,7 @@ fun GalleryApp(
     CompositionLocalProvider(
         LocalMediaOpenOrigin provides mediaOpenOrigin,
         LocalGraphicsQuality provides graphicsQuality,
+        LocalVideoSeekSeconds provides videoSeekSeconds,
         LocalRootHaze provides rootHaze,
         LocalContentHaze provides contentHaze,
         LocalOverlayHost provides overlayHost,
@@ -270,6 +273,7 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
     val isMoveSheetOpen by viewModel.isMoveSheetOpen.collectAsStateWithLifecycle()
     val hiddenAlbums by viewModel.hiddenAlbums.collectAsStateWithLifecycle()
     val graphicsQuality by viewModel.graphicsQuality.collectAsStateWithLifecycle()
+    val videoSeekSeconds by viewModel.videoSeekSeconds.collectAsStateWithLifecycle()
     val moveProgress by viewModel.moveProgress.collectAsStateWithLifecycle()
 
     var isFavoritesOpen by remember { mutableStateOf(false) }
@@ -699,6 +703,8 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                             appVersionName = appVersionName,
                             graphicsQuality = graphicsQuality,
                             onSetGraphicsQuality = { viewModel.setGraphicsQuality(it) },
+                            videoSeekSeconds = videoSeekSeconds,
+                            onSetVideoSeekSeconds = { viewModel.setVideoSeekSeconds(it) },
                             onOpenFavorites = { isFavoritesOpen = true },
                             onOpenTrash = { viewModel.openTrash() },
                             loadStorageStats = { viewModel.loadStorageStats() },

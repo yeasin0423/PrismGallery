@@ -1,13 +1,20 @@
 package com.gallery.app.ui.components
 import com.gallery.app.ui.i18n.strings
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,11 +31,17 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.ScreenLockLandscape
+import androidx.compose.material.icons.rounded.ScreenLockPortrait
+import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
@@ -37,7 +50,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,10 +61,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,7 +78,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import coil3.compose.AsyncImage
 import androidx.media3.common.MediaItem as Media3Item
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -68,13 +87,26 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import coil3.compose.AsyncImage
 import com.gallery.app.model.MediaItem
+import com.gallery.app.ui.design.MenuEntry
 import com.gallery.app.ui.design.ThemedButton
+import com.gallery.app.ui.design.ThemedPopupMenu
 import com.gallery.app.ui.theme.PureWhite
 import com.gallery.app.ui.theme.TextMuted
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import java.util.Locale
+import kotlin.math.abs
+
+/** How far a double-tap skips, in seconds. Settings can change this. */
+val LocalVideoSeekSeconds = compositionLocalOf { 10 }
+
+/** The speed menu, from slow motion to double speed. */
+private val playbackSpeeds = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+
+/** Auto follows the phone; the other two lock playback to one orientation until the player closes. */
+private enum class PlayerOrientation { AUTO, LANDSCAPE, PORTRAIT }
 
 /**
  * Prefers the device's hardware decoders for video.
@@ -99,6 +131,10 @@ private val preferHardwareVideoCodecSelector = MediaCodecSelector { mimeType, re
  * The video's own page, opened by the Play button in the viewer. It plays immediately, shows the
  * viewer's already-cached sharp first frame until the player has one, and closes back to the pager.
  *
+ * It also carries the controls the viewer never had: playback speed, double-tap seek on either side
+ * (with the skip length from Settings) and an orientation button that cycles auto, landscape and
+ * portrait for as long as the player is open.
+ *
  * Keeping playback on a separate page means the pager itself never creates a player or decoder, so
  * swiping is only ever a thumbnail; and because the sharp frame is already in Coil's cache when
  * this page opens, pressing Play no longer flashes the low-resolution grid thumbnail.
@@ -111,6 +147,7 @@ fun VideoPlayerScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val seekSeconds = LocalVideoSeekSeconds.current
 
     var isPlaying by remember(item.uri) { mutableStateOf(false) }
     var isFirstFrameRendered by remember(item.uri) { mutableStateOf(false) }
@@ -121,6 +158,17 @@ fun VideoPlayerScreen(
     var pausedByUser by remember(item.uri) { mutableStateOf(false) }
     var playbackError by remember(item.uri) { mutableStateOf<PlaybackException?>(null) }
     var controlsVisible by remember { mutableStateOf(true) }
+    var playbackSpeed by remember(item.uri) { mutableFloatStateOf(1f) }
+    var speedMenuOpen by remember { mutableStateOf(false) }
+    var speedAnchor by remember { mutableStateOf<Rect?>(null) }
+    var seekFlash by remember { mutableStateOf<SeekFlash?>(null) }
+    var seekToken by remember { mutableIntStateOf(0) }
+
+    val activity = remember(context) { context.findActivity() }
+    val originalOrientation = remember(activity) {
+        activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
+    var orientation by remember { mutableStateOf(PlayerOrientation.AUTO) }
 
     val exoPlayer = remember(item.uri) {
         val renderersFactory = DefaultRenderersFactory(context)
@@ -165,6 +213,11 @@ fun VideoPlayerScreen(
         }
     }
 
+    // The player may have locked the screen to one orientation; hand the activity back as it was.
+    DisposableEffect(activity) {
+        onDispose { activity?.requestedOrientation = originalOrientation }
+    }
+
     // Pause in the background instead of keeping audio running after leaving the app.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, exoPlayer) {
@@ -179,9 +232,10 @@ fun VideoPlayerScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Controls fade out on their own while playing, like the viewer's chrome.
-    LaunchedEffect(controlsVisible, isPlaying, isScrubbing) {
-        if (controlsVisible && isPlaying && !isScrubbing) {
+    // Controls fade out on their own while playing, like the viewer's chrome. Keep them up while the
+    // speed menu is open so its anchor cannot disappear underneath it.
+    LaunchedEffect(controlsVisible, isPlaying, isScrubbing, speedMenuOpen, seekToken) {
+        if (controlsVisible && isPlaying && !isScrubbing && !speedMenuOpen) {
             delay(2500)
             controlsVisible = false
         }
@@ -194,14 +248,40 @@ fun VideoPlayerScreen(
         }
     }
 
-    BackHandler(onBack = onClose)
+    // Closing pauses first, so the exit fade never leaves audio running behind the viewer.
+    val requestClose = {
+        pausedByUser = true
+        exoPlayer.pause()
+        onClose()
+    }
+    BackHandler(onBack = requestClose)
+
+    fun seekBy(forward: Boolean) {
+        val delta = seekSeconds * 1000L * if (forward) 1 else -1
+        val duration = exoPlayer.duration.takeIf { it > 0L } ?: durationMs
+        val position = exoPlayer.currentPosition
+        val target = if (duration > 0L) {
+            (position + delta).coerceIn(0L, duration)
+        } else {
+            (position + delta).coerceAtLeast(0L)
+        }
+        exoPlayer.seekTo(target)
+        currentPositionMs = target
+        seekToken += 1
+        seekFlash = SeekFlash(forward = forward, seconds = seekSeconds, token = seekToken)
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { controlsVisible = !controlsVisible })
+            .pointerInput(seekSeconds, durationMs) {
+                detectTapGestures(
+                    onTap = { controlsVisible = !controlsVisible },
+                    onDoubleTap = { offset ->
+                        seekBy(forward = offset.x >= size.width / 2f)
+                    }
+                )
             }
     ) {
         AndroidView(
@@ -232,11 +312,11 @@ fun VideoPlayerScreen(
             )
         }
 
-        // One UI's player chrome: a back circle and the file name at the top.
+        // One UI's player chrome: back, the file name, speed and orientation at the top.
         AnimatedVisibility(
             visible = controlsVisible,
-            enter = fadeIn(),
-            exit = fadeOut(),
+            enter = fadeIn(tween(160)),
+            exit = fadeOut(tween(160)),
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
             Row(
@@ -252,7 +332,7 @@ fun VideoPlayerScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
-                    onClick = onClose,
+                    onClick = requestClose,
                     modifier = Modifier
                         .size(48.dp)
                         .clip(CircleShape)
@@ -275,13 +355,55 @@ fun VideoPlayerScreen(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
+                Spacer(modifier = Modifier.width(8.dp))
+                PlayerPill(
+                    text = strings.speedLabel(playbackSpeed),
+                    contentDescription = strings.playbackSpeed,
+                    onClick = { speedMenuOpen = true },
+                    modifier = Modifier.onGloballyPositioned { speedAnchor = it.boundsInRoot() }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                IconButton(
+                    onClick = {
+                        val next = when (orientation) {
+                            PlayerOrientation.AUTO -> PlayerOrientation.LANDSCAPE
+                            PlayerOrientation.LANDSCAPE -> PlayerOrientation.PORTRAIT
+                            PlayerOrientation.PORTRAIT -> PlayerOrientation.AUTO
+                        }
+                        orientation = next
+                        activity?.requestedOrientation = when (next) {
+                            PlayerOrientation.AUTO -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                            PlayerOrientation.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            PlayerOrientation.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                        }
+                    },
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.55f))
+                ) {
+                    Icon(
+                        imageVector = when (orientation) {
+                            PlayerOrientation.AUTO -> Icons.Rounded.ScreenRotation
+                            PlayerOrientation.LANDSCAPE -> Icons.Rounded.ScreenLockLandscape
+                            PlayerOrientation.PORTRAIT -> Icons.Rounded.ScreenLockPortrait
+                        },
+                        contentDescription = when (orientation) {
+                            PlayerOrientation.AUTO -> strings.rotateAuto
+                            PlayerOrientation.LANDSCAPE -> strings.rotateLandscape
+                            PlayerOrientation.PORTRAIT -> strings.rotatePortrait
+                        },
+                        tint = PureWhite,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
         }
 
         AnimatedVisibility(
             visible = controlsVisible,
-            enter = fadeIn(),
-            exit = fadeOut(),
+            enter = fadeIn(tween(160)),
+            exit = fadeOut(tween(160)),
             modifier = Modifier.fillMaxSize()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -365,6 +487,46 @@ fun VideoPlayerScreen(
             }
         }
 
+        // Double-tap feedback: which way it skipped and by how much, on the side that was tapped.
+        seekFlash?.let { flash ->
+            val alpha = remember(flash.token) { Animatable(0f) }
+            LaunchedEffect(flash.token) {
+                alpha.animateTo(1f, tween(90))
+                delay(420)
+                alpha.animateTo(0f, tween(150))
+                if (seekFlash?.token == flash.token) seekFlash = null
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { this.alpha = alpha.value },
+                contentAlignment = if (flash.forward) Alignment.CenterEnd else Alignment.CenterStart
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = 36.dp)
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(horizontal = 18.dp, vertical = 14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = if (flash.forward) Icons.Rounded.FastForward else Icons.Rounded.FastRewind,
+                        contentDescription = null,
+                        tint = PureWhite,
+                        modifier = Modifier.size(30.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = if (flash.forward) strings.seekForward(flash.seconds) else strings.seekBackward(flash.seconds),
+                        color = PureWhite,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+
         // A black screen is indistinguishable from a frozen player: say what happened and offer a retry.
         if (playbackError != null) {
             Column(
@@ -397,6 +559,53 @@ fun VideoPlayerScreen(
             }
         }
     }
+
+    ThemedPopupMenu(
+        expanded = speedMenuOpen,
+        onDismissRequest = { speedMenuOpen = false },
+        anchorBounds = speedAnchor,
+        entries = playbackSpeeds.map { speed ->
+            MenuEntry(
+                text = strings.speedLabel(speed),
+                checked = abs(playbackSpeed - speed) < 0.01f
+            ) {
+                playbackSpeed = speed
+                exoPlayer.setPlaybackSpeed(speed)
+            }
+        }
+    )
+}
+
+@Composable
+private fun PlayerPill(
+    text: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.55f))
+            .clickable(onClickLabel = contentDescription, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = PureWhite,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+private data class SeekFlash(val forward: Boolean, val seconds: Int, val token: Int)
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 private fun formatTimestamp(ms: Long): String {

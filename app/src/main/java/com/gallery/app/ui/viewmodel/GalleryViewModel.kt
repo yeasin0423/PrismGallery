@@ -319,6 +319,17 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         com.gallery.app.GalleryApplication.applyGraphicsQuality(getApplication(), quality)
     }
 
+    // How far a double-tap on either side of a playing video skips.
+    private val videoPrefs = application.getSharedPreferences("amoled_gallery_video_prefs", Context.MODE_PRIVATE)
+    private val _videoSeekSeconds = MutableStateFlow(videoPrefs.getInt("seek_seconds", 10).coerceIn(1, 60))
+    val videoSeekSeconds: StateFlow<Int> = _videoSeekSeconds.asStateFlow()
+
+    fun setVideoSeekSeconds(seconds: Int) {
+        val clamped = seconds.coerceIn(1, 60)
+        _videoSeekSeconds.value = clamped
+        videoPrefs.edit().putInt("seek_seconds", clamped).apply()
+    }
+
     init {
         loadFavorites()
         ThumbnailManager.getInstance(application).quality = _graphicsQuality.value

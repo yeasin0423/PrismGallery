@@ -2,6 +2,7 @@ package com.gallery.app.ui.components
 import com.gallery.app.ui.i18n.strings
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -69,30 +70,32 @@ fun AmoledVideoPlayer(
             modifier = Modifier.fillMaxSize()
         )
 
-        if (isActivePage) {
-            AnimatedVisibility(
-                visible = controlsVisible,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                // No scrim: a video page must look as bright as a photo.
-                Box(modifier = Modifier.fillMaxSize()) {
-                    IconButton(
-                        onClick = onPlay,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(68.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.55f))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.PlayArrow,
-                            contentDescription = strings.play,
-                            tint = PureWhite,
-                            modifier = Modifier.size(40.dp)
-                        )
-                    }
+        // The Play button is composed with the page (which the pager keeps one page ahead), so it is
+        // already on screen when the swipe lands instead of fading in afterwards. Only its tap is
+        // gated on this being the current page, so a swipe across a video can never start playback.
+        AnimatedVisibility(
+            visible = controlsVisible,
+            enter = fadeIn(animationSpec = tween(90)),
+            exit = fadeOut(animationSpec = tween(120)),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // No scrim: a video page must look as bright as a photo.
+            Box(modifier = Modifier.fillMaxSize()) {
+                IconButton(
+                    onClick = onPlay,
+                    enabled = isActivePage,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(68.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.55f))
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = strings.play,
+                        tint = PureWhite,
+                        modifier = Modifier.size(40.dp)
+                    )
                 }
             }
         }
