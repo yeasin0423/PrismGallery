@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
@@ -163,18 +162,34 @@ private fun ActiveVideoPlayer(
     var pausedByUser by remember { mutableStateOf(true) }
     var playbackError by remember(item.uri) { mutableStateOf<PlaybackException?>(null) }
 
+    /**
+     * False until the user presses Play. Until then no media item is set and nothing is prepared, so
+     * swiping past a video never allocates a decoder or shows a video starting and stopping.
+     */
+    var playbackStarted by remember(item.uri) { mutableStateOf(false) }
+
     val exoPlayer = remember(item.uri) {
         val renderersFactory = DefaultRenderersFactory(context)
             // Without this, Media3 can pick a software H.264 decoder that crashes on some devices.
             .setMediaCodecSelector(preferHardwareVideoCodecSelector)
             .setEnableDecoderFallback(true)
         ExoPlayer.Builder(context, renderersFactory).build().apply {
-            setMediaItem(Media3Item.fromUri(item.uri))
             repeatMode = Player.REPEAT_MODE_ONE
-            // Opening a video in the viewer opens it paused on the first frame; the user starts playback.
             playWhenReady = false
-            prepare()
         }
+    }
+
+    // Loads and prepares the video on the first Play press, then starts it. Kept out of composition so
+    // opening or scrolling past a video stays as cheap as showing its thumbnail.
+    fun startPlayback() {
+        if (!playbackStarted) {
+            exoPlayer.setMediaItem(Media3Item.fromUri(item.uri))
+            exoPlayer.prepare()
+            playbackStarted = true
+            // A scrub before Play already moved the handle; start from there.
+            if (currentPositionMs > 0L) exoPlayer.seekTo(currentPositionMs)
+        }
+        exoPlayer.play()
     }
 
     LaunchedEffect(isPlaying) { onPlayingChange(isPlaying) }
@@ -221,7 +236,7 @@ private fun ActiveVideoPlayer(
             when (event) {
                 androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> exoPlayer.pause()
                 // Back in the app: carry on, unless the user had paused it themselves.
-                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> if (!pausedByUser) exoPlayer.play()
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> if (!pausedByUser && playbackStarted) exoPlayer.play()
                 else -> Unit
             }
         }
@@ -297,7 +312,7 @@ private fun ActiveVideoPlayer(
                             onShowControls()
                         } else {
                             pausedByUser = false
-                            exoPlayer.play()
+                            startPlayback()
                         }
                     },
                     modifier = Modifier
@@ -354,7 +369,7 @@ private fun ActiveVideoPlayer(
                             currentPositionMs = newPos.toLong()
                         },
                         onValueChangeFinished = {
-                            exoPlayer.seekTo(currentPositionMs)
+                            if (playbackStarted) exoPlayer.seekTo(currentPositionMs)
                             isScrubbing = false
                         },
                         valueRange = 0f..maxVal,
@@ -393,8 +408,8 @@ private fun ActiveVideoPlayer(
                         isFirstFrameRendered = false
                         pausedByUser = false
                         currentPositionMs = 0L
-                        exoPlayer.seekTo(0L)
-                        exoPlayer.prepare()
+                        playbackStarted = false
+                        startPlayback()
                     }
                 )
             }

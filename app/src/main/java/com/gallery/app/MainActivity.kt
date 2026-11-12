@@ -37,7 +37,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -311,19 +310,10 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
         }
     }
 
-    // Ask for media access right away on first launch instead of making the user tap through the
-    // permission screen first.
-    var hasRequestedPermissions by rememberSaveable { mutableStateOf(false) }
+    // Show the permission screen on first launch, but never open the system dialog by itself: the
+    // screen has a button for that. Coming back from Settings is handled by the ON_RESUME observer.
     LaunchedEffect(Unit) {
-        if (!hasRequestedPermissions) {
-            hasRequestedPermissions = true
-            val missing = getRequiredPermissions().filter {
-                ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
-            }
-            if (missing.isNotEmpty()) {
-                permissionLauncher.launch(missing.toTypedArray())
-            }
-        }
+        viewModel.updatePermissionState(hasMediaPermission(context))
     }
 
     // Check permissions on start and when resuming from settings

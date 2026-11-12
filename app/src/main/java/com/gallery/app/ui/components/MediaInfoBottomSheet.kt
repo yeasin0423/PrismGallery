@@ -105,9 +105,11 @@ private fun rememberMediaMetadata(item: MediaItem): MediaMetadata? {
 fun MediaInfoContent(
     item: MediaItem,
     modifier: Modifier = Modifier,
-    onEdit: (() -> Unit)? = null
+    onEdit: (() -> Unit)? = null,
+    /** False for videos: the Edit label stays visible but greyed out and untappable. */
+    editEnabled: Boolean = true
 ) {
-    OneUiMediaInfoContent(item, onEdit, modifier)
+    OneUiMediaInfoContent(item, onEdit, editEnabled, modifier)
 }
 
 /**
@@ -116,7 +118,12 @@ fun MediaInfoContent(
  * and the camera with its capture values.
  */
 @Composable
-private fun OneUiMediaInfoContent(item: MediaItem, onEdit: (() -> Unit)?, modifier: Modifier) {
+private fun OneUiMediaInfoContent(
+    item: MediaItem,
+    onEdit: (() -> Unit)?,
+    editEnabled: Boolean,
+    modifier: Modifier
+) {
     val context = LocalContext.current
     val palette = LocalAppTheme.current.palette
     val meta = rememberMediaMetadata(item)
@@ -132,12 +139,12 @@ private fun OneUiMediaInfoContent(item: MediaItem, onEdit: (() -> Unit)?, modifi
             if (onEdit != null) {
                 Text(
                     text = strings.edit,
-                    color = palette.accent,
+                    color = if (editEnabled) palette.accent else palette.textMuted.copy(alpha = 0.55f),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
                         .clip(CircleShape)
-                        .clickable(onClick = onEdit)
+                        .clickable(enabled = editEnabled, onClick = onEdit)
                         .padding(horizontal = 8.dp, vertical = 6.dp)
                 )
             }

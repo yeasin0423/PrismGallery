@@ -469,7 +469,9 @@ fun MediaDetailScreen(
                 if (currentMedia.isVideo) {
                     AmoledVideoPlayer(
                         item = currentMedia,
-                        isActivePage = pagerState.currentPage == page,
+                        // A video page counts as active only once the swipe has settled, so dragging
+                        // past a video never starts it, not even for a frame.
+                        isActivePage = pagerState.currentPage == page && !pagerState.isScrollInProgress,
                         controlsVisible = showControls,
                         onTap = onPhotoTap,
                         onShowControls = { showControls = true },
@@ -547,10 +549,10 @@ fun MediaDetailScreen(
                     // The strip of neighbouring photos above the toolbar.
                     Column(modifier = Modifier.fillMaxWidth()) {
                         OneUiFilmstrip(mediaList, pagerState)
-                        DetailBottomBar(actions, canEdit = !currentItem.isVideo)
+                        DetailBottomBar(actions, editEnabled = !currentItem.isVideo)
                     }
                 } else {
-                    DetailBottomBar(actions, canEdit = !currentItem.isVideo)
+                    DetailBottomBar(actions, editEnabled = !currentItem.isVideo)
                 }
             }
         }
@@ -559,7 +561,8 @@ fun MediaDetailScreen(
         if (panelComposed && panelHeightPx > 0f) {
             InfoPanel(
                 item = currentItem,
-                onEdit = if (viewOnly || currentItem.isVideo) null else actions.onEdit,
+                onEdit = if (viewOnly) null else actions.onEdit,
+                editEnabled = !currentItem.isVideo,
                 heightDp = with(density) { panelHeightPx.toDp() },
                 progress = { infoProgress },
                 expand = { infoExpand },
@@ -828,6 +831,7 @@ private fun InfoBackHandler(isOpen: () -> Boolean, onClose: () -> Unit) {
 private fun InfoPanel(
     item: MediaItem,
     onEdit: (() -> Unit)?,
+    editEnabled: Boolean = true,
     heightDp: Dp,
     progress: () -> Float,
     /** How far the open panel has been pulled up beyond [heightDp], in px (read at layout, not composition). */
@@ -898,7 +902,7 @@ private fun InfoPanel(
             .padding(bottom = 24.dp)
     ) {
         Spacer(modifier = Modifier.height(28.dp))
-        MediaInfoContent(item = item, onEdit = onEdit)
+        MediaInfoContent(item = item, onEdit = onEdit, editEnabled = editEnabled)
     }
 }
 
@@ -945,8 +949,8 @@ private fun DetailTopBar(actions: DetailActions) {
 @Composable
 private fun DetailBottomBar(
     actions: DetailActions,
-    /** Editing is for photos only; videos hide the edit action. */
-    canEdit: Boolean = true
+    /** Editing is for photos only; on videos the edit action is shown but disabled. */
+    editEnabled: Boolean = true
 ) {
     val favoriteIcon = if (actions.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder
     val favoriteModifier = Modifier
@@ -984,7 +988,7 @@ private fun DetailBottomBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             ChromeIcon(favoriteIcon, strings.favorite, if (actions.isFavorite) Color(0xFFFF4D6D) else Color.White, actions.onToggleFavorite, favoriteModifier)
-            if (canEdit) ChromeIcon(Icons.Outlined.Edit, strings.edit, Color.White, actions.onEdit)
+            ChromeIcon(Icons.Outlined.Edit, strings.edit, Color.White, actions.onEdit, enabled = editEnabled)
             ChromeIcon(Icons.Outlined.Info, strings.details, Color.White, actions.onInfo)
             ChromeIcon(Icons.Outlined.Share, strings.share, Color.White, actions.onShare)
             ChromeIcon(Icons.Outlined.Delete, strings.delete, Color.White, actions.onDelete)
@@ -1041,8 +1045,10 @@ private fun ChromeIcon(
     description: String,
     tint: Color,
     onClick: () -> Unit,
-    iconModifier: Modifier = Modifier
+    iconModifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
+    val color = if (enabled) tint else tint.copy(alpha = 0.3f)
     Box(
         modifier = Modifier
             .size(48.dp)
@@ -1050,11 +1056,12 @@ private fun ChromeIcon(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = ripple(bounded = false, radius = 24.dp),
+                enabled = enabled,
                 onClick = onClick
             ),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, description, tint = tint, modifier = iconModifier.size(25.dp))
+        Icon(icon, description, tint = color, modifier = iconModifier.size(25.dp))
     }
 }
 
