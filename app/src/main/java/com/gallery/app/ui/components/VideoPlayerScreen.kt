@@ -5,7 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
-import android.view.ViewGroup
+import android.view.TextureView
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -81,12 +82,11 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem as Media3Item
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.gallery.app.model.MediaItem
 import com.gallery.app.ui.design.MenuEntry
@@ -166,6 +166,7 @@ fun VideoPlayerScreen(
     var orientationAnchor by remember { mutableStateOf<Rect?>(null) }
     var seekFlash by remember { mutableStateOf<SeekFlash?>(null) }
     var seekToken by remember { mutableIntStateOf(0) }
+    var videoAspectRatio by remember(item.uri) { mutableFloatStateOf(0f) }
 
     val activity = remember(context) { context.findActivity() }
     val originalOrientation = remember(activity) {
@@ -187,7 +188,15 @@ fun VideoPlayerScreen(
         }
     }
 
-    DisposableEffect(exoPlayer) {
+    // The picture is drawn by a TextureView instead of PlayerView's SurfaceView. A SurfaceView is
+    // composited by the system outside the view hierarchy, so the page's enter/exit scale and fade
+    // would never reach it: the video would pop in at full size and keep playing at full opacity
+    // while the page faded away behind it. A TextureView is drawn in the hierarchy, so the whole
+    // player page moves and fades as one piece.
+    val videoSurface = remember(context) { TextureView(context) }
+
+    DisposableEffect(exoPlayer, videoSurface) {
+        exoPlayer.videoComponent.setVideoTextureView(videoSurface)
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
@@ -204,6 +213,14 @@ fun VideoPlayerScreen(
                 }
             }
 
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                videoAspectRatio = if (videoSize.height > 0) {
+                    videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
+                } else {
+                    0f
+                }
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 playbackError = error
                 isPlaying = false
@@ -212,6 +229,7 @@ fun VideoPlayerScreen(
         exoPlayer.addListener(listener)
         onDispose {
             exoPlayer.removeListener(listener)
+            exoPlayer.videoComponent.clearVideoTextureView(videoSurface)
             exoPlayer.release()
         }
     }
@@ -296,22 +314,18 @@ fun VideoPlayerScreen(
                 )
             }
     ) {
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    player = exoPlayer
-                    useController = false
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    setBackgroundColor(android.graphics.Color.BLACK)
-                    setShutterBackgroundColor(android.graphics.Color.BLACK)
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
+        // The video itself, kept to its own aspect ratio so portrait clips stay letterboxed instead of
+        // being stretched across a landscape screen.
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            AndroidView(
+                factory = { videoSurface },
+                modifier = if (videoAspectRatio > 0f) {
+                    Modifier.aspectRatio(videoAspectRatio)
+                } else {
+                    Modifier.fillMaxSize()
                 }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
+            )
+        }
 
         // The sharp frame the viewer already decoded. It covers the player until the first video
         // frame arrives, so pressing Play never shows the soft grid thumbnail.
