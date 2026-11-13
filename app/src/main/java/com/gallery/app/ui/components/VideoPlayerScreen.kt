@@ -196,7 +196,7 @@ fun VideoPlayerScreen(
     val videoSurface = remember(context) { TextureView(context) }
 
     DisposableEffect(exoPlayer, videoSurface) {
-        exoPlayer.videoComponent.setVideoTextureView(videoSurface)
+        exoPlayer.videoComponent?.setVideoTextureView(videoSurface)
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
@@ -229,7 +229,7 @@ fun VideoPlayerScreen(
         exoPlayer.addListener(listener)
         onDispose {
             exoPlayer.removeListener(listener)
-            exoPlayer.videoComponent.clearVideoTextureView(videoSurface)
+            exoPlayer.videoComponent?.clearVideoTextureView(videoSurface)
             exoPlayer.release()
         }
     }
