@@ -11,6 +11,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
@@ -577,29 +578,22 @@ fun MediaDetailScreen(
             )
         }
 
-        // The video page opened by the Play button. It lives in the overlay host and fades in over the
-        // viewer's still (which is the same sharp frame) while settling from a barely-there zoom, so
-        // the picture never jumps: only the chrome and the video arrive.
+        // The video page opened by the Play button. It slides in from the right edge (the page moves
+        // left into place) and slides back out to the right when it closes, like a pushed page.
         playingVideo?.let { video ->
             OverlayWindow { transition ->
-                val fade by transition.animateFloat(
-                    transitionSpec = { tween(if (targetState) 200 else 150) },
-                    label = "player_fade"
-                ) { visible -> if (visible) 1f else 0f }
-                val settle by transition.animateFloat(
+                val slide by transition.animateFloat(
                     transitionSpec = {
-                        if (targetState) spring(dampingRatio = 0.9f, stiffness = 420f) else tween(180)
+                        if (targetState) tween(300, easing = FastOutSlowInEasing)
+                        else tween(250, easing = FastOutSlowInEasing)
                     },
-                    label = "player_settle"
-                ) { visible -> if (visible) 1f else 0f }
+                    label = "player_slide"
+                ) { visible -> if (visible) 0f else 1f }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = fade
-                            val s = 1.02f - 0.02f * settle
-                            scaleX = s
-                            scaleY = s
+                            translationX = slide * size.width
                         }
                 ) {
                     VideoPlayerScreen(
