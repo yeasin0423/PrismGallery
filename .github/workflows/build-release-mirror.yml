@@ -1,0 +1,75 @@
+name: Build release APK (mirror)
+
+# The fallback build. It is identical to "Build release APK" except that Gradle 8.9 comes from this
+# repository's own v2.7-b12 release instead of services.gradle.org, so a Gradle CDN outage cannot
+# block a release. Run this only when the normal workflow fails while downloading Gradle.
+#
+# The archive is the unmodified official gradle-8.9-bin.zip (SHA-256 below), attached to the
+# v2.7-b12 release. The APK is still built here; only the Gradle download differs.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  # Required so the workflow can publish a GitHub release for the run.
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Download Gradle 8.9 from the release mirror
+        run: |
+          set -euo pipefail
+          curl -fL --retry 5 --retry-delay 5 --connect-timeout 30 \
+            -o "$RUNNER_TEMP/gradle-8.9-bin.zip" \
+            https://github.com/yeasin0423/YSGallery/releases/download/v2.7-b12/gradle-8.9-bin.zip
+          echo "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab  $RUNNER_TEMP/gradle-8.9-bin.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/gradle-8.9-bin.zip" -d "$RUNNER_TEMP/gradle-dist"
+          echo "$RUNNER_TEMP/gradle-dist/gradle-8.9/bin" >> "$GITHUB_PATH"
+
+      - name: Build the unsigned release APK
+        run: gradle assembleRelease --no-daemon
+
+      - name: Show checksums
+        run: sha256sum app/build/outputs/apk/release/*.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gallery-unsigned-${{ github.ref_name }}
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+
+      # Same release step as the normal workflow: one (previously empty) release per version, which
+      # the maintainer signs locally and fills in.
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION_NAME=$(awk -F'"' '/^[[:space:]]*versionName = / { print $2; exit }' app/build.gradle.kts)
+          if [ -z "$VERSION_NAME" ]; then
+            echo "Could not read versionName from app/build.gradle.kts" >&2
+            exit 1
+          fi
+          TAG="v${VERSION_NAME}"
+          TITLE="YS Gallery ${VERSION_NAME}"
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          COMMIT_SUBJECT=$(git log -1 --pretty=%s)
+          COMMIT_BODY=$(git log -1 --pretty=%b)
+          BODY="Built from commit ${COMMIT_SHA}: ${COMMIT_SUBJECT}"
+          if [ -n "$COMMIT_BODY" ]; then
+            BODY="${BODY}"$'\n\n'"${COMMIT_BODY}"
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; leaving it as is."
+          else
+            gh release create "$TAG" --target "${{ github.sha }}" --title "$TITLE" --notes "$BODY"
+          fi

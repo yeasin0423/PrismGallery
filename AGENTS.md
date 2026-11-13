@@ -52,12 +52,14 @@ There is no local JDK/Android SDK guarantee in every environment. Prefer CI as t
 ./gradlew assembleRelease --no-daemon
 ```
 
-- CI runs **only** via manual `workflow_dispatch` in `.github/workflows/build-release.yml`
-  (Ubuntu 24.04, Temurin JDK 21). A normal push does **not** start a build.
-- CI does **not** use the wrapper: it reassembles the bundled Gradle distribution from
-  `gradle/wrapper/gradle-8.9-bin.zip.part-*`, checks its SHA-256 and runs that `gradle` directly.
-  The parts are 45 MB pieces of the official zip (GitHub rejects files over 100 MB); keep them and
-  the hash in the workflow/README in sync if Gradle is ever upgraded.
+- CI runs **only** via manual `workflow_dispatch` (Ubuntu 24.04, Temurin JDK 21); a normal push does
+  **not** start a build. Two workflows exist:
+  - `.github/workflows/build-release.yml` — the normal build, via the Gradle wrapper, which downloads
+    Gradle 8.9 from `services.gradle.org` and verifies its SHA-256.
+  - `.github/workflows/build-release-mirror.yml` — the fallback; downloads the same archive from the
+    repository's `v2.7-b12` release when the normal download fails, verifies the same SHA-256 and runs
+    that `gradle` directly.
+  Never commit the Gradle distribution to the repository again; use the mirror workflow instead.
 - The workflow uploads `app-release-unsigned.apk` as `Gallery-unsigned-<ref>`.
 - The release APK is unsigned unless a git-ignored `keystore.properties` exists.
 - Keep the R8 `8.8.34` pin in the root `build.gradle.kts`; changing it breaks the reproducible build.

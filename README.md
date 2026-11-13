@@ -68,40 +68,33 @@ keyAlias=...
 keyPassword=...
 ```
 
-### Bundled Gradle distribution (CI)
+### Gradle in CI
 
-The Gradle wrapper downloads `gradle-8.9-bin.zip` from `services.gradle.org`, which redirects to
-`github.com/gradle/gradle-distributions`. That GitHub download occasionally answers HTTP 504, and the
-CI build then fails before compilation starts. To keep the manual CI build working during those
-outages, the Gradle 8.9 distribution is stored in the repository as three parts:
+There are two manual workflows:
 
-```
-gradle/wrapper/gradle-8.9-bin.zip.part-00
-gradle/wrapper/gradle-8.9-bin.zip.part-01
-gradle/wrapper/gradle-8.9-bin.zip.part-02
-```
+- **Build release APK** — the normal build. It uses the Gradle wrapper (`./gradlew`), which downloads
+  Gradle 8.9 from `https://services.gradle.org/distributions/gradle-8.9-bin.zip` and verifies its
+  SHA-256 (`distributionSha256Sum` in `gradle/wrapper/gradle-wrapper.properties`).
+- **Build release APK (mirror)** — the fallback, for when services.gradle.org or the GitHub mirror it
+  redirects to is down. It downloads the identical archive from this repository's `v2.7-b12` release
+  (`https://github.com/yeasin0423/YSGallery/releases/download/v2.7-b12/gradle-8.9-bin.zip`), checks
+  the same SHA-256 and runs that `gradle` directly.
 
-They are the unmodified `gradle-8.9-bin.zip`, split with `split -b 45M`. GitHub rejects any single
-file larger than 100 MB, hence the split. The workflow concatenates the parts, verifies the SHA-256
-(`d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab`), unpacks the distribution and
-runs that `gradle` directly, so CI never downloads it. Local `./gradlew` builds are unchanged and
-still download Gradle normally.
+Both workflows build the APK, upload the unsigned artifact and publish the empty per-version release
+the same way; only the Gradle download differs. Local `./gradlew` builds are unchanged.
 
-To rebuild the archive by hand:
+To build by hand with the mirror:
 
 ```sh
-cat gradle/wrapper/gradle-8.9-bin.zip.part-* > gradle-8.9-bin.zip
+curl -fL -o gradle-8.9-bin.zip \
+  https://github.com/yeasin0423/YSGallery/releases/download/v2.7-b12/gradle-8.9-bin.zip
 sha256sum gradle-8.9-bin.zip   # must match the hash above
 unzip gradle-8.9-bin.zip
 ./gradle-8.9/bin/gradle assembleRelease --no-daemon
 ```
 
-**Removing it again:** once the Gradle download is reliable, delete the three
-`gradle/wrapper/gradle-8.9-bin.zip.part-*` files and remove the "Restore the bundled Gradle
-distribution" step from `.github/workflows/build-release.yml`, switching the build step back to
-`./gradlew`. Deleting the files in a new commit does not reclaim space, because the 130 MB stay in
-the repository history; only a history rewrite (`git filter-repo` or BFG) actually shrinks the clone.
-Do that only if the repository size matters.
+The archive is not stored in the repository. It was committed as three 45 MB parts for a while; those
+parts were purged from the git history so clones stay small.
 
 ## Disclaimer
 

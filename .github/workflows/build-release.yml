@@ -4,6 +4,10 @@ name: Build release APK
 # be compared byte for byte with F-Droid's own build (reproducible build). The R8 code shrinker writes different
 # line endings on Windows, so release builds meant for publishing are made here, not on a Windows PC.
 # The APK is signed afterwards, on the maintainer's own computer; the signing key never leaves it.
+#
+# This is the normal build: the Gradle wrapper downloads Gradle 8.9 from services.gradle.org and verifies
+# its SHA-256. If that download is unavailable, run "Build release APK (mirror)" instead, which fetches
+# the same archive from this repository's v2.7-b12 release.
 
 on:
   workflow_dispatch:
@@ -23,19 +27,10 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # services.gradle.org redirects to github.com/gradle/gradle-distributions, which occasionally
-      # answers 504 and makes the wrapper fail before the build starts. The distribution is therefore
-      # committed in 45 MB parts (GitHub rejects single files over 100 MB); rebuild it, verify it and
-      # use it directly so no download is needed.
-      - name: Restore the bundled Gradle distribution
-        run: |
-          cat gradle/wrapper/gradle-8.9-bin.zip.part-* > "$RUNNER_TEMP/gradle-8.9-bin.zip"
-          echo "d725d707bfabd4dfdc958c624003b3c80accc03f7037b5122c4b1d0ef15cecab  $RUNNER_TEMP/gradle-8.9-bin.zip" | sha256sum -c -
-          unzip -q "$RUNNER_TEMP/gradle-8.9-bin.zip" -d "$RUNNER_TEMP/gradle-dist"
-          echo "$RUNNER_TEMP/gradle-dist/gradle-8.9/bin" >> "$GITHUB_PATH"
-
       - name: Build the unsigned release APK
-        run: gradle assembleRelease --no-daemon
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
 
       - name: Show checksums
         run: sha256sum app/build/outputs/apk/release/*.apk
