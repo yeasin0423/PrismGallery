@@ -749,6 +749,62 @@ fun ThemedEmptyState(
     }
 }
 
+/**
+ * One UI tool item: an icon with a label under it, used by the photo editor's bottom tool row.
+ * A selected item gets a soft accent pill behind it; disabled items fade out but keep their space.
+ */
+@Composable
+fun ThemedToolItem(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    contentDescription: String = label,
+    enabled: Boolean = true,
+    selected: Boolean = false,
+    iconRotation: Float = 0f
+) {
+    val palette = LocalAppTheme.current.palette
+    val interaction = remember { MutableInteractionSource() }
+    val tint = when {
+        !enabled -> palette.onBackground.copy(alpha = 0.35f)
+        selected -> palette.accent
+        else -> palette.onBackground
+    }
+
+    Column(
+        modifier = modifier
+            .pressScale(interaction, 0.9f)
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) palette.accent.copy(alpha = 0.14f) else Color.Transparent)
+            .clickable(
+                interactionSource = interaction,
+                indication = ripple(color = palette.accent),
+                enabled = enabled,
+                onClick = onClick
+            )
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier
+                .size(24.dp)
+                .graphicsLayer { rotationZ = iconRotation }
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = label,
+            color = tint,
+            fontSize = 11.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1
+        )
+    }
+}
+
 /** Text used on small badges drawn straight on top of photos. */
 val PhotoBadgeTextStyle = TextStyle(
     color = Color.White,

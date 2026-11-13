@@ -47,6 +47,25 @@ interface AppStrings {
     val flipHorizontal: String
     val flipVertical: String
     val editSaved: String
+    val aspectRatio: String
+    val ratio: String
+    val ratioFree: String
+    val ratioOriginal: String
+    val ratioSquare: String
+    val ratio3x2: String
+    val ratio2x3: String
+    val ratio4x3: String
+    val ratio3x4: String
+    val ratio16x9: String
+    val ratio9x16: String
+    val saveCopy: String
+    val saveOptions: String
+    val overwriteOriginal: String
+    val overwriteTitle: String
+    val overwriteMessage: String
+    val overwriteAction: String
+    val overwritten: String
+    val overwriteCancelled: String
     fun editFailed(reason: String?): String
     val details: String
     val favorite: String
@@ -330,6 +349,25 @@ object EnglishStrings : AppStrings {
     override val flipHorizontal = "Mirror"
     override val flipVertical = "Flip"
     override val editSaved = "Saved as a copy"
+    override val aspectRatio = "Aspect ratio"
+    override val ratio = "Ratio"
+    override val ratioFree = "Free"
+    override val ratioOriginal = "Original"
+    override val ratioSquare = "1:1"
+    override val ratio3x2 = "3:2"
+    override val ratio2x3 = "2:3"
+    override val ratio4x3 = "4:3"
+    override val ratio3x4 = "3:4"
+    override val ratio16x9 = "16:9"
+    override val ratio9x16 = "9:16"
+    override val saveCopy = "Save copy"
+    override val saveOptions = "Save options"
+    override val overwriteOriginal = "Overwrite original"
+    override val overwriteTitle = "Overwrite original?"
+    override val overwriteMessage = "The edited photo will replace the original. This can't be undone."
+    override val overwriteAction = "Overwrite"
+    override val overwritten = "Original replaced"
+    override val overwriteCancelled = "Overwrite cancelled"
     override fun editFailed(reason: String?) = if (reason.isNullOrBlank()) "Saving failed" else "Saving failed: $reason"
     override val details = "Details"
     override val favorite = "Favorite"

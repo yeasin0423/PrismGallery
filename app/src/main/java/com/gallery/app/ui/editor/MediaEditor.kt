@@ -2,6 +2,7 @@
 
 package com.gallery.app.ui.editor
 
+import android.app.PendingIntent
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
@@ -14,6 +15,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import androidx.exifinterface.media.ExifInterface
 import androidx.media3.common.Effect
 import androidx.media3.effect.Crop
 import androidx.media3.effect.ScaleAndRotateTransformation
@@ -24,11 +26,13 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
+import com.gallery.app.data.ThumbnailManager
 import com.gallery.app.model.MediaItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileNotFoundException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.max
@@ -37,6 +41,9 @@ import androidx.media3.common.MediaItem as ExoMediaItem
 
 /** Crop rectangle in 0..1 coordinates of the rotated/flipped frame (y grows downwards). */
 data class NormalizedRect(val left: Float, val top: Float, val right: Float, val bottom: Float) {
+    val width: Float get() = right - left
+    val height: Float get() = bottom - top
+
     val isFull: Boolean
         get() = left <= 0.001f && top <= 0.001f && right >= 0.999f && bottom >= 0.999f
 
@@ -64,6 +71,22 @@ data class EditSpec(
     val flipVertical: Boolean,
     val crop: NormalizedRect
 )
+
+/** Result of saving an edited image. */
+sealed interface ImageSaveResult {
+    /** The edited image was stored, either as a new copy or over the original. */
+    data class Saved(val uri: Uri, val overwritten: Boolean) : ImageSaveResult
+
+    /**
+     * The original is owned by another app and Android must ask the user for write access first.
+     * [tempFile] holds the rendered image and is deleted by [MediaEditor.completeOverwrite] or
+     * [MediaEditor.discardOverwrite].
+     */
+    data class NeedsWritePermission(val pendingIntent: PendingIntent, val tempFile: File) : ImageSaveResult
+}
+
+/** A rendered edit waiting in the cache directory. */
+private data class RenderedImage(val file: File, val extension: String, val mimeType: String)
 
 /** Loading previews and exporting edited copies of images and videos. */
 object MediaEditor {
@@ -125,8 +148,89 @@ object MediaEditor {
         }
     }
 
-    /** Saves an edited copy of an image next to the original and returns its uri. */
-    suspend fun saveImage(context: Context, item: MediaItem, spec: EditSpec): Uri = withContext(Dispatchers.IO) {
+    /**
+     * Saves an edited image. With [overwrite] false the result is stored as a new copy next to the
+     * original. With [overwrite] true the original file is replaced in place; if Android does not let
+     * this app write it, [ImageSaveResult.NeedsWritePermission] carries the request to show.
+     */
+    suspend fun saveImage(
+        context: Context,
+        item: MediaItem,
+        spec: EditSpec,
+        overwrite: Boolean = false
+    ): ImageSaveResult = withContext(Dispatchers.IO) {
+        if (overwrite) {
+            val rendered = renderToCache(context, item, spec, overwrite = true)
+            try {
+                writeToOriginal(context, item.uri, rendered.file)
+                rendered.file.delete()
+                invalidateCaches(context, item)
+                ImageSaveResult.Saved(item.uri, overwritten = true)
+            } catch (e: SecurityException) {
+                val pending = writeRequest(context, item.uri)
+                if (pending == null) {
+                    rendered.file.delete()
+                    throw e
+                }
+                ImageSaveResult.NeedsWritePermission(pending, rendered.file)
+            } catch (e: FileNotFoundException) {
+                val pending = writeRequest(context, item.uri)
+                if (pending == null) {
+                    rendered.file.delete()
+                    throw e
+                }
+                ImageSaveResult.NeedsWritePermission(pending, rendered.file)
+            } catch (e: Exception) {
+                rendered.file.delete()
+                throw e
+            }
+        } else {
+            val rendered = renderToCache(context, item, spec, overwrite = false)
+            try {
+                ImageSaveResult.Saved(insertCopy(context, item, rendered), overwritten = false)
+            } finally {
+                rendered.file.delete()
+            }
+        }
+    }
+
+    /**
+     * True when an edited image can replace the original in place. JPEG and PNG always; WebP only on
+     * Android 11+, where the lossy encoder exists.
+     */
+    fun canOverwrite(item: MediaItem): Boolean {
+        if (item.isVideo) return false
+        val mime = item.mimeType.lowercase()
+        val extension = item.displayName.substringAfterLast('.', "").lowercase()
+        val isJpeg = mime.contains("jpeg") || mime.contains("jpg") || extension == "jpg" || extension == "jpeg"
+        val isPng = mime.contains("png") || extension == "png"
+        val isWebp = mime.contains("webp") || extension == "webp"
+        return isJpeg || isPng || (isWebp && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+    }
+
+    /** Writes the rendered image into the original after the user granted write access. */
+    suspend fun completeOverwrite(context: Context, item: MediaItem, tempFile: File): Uri = withContext(Dispatchers.IO) {
+        try {
+            writeToOriginal(context, item.uri, tempFile)
+            invalidateCaches(context, item)
+            item.uri
+        } finally {
+            tempFile.delete()
+        }
+    }
+
+    /** Deletes the rendered image when the user declined the overwrite request. */
+    fun discardOverwrite(tempFile: File) {
+        runCatching { tempFile.delete() }
+    }
+
+    /** Decodes, rotates, mirrors, crops and compresses the edit into a cache file. */
+    private fun renderToCache(
+        context: Context,
+        item: MediaItem,
+        spec: EditSpec,
+        overwrite: Boolean
+    ): RenderedImage {
         val decoded = decodeImage(context, item.uri, MAX_EXPORT_SIDE)
         val transformed = transform(decoded, spec.rotation, spec.flipHorizontal, spec.flipVertical)
         val crop = spec.crop
@@ -136,31 +240,157 @@ object MediaEditor {
         val height = ((crop.bottom - crop.top) * transformed.height).roundToInt().coerceIn(1, transformed.height - y)
         val result = if (crop.isFull) transformed else Bitmap.createBitmap(transformed, x, y, width, height)
 
+        val (format, extension, mimeType) = outputFormat(item, overwrite)
+        val file = File(context.cacheDir, "edit_${System.currentTimeMillis()}.$extension")
+        try {
+            file.outputStream().use { stream ->
+                if (!result.compress(format, 95, stream)) error("compress failed")
+            }
+            // Keep the camera metadata when replacing the original. The pixels are already upright,
+            // so the orientation tag is reset instead of copied.
+            if (overwrite && format == Bitmap.CompressFormat.JPEG) copyExif(context, item.uri, file)
+            return RenderedImage(file, extension, mimeType)
+        } catch (e: Exception) {
+            file.delete()
+            throw e
+        } finally {
+            if (result !== transformed) result.recycle()
+            if (transformed !== decoded) transformed.recycle()
+            decoded.recycle()
+        }
+    }
+
+    /** The encoded format used for a copy, or for an overwrite (which must keep the original format). */
+    private fun outputFormat(item: MediaItem, overwrite: Boolean): Triple<Bitmap.CompressFormat, String, String> {
         val mime = item.mimeType.lowercase()
-        val (format, extension, outMime) = when {
-            mime.contains("png") -> Triple(Bitmap.CompressFormat.PNG, "png", "image/png")
-            mime.contains("webp") && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
+        val extension = item.displayName.substringAfterLast('.', "").lowercase()
+        val isJpeg = mime.contains("jpeg") || mime.contains("jpg") || extension == "jpg" || extension == "jpeg"
+        val isPng = mime.contains("png") || extension == "png"
+        val isWebp = mime.contains("webp") || extension == "webp"
+
+        if (overwrite) {
+            return when {
+                isJpeg -> Triple(Bitmap.CompressFormat.JPEG, "jpg", "image/jpeg")
+                isPng -> Triple(Bitmap.CompressFormat.PNG, "png", "image/png")
+                isWebp -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    Triple(Bitmap.CompressFormat.WEBP_LOSSY, "webp", "image/webp")
+                } else {
+                    @Suppress("DEPRECATION")
+                    val webp = Bitmap.CompressFormat.WEBP
+                    Triple(webp, "webp", "image/webp")
+                }
+                else -> error("This format can't be overwritten")
+            }
+        }
+
+        return when {
+            isPng -> Triple(Bitmap.CompressFormat.PNG, "png", "image/png")
+            isWebp && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ->
                 Triple(Bitmap.CompressFormat.WEBP_LOSSY, "webp", "image/webp")
             else -> Triple(Bitmap.CompressFormat.JPEG, "jpg", "image/jpeg")
         }
+    }
 
+    /** Stores a rendered image as a new copy next to the original and returns its uri. */
+    private fun insertCopy(context: Context, item: MediaItem, rendered: RenderedImage): Uri {
         val volume = volumeNameOf(context, item)
         val collection = MediaStore.Images.Media.getContentUri(volume)
         val uri = insertPending(
-            context, collection, editedName(item, extension), outMime, item.relativePath,
+            context, collection, editedName(item, rendered.extension), rendered.mimeType, item.relativePath,
             allowedDirectories = listOf(Environment.DIRECTORY_DCIM, Environment.DIRECTORY_PICTURES),
             fallbackDirectory = Environment.DIRECTORY_PICTURES
         )
         try {
-            context.contentResolver.openOutputStream(uri)?.use { stream ->
-                if (!result.compress(format, 95, stream)) error("compress failed")
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                rendered.file.inputStream().use { it.copyTo(out) }
             } ?: error("no output stream")
             publish(context, uri)
         } catch (e: Exception) {
             context.contentResolver.delete(uri, null, null)
             throw e
         }
-        uri
+        return uri
+    }
+
+    /** Writes the rendered bytes over the original MediaStore file. */
+    private fun writeToOriginal(context: Context, uri: Uri, file: File) {
+        val stream = try {
+            context.contentResolver.openOutputStream(uri, "wt")
+        } catch (_: IllegalArgumentException) {
+            context.contentResolver.openOutputStream(uri, "w")
+        } ?: error("no output stream")
+
+        stream.use { out ->
+            file.inputStream().use { it.copyTo(out) }
+        }
+
+        // Some providers keep DATE_MODIFIED at the old value. Updating it makes the gallery reload
+        // and the thumbnail cache (keyed by id + dateModified) pick up the new pixels.
+        runCatching {
+            context.contentResolver.update(
+                uri,
+                ContentValues().apply {
+                    put(MediaStore.MediaColumns.DATE_MODIFIED, System.currentTimeMillis() / 1000)
+                },
+                null,
+                null
+            )
+        }
+    }
+
+    /** Android's "allow this app to modify this photo" request, available from Android 11. */
+    private fun writeRequest(context: Context, uri: Uri): PendingIntent? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        return runCatching {
+            MediaStore.createWriteRequest(context.contentResolver, listOf(uri))
+        }.getOrNull()
+    }
+
+    /**
+     * Drops the caches that may still hold the old pixels after an overwrite: the permanent
+     * thumbnail file and Coil's in-memory/on-disk copies of the full image.
+     */
+    private suspend fun invalidateCaches(context: Context, item: MediaItem) {
+        runCatching { ThumbnailManager.getInstance(context).getThumbnailFile(item).delete() }
+        runCatching { coil3.SingletonImageLoader.get(context).memoryCache?.clear() }
+        runCatching { coil3.SingletonImageLoader.get(context).diskCache?.clear() }
+    }
+
+    /**
+     * Copies the camera metadata from the original to the rendered JPEG. Without this an overwrite
+     * would drop DATE_TAKEN, GPS and camera details, and the photo could lose its place in the timeline.
+     */
+    private fun copyExif(context: Context, source: Uri, target: File) {
+        runCatching {
+            val original = context.contentResolver.openInputStream(source)?.use { ExifInterface(it) } ?: return
+            val edited = ExifInterface(target.absolutePath)
+            val tags = listOf(
+                ExifInterface.TAG_DATETIME_ORIGINAL,
+                ExifInterface.TAG_DATETIME_DIGITIZED,
+                ExifInterface.TAG_DATETIME,
+                ExifInterface.TAG_MAKE,
+                ExifInterface.TAG_MODEL,
+                ExifInterface.TAG_F_NUMBER,
+                ExifInterface.TAG_EXPOSURE_TIME,
+                ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY,
+                ExifInterface.TAG_FOCAL_LENGTH,
+                ExifInterface.TAG_FLASH,
+                ExifInterface.TAG_WHITE_BALANCE,
+                ExifInterface.TAG_GPS_LATITUDE,
+                ExifInterface.TAG_GPS_LATITUDE_REF,
+                ExifInterface.TAG_GPS_LONGITUDE,
+                ExifInterface.TAG_GPS_LONGITUDE_REF,
+                ExifInterface.TAG_GPS_ALTITUDE,
+                ExifInterface.TAG_GPS_ALTITUDE_REF,
+                ExifInterface.TAG_GPS_TIMESTAMP,
+                ExifInterface.TAG_GPS_DATESTAMP
+            )
+            tags.forEach { tag ->
+                original.getAttribute(tag)?.let { edited.setAttribute(tag, it) }
+            }
+            edited.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
+            edited.saveAttributes()
+        }
     }
 
     /**
