@@ -94,7 +94,7 @@ internal fun OneUiMenuContent(
         Card {
             IconRow(Icons.Rounded.Palette, Color(0xFF7B61F0), strings.appearance, ThemeState.designLanguage.displayName, onOpenDesign)
             Divider(start = 78.dp)
-            IconRow(Icons.Rounded.Settings, Color(0xFF3E7BFA), strings.general, strings.graphicsQuality, onOpenSettings)
+            IconRow(Icons.Rounded.Settings, Color(0xFF3E7BFA), strings.general, strings.graphicsAndVideo, onOpenSettings)
         }
         Card {
             IconRow(Icons.Rounded.Storage, Color(0xFF4CC34F), strings.storage, storageValue, onOpenStorage)
@@ -267,10 +267,14 @@ private fun GeneralContent(
     ChoiceCard(PerformanceProfile.entries, graphicsQuality, { graphicsQualityLabel(it) }) { onSetGraphicsQuality(it) }
     Footer(strings.qualityDescription(graphicsQuality))
 
+    // Video playback is its own section, not a footnote to graphics quality, so it gets a full-size
+    // paragraph instead of the small grey note above.
     Header(strings.videoPlayback)
-    Footer(strings.videoPlaybackDescription)
+    Paragraph(strings.videoPlaybackDescription)
+
     Header(strings.seekDuration)
     ChoiceCard(listOf(5, 10, 15, 30), videoSeekSeconds, { strings.secondsLabel(it) }) { onSetVideoSeekSeconds(it) }
+    Footer(strings.seekDurationDescription)
 }
 
 @Composable
@@ -369,6 +373,19 @@ private fun Header(text: String) {
 private fun Footer(text: String) {
     val palette = LocalAppTheme.current.palette
     Text(text, color = palette.textMuted, fontSize = 14.sp, lineHeight = 19.sp, modifier = Modifier.padding(horizontal = 22.dp))
+}
+
+/** A full-size explanation under a section header, for text that is part of the setting itself. */
+@Composable
+private fun Paragraph(text: String) {
+    val palette = LocalAppTheme.current.palette
+    Text(
+        text = text,
+        color = palette.onBackground.copy(alpha = 0.88f),
+        fontSize = 16.sp,
+        lineHeight = 22.sp,
+        modifier = Modifier.padding(horizontal = 22.dp)
+    )
 }
 
 // ---------------------------------------------------------------------------------------------

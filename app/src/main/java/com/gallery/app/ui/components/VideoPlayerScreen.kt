@@ -132,8 +132,9 @@ private val preferHardwareVideoCodecSelector = MediaCodecSelector { mimeType, re
  * viewer's already-cached sharp first frame until the player has one, and closes back to the pager.
  *
  * It also carries the controls the viewer never had: playback speed, double-tap seek on either side
- * (with the skip length from Settings) and an orientation button that cycles auto, landscape and
- * portrait for as long as the player is open.
+ * (with the skip length from Settings) and an orientation menu that offers auto rotate or a locked
+ * landscape/portrait screen for as long as the player is open. The speed and orientation controls sit
+ * on their own row just under the title.
  *
  * Keeping playback on a separate page means the pager itself never creates a player or decoder, so
  * swiping is only ever a thumbnail; and because the sharp frame is already in Coil's cache when
@@ -161,6 +162,8 @@ fun VideoPlayerScreen(
     var playbackSpeed by remember(item.uri) { mutableFloatStateOf(1f) }
     var speedMenuOpen by remember { mutableStateOf(false) }
     var speedAnchor by remember { mutableStateOf<Rect?>(null) }
+    var orientationMenuOpen by remember { mutableStateOf(false) }
+    var orientationAnchor by remember { mutableStateOf<Rect?>(null) }
     var seekFlash by remember { mutableStateOf<SeekFlash?>(null) }
     var seekToken by remember { mutableIntStateOf(0) }
 
@@ -232,10 +235,10 @@ fun VideoPlayerScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Controls fade out on their own while playing, like the viewer's chrome. Keep them up while the
-    // speed menu is open so its anchor cannot disappear underneath it.
-    LaunchedEffect(controlsVisible, isPlaying, isScrubbing, speedMenuOpen, seekToken) {
-        if (controlsVisible && isPlaying && !isScrubbing && !speedMenuOpen) {
+    // Controls fade out on their own while playing, like the viewer's chrome. Keep them up while a
+    // menu is open so its anchor cannot disappear underneath it.
+    LaunchedEffect(controlsVisible, isPlaying, isScrubbing, speedMenuOpen, orientationMenuOpen, seekToken) {
+        if (controlsVisible && isPlaying && !isScrubbing && !speedMenuOpen && !orientationMenuOpen) {
             delay(2500)
             controlsVisible = false
         }
@@ -255,6 +258,15 @@ fun VideoPlayerScreen(
         onClose()
     }
     BackHandler(onBack = requestClose)
+
+    fun applyOrientation(next: PlayerOrientation) {
+        orientation = next
+        activity?.requestedOrientation = when (next) {
+            PlayerOrientation.AUTO -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            PlayerOrientation.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            PlayerOrientation.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        }
+    }
 
     fun seekBy(forward: Boolean) {
         val delta = seekSeconds * 1000L * if (forward) 1 else -1
@@ -312,14 +324,15 @@ fun VideoPlayerScreen(
             )
         }
 
-        // One UI's player chrome: back, the file name, speed and orientation at the top.
+        // One UI's player chrome: back and the file name on the first row, with the speed and
+        // orientation buttons on a second row just underneath.
         AnimatedVisibility(
             visible = controlsVisible,
             enter = fadeIn(tween(160)),
             exit = fadeOut(tween(160)),
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
@@ -328,74 +341,82 @@ fun VideoPlayerScreen(
                         )
                     )
                     .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(bottom = 12.dp)
             ) {
-                IconButton(
-                    onClick = requestClose,
+                Row(
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.55f))
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
-                        contentDescription = strings.back,
-                        tint = PureWhite,
-                        modifier = Modifier.size(22.dp)
+                    IconButton(
+                        onClick = requestClose,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.55f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBackIos,
+                            contentDescription = strings.back,
+                            tint = PureWhite,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = item.displayName,
+                        color = PureWhite,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
                 }
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = item.displayName,
-                    color = PureWhite,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                PlayerPill(
-                    text = strings.speedLabel(playbackSpeed),
-                    contentDescription = strings.playbackSpeed,
-                    onClick = { speedMenuOpen = true },
-                    modifier = Modifier.onGloballyPositioned { speedAnchor = it.boundsInRoot() }
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                IconButton(
-                    onClick = {
-                        val next = when (orientation) {
-                            PlayerOrientation.AUTO -> PlayerOrientation.LANDSCAPE
-                            PlayerOrientation.LANDSCAPE -> PlayerOrientation.PORTRAIT
-                            PlayerOrientation.PORTRAIT -> PlayerOrientation.AUTO
-                        }
-                        orientation = next
-                        activity?.requestedOrientation = when (next) {
-                            PlayerOrientation.AUTO -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                            PlayerOrientation.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                            PlayerOrientation.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                        }
-                    },
+                Row(
                     modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.55f))
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = when (orientation) {
-                            PlayerOrientation.AUTO -> Icons.Rounded.ScreenRotation
-                            PlayerOrientation.LANDSCAPE -> Icons.Rounded.ScreenLockLandscape
-                            PlayerOrientation.PORTRAIT -> Icons.Rounded.ScreenLockPortrait
+                    PlayerPill(
+                        text = strings.speedLabel(playbackSpeed),
+                        contentDescription = strings.playbackSpeed,
+                        onClick = {
+                            orientationMenuOpen = false
+                            speedMenuOpen = true
                         },
-                        contentDescription = when (orientation) {
-                            PlayerOrientation.AUTO -> strings.rotateAuto
-                            PlayerOrientation.LANDSCAPE -> strings.rotateLandscape
-                            PlayerOrientation.PORTRAIT -> strings.rotatePortrait
-                        },
-                        tint = PureWhite,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.onGloballyPositioned { speedAnchor = it.boundsInRoot() }
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(
+                        onClick = {
+                            speedMenuOpen = false
+                            orientationMenuOpen = true
+                        },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .onGloballyPositioned { orientationAnchor = it.boundsInRoot() }
+                    ) {
+                        Icon(
+                            imageVector = when (orientation) {
+                                PlayerOrientation.AUTO -> Icons.Rounded.ScreenRotation
+                                PlayerOrientation.LANDSCAPE -> Icons.Rounded.ScreenLockLandscape
+                                PlayerOrientation.PORTRAIT -> Icons.Rounded.ScreenLockPortrait
+                            },
+                            contentDescription = when (orientation) {
+                                PlayerOrientation.AUTO -> strings.rotateAuto
+                                PlayerOrientation.LANDSCAPE -> strings.rotateLandscape
+                                PlayerOrientation.PORTRAIT -> strings.rotatePortrait
+                            },
+                            tint = PureWhite,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
         }
@@ -572,6 +593,21 @@ fun VideoPlayerScreen(
                 playbackSpeed = speed
                 exoPlayer.setPlaybackSpeed(speed)
             }
+        }
+    )
+
+    // The orientation button opens the same kind of menu as the speed pill, so each choice says what
+    // it does instead of making the user cycle through icons to find out.
+    ThemedPopupMenu(
+        expanded = orientationMenuOpen,
+        onDismissRequest = { orientationMenuOpen = false },
+        anchorBounds = orientationAnchor,
+        entries = listOf(
+            PlayerOrientation.AUTO to strings.rotateAuto,
+            PlayerOrientation.LANDSCAPE to strings.rotateLandscape,
+            PlayerOrientation.PORTRAIT to strings.rotatePortrait
+        ).map { (mode, label) ->
+            MenuEntry(text = label, checked = orientation == mode) { applyOrientation(mode) }
         }
     )
 }

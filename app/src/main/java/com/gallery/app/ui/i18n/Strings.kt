@@ -192,9 +192,11 @@ interface AppStrings {
     val appearance: String
     val settings: String
     val graphicsQuality: String
+    val graphicsAndVideo: String
     val videoPlayback: String
     val videoPlaybackDescription: String
     val seekDuration: String
+    val seekDurationDescription: String
     fun secondsLabel(seconds: Int): String
     val storage: String
     val info: String
@@ -501,9 +503,13 @@ object EnglishStrings : AppStrings {
     override val usedWord = "used"
     override val suggestions = "Suggestions"
     override val graphicsQuality = "Graphics quality"
+    override val graphicsAndVideo = "Graphics and video"
     override val videoPlayback = "Video playback"
-    override val videoPlaybackDescription = "Double-tap the left or right side of a playing video to skip backward or forward."
+    override val videoPlaybackDescription =
+        "Videos play on their own page. There you can change the playback speed, lock the screen " +
+            "orientation, and double-tap the left or right side to skip backward or forward."
     override val seekDuration = "Seek duration"
+    override val seekDurationDescription = "How far a double-tap skips."
     override fun secondsLabel(seconds: Int) = if (seconds == 1) "1 second" else "$seconds seconds"
     override val storage = "Storage"
     override val info = "Info"
