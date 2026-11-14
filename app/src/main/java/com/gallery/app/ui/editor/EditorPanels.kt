@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,10 +20,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,8 +48,8 @@ import com.gallery.app.ui.theme.onAccent
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-/** The three bottom sections of the editor. Crop keeps the existing rotate/mirror/ratio tools. */
-internal enum class EditorTab { Crop, Adjust, Filters }
+/** The four bottom sections of the editor. Crop keeps the existing rotate/mirror/ratio tools. */
+internal enum class EditorTab { Crop, Adjust, Filters, Draw }
 
 @Composable
 internal fun EditorTabs(selected: EditorTab, enabled: Boolean, onSelect: (EditorTab) -> Unit) {
@@ -82,6 +89,7 @@ private fun tabLabel(tab: EditorTab): String = when (tab) {
     EditorTab.Crop -> strings.crop
     EditorTab.Adjust -> strings.adjust
     EditorTab.Filters -> strings.filters
+    EditorTab.Draw -> strings.draw
 }
 
 /** One slider plus a scrollable row of the eight adjustment names. */
@@ -91,7 +99,9 @@ internal fun AdjustPanel(
     selected: EditorAdjustment,
     enabled: Boolean,
     onSelect: (EditorAdjustment) -> Unit,
-    onChange: (EditorAdjustment, Float) -> Unit
+    onChange: (EditorAdjustment, Float) -> Unit,
+    onChangeFinished: () -> Unit,
+    onNudge: (EditorAdjustment, Float) -> Unit
 ) {
     val palette = LocalAppTheme.current.palette
     Column(
@@ -119,20 +129,40 @@ internal fun AdjustPanel(
                 fontSize = 13.sp
             )
         }
-        Slider(
-            value = adjustments.valueOf(selected),
-            onValueChange = { onChange(selected, it) },
-            valueRange = -1f..1f,
-            enabled = enabled,
-            colors = SliderDefaults.colors(
-                thumbColor = palette.accent,
-                activeTrackColor = palette.accent,
-                inactiveTrackColor = palette.surfaceVariant,
-                activeTickColor = Color.Transparent,
-                inactiveTickColor = Color.Transparent
-            ),
-            modifier = Modifier.padding(horizontal = 14.dp)
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AdjustmentStepButton(
+                icon = Icons.Rounded.Remove,
+                contentDescription = strings.decrease,
+                enabled = enabled,
+                onClick = { onNudge(selected, -AdjustmentStep) }
+            )
+            Slider(
+                value = adjustments.valueOf(selected),
+                onValueChange = { onChange(selected, it) },
+                onValueChangeFinished = onChangeFinished,
+                valueRange = -1f..1f,
+                enabled = enabled,
+                colors = SliderDefaults.colors(
+                    thumbColor = palette.accent,
+                    activeTrackColor = palette.accent,
+                    inactiveTrackColor = palette.surfaceVariant,
+                    activeTickColor = Color.Transparent,
+                    inactiveTickColor = Color.Transparent
+                ),
+                modifier = Modifier.weight(1f)
+            )
+            AdjustmentStepButton(
+                icon = Icons.Rounded.Add,
+                contentDescription = strings.increase,
+                enabled = enabled,
+                onClick = { onNudge(selected, AdjustmentStep) }
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -149,6 +179,39 @@ internal fun AdjustPanel(
                 )
             }
         }
+    }
+}
+
+/** How much the +/- buttons move a slider; small enough to fine-tune and big enough to feel. */
+private const val AdjustmentStep = 0.05f
+
+@Composable
+private fun AdjustmentStepButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val palette = LocalAppTheme.current.palette
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(palette.surfaceVariant)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(color = palette.accent),
+                enabled = enabled,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (enabled) palette.onBackground else palette.textMuted,
+            modifier = Modifier.size(19.dp)
+        )
     }
 }
 
@@ -252,5 +315,90 @@ internal fun FilterPanel(
                 )
             }
         }
+    }
+}
+
+/** Colour swatches and a brush-size slider for the freehand drawing tab. */
+@Composable
+internal fun DrawPanel(
+    color: Color,
+    brushWidth: Float,
+    enabled: Boolean,
+    onSelectColor: (Color) -> Unit,
+    onBrushWidthChange: (Float) -> Unit
+) {
+    val palette = LocalAppTheme.current.palette
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(top = 8.dp, bottom = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            EditorDrawColors.forEach { swatch ->
+                val selected = swatch == color
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(if (selected) palette.accent else Color.Transparent)
+                        .clickable(enabled = enabled) { onSelectColor(swatch) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(if (selected) 28.dp else 32.dp)
+                            .clip(CircleShape)
+                            .background(swatch)
+                            .border(1.dp, palette.onBackground.copy(alpha = 0.16f), CircleShape)
+                    )
+                }
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 22.dp, end = 22.dp, top = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = strings.brushSize,
+                color = palette.onBackground,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            // A dot that shows the current brush thickness.
+            Box(modifier = Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .size((brushWidth / MaxDrawWidth * 18f).coerceIn(4f, 18f).dp)
+                        .clip(CircleShape)
+                        .background(color)
+                        .border(1.dp, palette.onBackground.copy(alpha = 0.2f), CircleShape)
+                )
+            }
+        }
+        Slider(
+            value = brushWidth,
+            onValueChange = onBrushWidthChange,
+            valueRange = MinDrawWidth..MaxDrawWidth,
+            enabled = enabled,
+            colors = SliderDefaults.colors(
+                thumbColor = palette.accent,
+                activeTrackColor = palette.accent,
+                inactiveTrackColor = palette.surfaceVariant,
+                activeTickColor = Color.Transparent,
+                inactiveTickColor = Color.Transparent
+            ),
+            modifier = Modifier.padding(horizontal = 14.dp)
+        )
     }
 }

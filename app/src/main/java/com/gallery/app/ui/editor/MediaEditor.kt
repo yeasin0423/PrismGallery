@@ -11,6 +11,7 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Path
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
@@ -29,6 +30,7 @@ import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
+import androidx.compose.ui.graphics.toArgb
 import com.gallery.app.data.ThumbnailManager
 import com.gallery.app.model.MediaItem
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +41,7 @@ import java.io.FileNotFoundException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 import androidx.media3.common.MediaItem as ExoMediaItem
 
@@ -70,14 +73,15 @@ data class NormalizedRect(val left: Float, val top: Float, val right: Float, val
 /**
  * An edit: mirror first ([flipHorizontal]/[flipVertical] on the source frame), then rotate clockwise by
  * [rotation] degrees, then crop to [crop] (expressed in the resulting frame), then apply [colorMatrix]
- * (the combined adjustments and filter).
+ * (the combined adjustments and filter), then paint [drawStrokes] on top.
  */
 data class EditSpec(
     val rotation: Int,
     val flipHorizontal: Boolean,
     val flipVertical: Boolean,
     val crop: NormalizedRect,
-    val colorMatrix: FloatArray? = null
+    val colorMatrix: FloatArray? = null,
+    val drawStrokes: List<DrawStroke> = emptyList()
 )
 
 /** Result of saving an edited image. */
@@ -255,7 +259,13 @@ object MediaEditor {
         val height = ((crop.bottom - crop.top) * transformed.height).roundToInt().coerceIn(1, transformed.height - y)
         val cropped = if (crop.isFull) transformed else Bitmap.createBitmap(transformed, x, y, width, height)
         // Adjustments and the selected filter are baked in after cropping so the export matches the preview.
-        val result = spec.colorMatrix?.let { applyColorMatrix(cropped, it) } ?: cropped
+        val colored = spec.colorMatrix?.let { applyColorMatrix(cropped, it) } ?: cropped
+        // Ink is added last: in the preview it is drawn over the filtered image too.
+        val result = if (spec.drawStrokes.isEmpty()) {
+            colored
+        } else {
+            applyDrawStrokes(colored, spec.drawStrokes, crop, transformed.width, transformed.height)
+        }
 
         val (format, extension, mimeType) = outputFormat(item, overwrite)
         val file = File(context.cacheDir, "edit_${System.currentTimeMillis()}.$extension")
@@ -271,7 +281,8 @@ object MediaEditor {
             file.delete()
             throw e
         } finally {
-            if (result !== cropped) result.recycle()
+            if (result !== colored) result.recycle()
+            if (colored !== cropped) colored.recycle()
             if (cropped !== transformed) cropped.recycle()
             if (transformed !== decoded) transformed.recycle()
             decoded.recycle()
@@ -286,6 +297,58 @@ object MediaEditor {
             colorFilter = ColorMatrixColorFilter(android.graphics.ColorMatrix(values))
         }
         Canvas(output).drawBitmap(source, 0f, 0f, paint)
+        return output
+    }
+
+    /**
+     * Paints the freehand strokes over the cropped bitmap. Points live in full-frame coordinates, so
+     * they are mapped through [crop]; the brush width stays relative to the full frame's shorter side,
+     * which keeps the ink the same size on the photo after a crop.
+     */
+    private fun applyDrawStrokes(
+        source: Bitmap,
+        strokes: List<DrawStroke>,
+        crop: NormalizedRect,
+        frameWidth: Int,
+        frameHeight: Int
+    ): Bitmap {
+        val output = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+        canvas.drawBitmap(source, 0f, 0f, null)
+        val frameMin = min(frameWidth, frameHeight).toFloat()
+        val scaleX = source.width / crop.width
+        val scaleY = source.height / crop.height
+        val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        strokes.forEach { stroke ->
+            if (stroke.points.isEmpty()) return@forEach
+            val color = stroke.color.toArgb()
+            val widthPx = (stroke.width * frameMin).coerceAtLeast(1f)
+            line.color = color
+            line.strokeWidth = widthPx
+            dot.color = color
+            if (stroke.points.size == 1) {
+                val point = stroke.points.first()
+                canvas.drawCircle(
+                    (point.x - crop.left) * scaleX,
+                    (point.y - crop.top) * scaleY,
+                    widthPx / 2f,
+                    dot
+                )
+            } else {
+                val path = Path()
+                stroke.points.forEachIndexed { index, point ->
+                    val x = (point.x - crop.left) * scaleX
+                    val y = (point.y - crop.top) * scaleY
+                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                canvas.drawPath(path, line)
+            }
+        }
         return output
     }
 

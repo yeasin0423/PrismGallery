@@ -63,6 +63,12 @@ interface AppStrings {
     val crop: String
     val adjust: String
     val filters: String
+    val draw: String
+    val brushSize: String
+    val undo: String
+    val redo: String
+    val decrease: String
+    val increase: String
     val brightness: String
     val contrast: String
     val saturation: String
@@ -386,6 +392,12 @@ object EnglishStrings : AppStrings {
     override val crop = "Crop"
     override val adjust = "Adjust"
     override val filters = "Filters"
+    override val draw = "Draw"
+    override val brushSize = "Brush size"
+    override val undo = "Undo"
+    override val redo = "Redo"
+    override val decrease = "Decrease"
+    override val increase = "Increase"
     override val brightness = "Brightness"
     override val contrast = "Contrast"
     override val saturation = "Saturation"

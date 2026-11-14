@@ -39,6 +39,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Redo
+import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Flip
@@ -56,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -73,6 +76,7 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -80,6 +84,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -111,6 +116,20 @@ private enum class CropHandle { NONE, MOVE, LEFT, TOP, RIGHT, BOTTOM, TOP_LEFT, 
 
 /** The inline panel under the preview. Only one is open at a time. */
 private enum class EditorPanel { None, Rotate, Ratio }
+
+/** Everything an undo step restores. The selected tab and open panel are UI state, not image state. */
+private data class EditorSnapshot(
+    val rotation: Int,
+    val flipHorizontal: Boolean,
+    val flipVertical: Boolean,
+    val crop: NormalizedRect,
+    val ratio: CropRatio,
+    val adjustments: EditorAdjustments,
+    val filter: EditorFilter,
+    val strokes: List<DrawStroke>
+)
+
+private const val MaxHistory = 60
 
 private const val MIN_CROP = 0.1f
 
@@ -162,8 +181,21 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
     var selectedAdjustment by remember { mutableStateOf(EditorAdjustment.Brightness) }
     var adjustments by remember { mutableStateOf(EditorAdjustments()) }
     var filter by remember { mutableStateOf(EditorFilterNone) }
+    var drawColor by remember { mutableStateOf(EditorDrawColors.first()) }
+    var drawWidth by remember { mutableFloatStateOf(DefaultDrawWidth) }
+    var strokes by remember { mutableStateOf<List<DrawStroke>>(emptyList()) }
+    var activeStroke by remember { mutableStateOf<DrawStroke?>(null) }
+    // Live points of the stroke under the finger; a snapshot list keeps long strokes cheap to extend.
+    val activePoints = remember { mutableStateListOf<Offset>() }
     var saving by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
+
+    var undoStack by remember { mutableStateOf<List<EditorSnapshot>>(emptyList()) }
+    var redoStack by remember { mutableStateOf<List<EditorSnapshot>>(emptyList()) }
+    // One snapshot per gesture, so dragging a slider or a crop handle is a single undo step.
+    var adjustGestureStart by remember { mutableStateOf<EditorSnapshot?>(null) }
+    var cropGestureStart by remember { mutableStateOf<EditorSnapshot?>(null) }
+    var strokeGestureStart by remember { mutableStateOf<EditorSnapshot?>(null) }
 
     var openPanel by remember { mutableStateOf(EditorPanel.None) }
     // Kept after closing so the collapse animation still has content to draw.
@@ -187,8 +219,57 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
         ColorFilter.colorMatrix(ColorMatrix(values = colorMatrix))
     }
     val changed = rotation != 0 || flipHorizontal || flipVertical || !crop.isFull ||
-            !adjustments.isNeutral || filter.id != EditorFilterNone.id
+            !adjustments.isNeutral || filter.id != EditorFilterNone.id || strokes.isNotEmpty()
     val canOverwrite = item.isImage && MediaEditor.canOverwrite(item)
+    val canUndo = undoStack.isNotEmpty()
+    val canRedo = redoStack.isNotEmpty()
+
+    fun snapshot() = EditorSnapshot(
+        rotation = rotation,
+        flipHorizontal = flipHorizontal,
+        flipVertical = flipVertical,
+        crop = crop,
+        ratio = ratio,
+        adjustments = adjustments,
+        filter = filter,
+        strokes = strokes
+    )
+
+    /** Pushes [before] onto the undo stack and drops any redo branch. */
+    fun pushHistory(before: EditorSnapshot = snapshot()) {
+        undoStack = (undoStack + before).takeLast(MaxHistory)
+        redoStack = emptyList()
+    }
+
+    fun applySnapshot(state: EditorSnapshot) {
+        rotation = state.rotation
+        flipHorizontal = state.flipHorizontal
+        flipVertical = state.flipVertical
+        crop = state.crop
+        ratio = state.ratio
+        adjustments = state.adjustments
+        filter = state.filter
+        strokes = state.strokes
+        activeStroke = null
+        adjustGestureStart = null
+        cropGestureStart = null
+        strokeGestureStart = null
+        openPanel = EditorPanel.None
+    }
+
+    fun undo() {
+        val previous = undoStack.lastOrNull() ?: return
+        redoStack = (redoStack + snapshot()).takeLast(MaxHistory)
+        undoStack = undoStack.dropLast(1)
+        applySnapshot(previous)
+    }
+
+    fun redo() {
+        val next = redoStack.lastOrNull() ?: return
+        undoStack = (undoStack + snapshot()).takeLast(MaxHistory)
+        redoStack = redoStack.dropLast(1)
+        applySnapshot(next)
+    }
 
     fun onSaved(saved: ImageSaveResult.Saved) {
         saving = false
@@ -235,6 +316,7 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
 
     /** Rotates the frame a quarter turn; the inline panel's two buttons pick the direction. */
     fun rotate(clockwise: Boolean) {
+        pushHistory()
         rotation = (rotation + if (clockwise) 90 else 270) % 360
         // The frame's width and height swap, so the same pixel ratio gets a different normalized one.
         val locked = ratio.normalizedAspect(1f / frameAspect)
@@ -243,6 +325,7 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
         } else {
             fitCrop(crop, locked)
         }
+        strokes = strokes.map { if (clockwise) it.rotateClockwise() else it.rotateCounterClockwise() }
         scope.launch {
             // A positive angle runs clockwise, so the preview spins in from the opposite side.
             rotateAnimation.snapTo(if (clockwise) -90f else 90f)
@@ -252,8 +335,10 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
 
     // Mirroring always follows the screen axes: after a 90°/270° rotation the source's other axis flips.
     fun mirrorHorizontally() {
+        pushHistory()
         if (rotation % 180 == 0) flipHorizontal = !flipHorizontal else flipVertical = !flipVertical
         crop = crop.flipHorizontal()
+        strokes = strokes.map { it.flipHorizontal() }
         scope.launch {
             flipXAnimation.snapTo(-1f)
             flipXAnimation.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 350f))
@@ -261,8 +346,10 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
     }
 
     fun mirrorVertically() {
+        pushHistory()
         if (rotation % 180 == 0) flipVertical = !flipVertical else flipHorizontal = !flipHorizontal
         crop = crop.flipVertical()
+        strokes = strokes.map { it.flipVertical() }
         scope.launch {
             flipYAnimation.snapTo(-1f)
             flipYAnimation.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 350f))
@@ -270,6 +357,7 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
     }
 
     fun reset() {
+        pushHistory()
         rotation = 0
         flipHorizontal = false
         flipVertical = false
@@ -278,10 +366,14 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
         adjustments = EditorAdjustments()
         selectedAdjustment = EditorAdjustment.Brightness
         filter = EditorFilterNone
+        strokes = emptyList()
+        activeStroke = null
         openPanel = EditorPanel.None
     }
 
     fun chooseRatio(newRatio: CropRatio) {
+        if (newRatio == ratio) return
+        pushHistory()
         ratio = newRatio
         newRatio.normalizedAspect(frameAspect)?.let { crop = fitCrop(crop, it) }
     }
@@ -295,11 +387,43 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
         }
     }
 
+    fun normalizedPoint(position: Offset, rect: Rect) = Offset(
+        ((position.x - rect.left) / rect.width).coerceIn(0f, 1f),
+        ((position.y - rect.top) / rect.height).coerceIn(0f, 1f)
+    )
+
+    fun beginStroke(position: Offset, rect: Rect) {
+        if (!rect.contains(position)) return
+        strokeGestureStart = snapshot()
+        activePoints.clear()
+        activePoints.add(normalizedPoint(position, rect))
+        activeStroke = DrawStroke(activePoints, drawColor, drawWidth)
+    }
+
+    fun extendStroke(position: Offset, rect: Rect) {
+        val current = activeStroke ?: return
+        val point = normalizedPoint(position, rect)
+        val last = activePoints.lastOrNull() ?: current.points.last()
+        // Skip sub-pixel moves; they only bloat the stroke and the undo snapshots.
+        if (abs((point.x - last.x) * rect.width) < 1f && abs((point.y - last.y) * rect.height) < 1f) return
+        activePoints.add(point)
+    }
+
+    fun finishStroke() {
+        val finished = activeStroke ?: return
+        val before = strokeGestureStart
+        activeStroke = null
+        strokeGestureStart = null
+        strokes = strokes + finished.copy(points = activePoints.toList())
+        activePoints.clear()
+        if (before != null) pushHistory(before)
+    }
+
     fun saveCopy() {
         if (saving || !changed) return
         saving = true
         progress = 0f
-        val spec = EditSpec(rotation, flipHorizontal, flipVertical, crop, colorMatrix)
+        val spec = EditSpec(rotation, flipHorizontal, flipVertical, crop, colorMatrix, strokes)
         scope.launch {
             if (item.isVideo) {
                 runCatching { MediaEditor.saveVideo(context, item, spec) { progress = it } }
@@ -330,7 +454,7 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
         if (saving || !changed || !canOverwrite) return
         saving = true
         progress = 0f
-        val spec = EditSpec(rotation, flipHorizontal, flipVertical, crop, colorMatrix)
+        val spec = EditSpec(rotation, flipHorizontal, flipVertical, crop, colorMatrix, strokes)
         scope.launch {
             runCatching { MediaEditor.saveImage(context, item, spec, overwrite = true) }
                 .onSuccess { result ->
@@ -373,6 +497,12 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
                 closeEnabled = !saving,
                 saveEnabled = changed && !saving && preview != null,
                 canOverwrite = canOverwrite,
+                undoEnabled = !saving && canUndo,
+                redoEnabled = !saving && canRedo,
+                resetEnabled = changed && !saving && preview != null,
+                onUndo = ::undo,
+                onRedo = ::redo,
+                onReset = ::reset,
                 onClose = onClose,
                 onSaveCopy = ::saveCopy,
                 onSaveOptions = { showSaveMenu = true },
@@ -415,16 +545,31 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
                             scaleX = flipXAnimation.value
                             scaleY = flipYAnimation.value
                         }
-                        .pointerInput(imageRect, cropAspect) {
+                        .pointerInput(imageRect, cropAspect, tab) {
+                            if (tab == EditorTab.Draw) {
+                                detectDragGestures(
+                                    onDragStart = { position -> beginStroke(position, imageRect) },
+                                    onDrag = { change, _ ->
+                                        change.consume()
+                                        extendStroke(change.position, imageRect)
+                                    },
+                                    onDragEnd = { finishStroke() },
+                                    onDragCancel = { finishStroke() }
+                                )
+                                return@pointerInput
+                            }
+                            if (tab != EditorTab.Crop) return@pointerInput
                             val touchSlop = 28.dp.toPx()
                             detectDragGestures(
                                 onDragStart = { position ->
-                                    activeHandle = hitTest(
+                                    val handle = hitTest(
                                         position,
                                         cropRectIn(imageRect, crop),
                                         touchSlop,
                                         cornersOnly = cropAspect != null
                                     )
+                                    activeHandle = handle
+                                    cropGestureStart = if (handle != CropHandle.NONE) snapshot() else null
                                 },
                                 onDrag = { change, drag ->
                                     if (activeHandle != CropHandle.NONE) {
@@ -438,8 +583,16 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
                                         )
                                     }
                                 },
-                                onDragEnd = { activeHandle = CropHandle.NONE },
-                                onDragCancel = { activeHandle = CropHandle.NONE }
+                                onDragEnd = {
+                                    activeHandle = CropHandle.NONE
+                                    cropGestureStart?.takeIf { it != snapshot() }?.let { pushHistory(it) }
+                                    cropGestureStart = null
+                                },
+                                onDragCancel = {
+                                    activeHandle = CropHandle.NONE
+                                    cropGestureStart?.takeIf { it != snapshot() }?.let { pushHistory(it) }
+                                    cropGestureStart = null
+                                }
                             )
                         }
                 ) {
@@ -449,35 +602,71 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
                         dstSize = IntSize(imageRect.width.roundToInt(), imageRect.height.roundToInt()),
                         colorFilter = previewColorFilter
                     )
-                    val cropRect = cropRectIn(imageRect, crop)
-                    val shade = Color.Black.copy(alpha = 0.55f)
-                    // Dim everything outside the crop.
-                    drawRect(shade, Offset(imageRect.left, imageRect.top), Size(imageRect.width, cropRect.top - imageRect.top))
-                    drawRect(shade, Offset(imageRect.left, cropRect.bottom), Size(imageRect.width, imageRect.bottom - cropRect.bottom))
-                    drawRect(shade, Offset(imageRect.left, cropRect.top), Size(cropRect.left - imageRect.left, cropRect.height))
-                    drawRect(shade, Offset(cropRect.right, cropRect.top), Size(imageRect.right - cropRect.right, cropRect.height))
-                    // Rule-of-thirds grid while adjusting.
-                    if (activeHandle != CropHandle.NONE) {
-                        for (i in 1..2) {
-                            val gx = cropRect.left + cropRect.width * i / 3f
-                            val gy = cropRect.top + cropRect.height * i / 3f
-                            drawLine(Color.White.copy(alpha = 0.4f), Offset(gx, cropRect.top), Offset(gx, cropRect.bottom), 1.dp.toPx())
-                            drawLine(Color.White.copy(alpha = 0.4f), Offset(cropRect.left, gy), Offset(cropRect.right, gy), 1.dp.toPx())
+                    val frameMin = min(imageRect.width, imageRect.height)
+                    val inkBounds = cropRectIn(imageRect, crop)
+                    // Ink is clipped to the crop so the preview hides what the export would cut off.
+                    clipRect(inkBounds.left, inkBounds.top, inkBounds.right, inkBounds.bottom) {
+                        strokes.forEach { stroke ->
+                            drawEditorStroke(
+                                stroke = stroke,
+                                left = imageRect.left,
+                                top = imageRect.top,
+                                width = imageRect.width,
+                                height = imageRect.height,
+                                strokeWidth = stroke.width * frameMin
+                            )
+                        }
+                        activeStroke?.let { stroke ->
+                            drawEditorStroke(
+                                stroke = stroke,
+                                left = imageRect.left,
+                                top = imageRect.top,
+                                width = imageRect.width,
+                                height = imageRect.height,
+                                strokeWidth = stroke.width * frameMin
+                            )
                         }
                     }
-                    drawRect(Color.White, cropRect.topLeft, cropRect.size, style = Stroke(1.5.dp.toPx()))
-                    // Corner handles
-                    val handleLength = 20.dp.toPx()
-                    val handleStroke = 3.5.dp.toPx()
-                    val handleColor = Color.White
-                    listOf(
-                        Triple(cropRect.topLeft, 1f, 1f),
-                        Triple(Offset(cropRect.right, cropRect.top), -1f, 1f),
-                        Triple(Offset(cropRect.left, cropRect.bottom), 1f, -1f),
-                        Triple(cropRect.bottomRight, -1f, -1f)
-                    ).forEach { (corner, dx, dy) ->
-                        drawLine(handleColor, corner, Offset(corner.x + handleLength * dx, corner.y), handleStroke)
-                        drawLine(handleColor, corner, Offset(corner.x, corner.y + handleLength * dy), handleStroke)
+                    // Ink is clipped to the crop; show its edge in Draw so nothing vanishes unexplained.
+                    if (tab == EditorTab.Draw && !crop.isFull) {
+                        drawRect(
+                            color = Color.White.copy(alpha = 0.35f),
+                            topLeft = inkBounds.topLeft,
+                            size = inkBounds.size,
+                            style = Stroke(1.dp.toPx())
+                        )
+                    }
+                    if (tab == EditorTab.Crop) {
+                        val cropRect = cropRectIn(imageRect, crop)
+                        val shade = Color.Black.copy(alpha = 0.55f)
+                        // Dim everything outside the crop.
+                        drawRect(shade, Offset(imageRect.left, imageRect.top), Size(imageRect.width, cropRect.top - imageRect.top))
+                        drawRect(shade, Offset(imageRect.left, cropRect.bottom), Size(imageRect.width, imageRect.bottom - cropRect.bottom))
+                        drawRect(shade, Offset(imageRect.left, cropRect.top), Size(cropRect.left - imageRect.left, cropRect.height))
+                        drawRect(shade, Offset(cropRect.right, cropRect.top), Size(imageRect.right - cropRect.right, cropRect.height))
+                        // Rule-of-thirds grid while adjusting.
+                        if (activeHandle != CropHandle.NONE) {
+                            for (i in 1..2) {
+                                val gx = cropRect.left + cropRect.width * i / 3f
+                                val gy = cropRect.top + cropRect.height * i / 3f
+                                drawLine(Color.White.copy(alpha = 0.4f), Offset(gx, cropRect.top), Offset(gx, cropRect.bottom), 1.dp.toPx())
+                                drawLine(Color.White.copy(alpha = 0.4f), Offset(cropRect.left, gy), Offset(cropRect.right, gy), 1.dp.toPx())
+                            }
+                        }
+                        drawRect(Color.White, cropRect.topLeft, cropRect.size, style = Stroke(1.5.dp.toPx()))
+                        // Corner handles
+                        val handleLength = 20.dp.toPx()
+                        val handleStroke = 3.5.dp.toPx()
+                        val handleColor = Color.White
+                        listOf(
+                            Triple(cropRect.topLeft, 1f, 1f),
+                            Triple(Offset(cropRect.right, cropRect.top), -1f, 1f),
+                            Triple(Offset(cropRect.left, cropRect.bottom), 1f, -1f),
+                            Triple(cropRect.bottomRight, -1f, -1f)
+                        ).forEach { (corner, dx, dy) ->
+                            drawLine(handleColor, corner, Offset(corner.x + handleLength * dx, corner.y), handleStroke)
+                            drawLine(handleColor, corner, Offset(corner.x, corner.y + handleLength * dy), handleStroke)
+                        }
                     }
                 }
             }
@@ -521,8 +710,7 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
                             openPanel = EditorPanel.None
                             mirrorVertically()
                         },
-                        onToggleRatio = { togglePanel(EditorPanel.Ratio) },
-                        onReset = ::reset
+                        onToggleRatio = { togglePanel(EditorPanel.Ratio) }
                     )
                 }
 
@@ -532,7 +720,21 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
                     enabled = !saving && preview != null,
                     onSelect = { selectedAdjustment = it },
                     onChange = { adjustment, value ->
+                        // A drag is one undo step: remember where it started, commit when it ends.
+                        if (adjustGestureStart == null) adjustGestureStart = snapshot()
                         adjustments = adjustments.with(adjustment, value)
+                    },
+                    onChangeFinished = {
+                        adjustGestureStart?.takeIf { it != snapshot() }?.let { pushHistory(it) }
+                        adjustGestureStart = null
+                    },
+                    onNudge = { adjustment, delta ->
+                        val current = adjustments.valueOf(adjustment)
+                        val next = (current + delta).coerceIn(-1f, 1f)
+                        if (next != current) {
+                            pushHistory()
+                            adjustments = adjustments.with(adjustment, next)
+                        }
                     }
                 )
 
@@ -545,10 +747,23 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
                             selected = filter,
                             enabled = !saving,
                             matrixFor = { candidate -> editorColorMatrix(adjustments, candidate) },
-                            onSelect = { filter = it }
+                            onSelect = { candidate ->
+                                if (candidate.id != filter.id) {
+                                    pushHistory()
+                                    filter = candidate
+                                }
+                            }
                         )
                     }
                 }
+
+                EditorTab.Draw -> DrawPanel(
+                    color = drawColor,
+                    brushWidth = drawWidth,
+                    enabled = !saving && preview != null,
+                    onSelectColor = { drawColor = it },
+                    onBrushWidthChange = { drawWidth = it }
+                )
             }
         }
 
@@ -608,7 +823,13 @@ private fun EditorTopBar(
     closeEnabled: Boolean,
     saveEnabled: Boolean,
     canOverwrite: Boolean,
+    undoEnabled: Boolean,
+    redoEnabled: Boolean,
+    resetEnabled: Boolean,
     onClose: () -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    onReset: () -> Unit,
     onSaveCopy: () -> Unit,
     onSaveOptions: () -> Unit,
     onOptionsBounds: (Rect) -> Unit
@@ -619,7 +840,7 @@ private fun EditorTopBar(
             .fillMaxWidth()
             .statusBarsPadding()
             .height(60.dp)
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val closeInteraction = remember { MutableInteractionSource() }
@@ -647,17 +868,72 @@ private fun EditorTopBar(
         Text(
             text = strings.edit,
             color = palette.onBackground,
-            fontSize = 18.sp,
+            fontSize = 17.sp,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 14.dp)
+            modifier = Modifier.padding(start = 10.dp, end = 2.dp)
+        )
+        TopBarIconButton(
+            icon = Icons.AutoMirrored.Rounded.Undo,
+            contentDescription = strings.undo,
+            enabled = undoEnabled,
+            iconSize = 21.dp,
+            onClick = onUndo
+        )
+        TopBarIconButton(
+            icon = Icons.AutoMirrored.Rounded.Redo,
+            contentDescription = strings.redo,
+            enabled = redoEnabled,
+            iconSize = 21.dp,
+            onClick = onRedo
         )
         Spacer(modifier = Modifier.weight(1f))
+        TopBarIconButton(
+            icon = Icons.Rounded.Restore,
+            contentDescription = strings.reset,
+            enabled = resetEnabled,
+            iconSize = 20.dp,
+            onClick = onReset
+        )
+        Spacer(modifier = Modifier.width(4.dp))
         SavePill(
             enabled = saveEnabled,
             canOverwrite = canOverwrite,
             onSaveCopy = onSaveCopy,
             onSaveOptions = onSaveOptions,
             onOptionsBounds = onOptionsBounds
+        )
+    }
+}
+
+/** A compact borderless icon button for the top bar; disabled steps fade to the muted text colour. */
+@Composable
+private fun TopBarIconButton(
+    icon: ImageVector,
+    contentDescription: String,
+    enabled: Boolean,
+    iconSize: Dp,
+    onClick: () -> Unit
+) {
+    val palette = LocalAppTheme.current.palette
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .pressScale(interaction, 0.9f)
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = interaction,
+                indication = ripple(color = palette.onBackground),
+                enabled = enabled,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (enabled) palette.onBackground else palette.textMuted.copy(alpha = 0.5f),
+            modifier = Modifier.size(iconSize)
         )
     }
 }
@@ -696,13 +972,14 @@ private fun SavePill(
                     enabled = enabled,
                     onClick = onSaveCopy
                 )
-                .padding(start = 18.dp, end = if (canOverwrite) 12.dp else 18.dp, top = 10.dp, bottom = 10.dp)
+                .padding(start = 14.dp, end = if (canOverwrite) 10.dp else 14.dp, top = 10.dp, bottom = 10.dp)
         ) {
             Text(
-                text = strings.saveCopy,
+                text = strings.save,
                 color = content,
                 fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
             )
         }
         if (canOverwrite) {
@@ -723,7 +1000,7 @@ private fun SavePill(
                         onClick = onSaveOptions
                     )
                     .onGloballyPositioned { onOptionsBounds(it.boundsInRoot()) }
-                    .padding(horizontal = 9.dp, vertical = 10.dp)
+                    .padding(horizontal = 7.dp, vertical = 10.dp)
             ) {
                 Icon(
                     imageVector = Icons.Rounded.KeyboardArrowDown,
@@ -736,7 +1013,7 @@ private fun SavePill(
     }
 }
 
-/** Rotate / mirror / ratio / reset tools in the One UI tool-row style. */
+/** Rotate / mirror / ratio tools in the One UI tool-row style. */
 @Composable
 private fun EditorToolbar(
     enabled: Boolean,
@@ -744,8 +1021,7 @@ private fun EditorToolbar(
     onToggleRotate: () -> Unit,
     onMirrorHorizontally: () -> Unit,
     onMirrorVertically: () -> Unit,
-    onToggleRatio: () -> Unit,
-    onReset: () -> Unit
+    onToggleRatio: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -781,12 +1057,6 @@ private fun EditorToolbar(
             onClick = onToggleRatio,
             enabled = enabled,
             selected = openPanel == EditorPanel.Ratio
-        )
-        ThemedToolItem(
-            icon = Icons.Rounded.Restore,
-            label = strings.reset,
-            onClick = onReset,
-            enabled = enabled
         )
     }
 }
