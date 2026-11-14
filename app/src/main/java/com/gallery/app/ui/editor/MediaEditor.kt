@@ -6,8 +6,11 @@ import android.app.PendingIntent
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
+import android.graphics.Paint
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
@@ -66,13 +69,15 @@ data class NormalizedRect(val left: Float, val top: Float, val right: Float, val
 
 /**
  * An edit: mirror first ([flipHorizontal]/[flipVertical] on the source frame), then rotate clockwise by
- * [rotation] degrees, then crop to [crop] (expressed in the resulting frame).
+ * [rotation] degrees, then crop to [crop] (expressed in the resulting frame), then apply [colorMatrix]
+ * (the combined adjustments and filter).
  */
 data class EditSpec(
     val rotation: Int,
     val flipHorizontal: Boolean,
     val flipVertical: Boolean,
-    val crop: NormalizedRect
+    val crop: NormalizedRect,
+    val colorMatrix: FloatArray? = null
 )
 
 /** Result of saving an edited image. */
@@ -96,6 +101,13 @@ object MediaEditor {
 
     /** Largest side of a saved image; keeps full-resolution decodes of 50 MP photos within memory. */
     private const val MAX_EXPORT_SIDE = 4096
+
+    private val IdentityColorMatrix = floatArrayOf(
+        1f, 0f, 0f, 0f, 0f,
+        0f, 1f, 0f, 0f, 0f,
+        0f, 0f, 1f, 0f, 0f,
+        0f, 0f, 0f, 1f, 0f
+    )
 
     suspend fun loadPreview(context: Context, item: MediaItem, maxSize: Int = 1600): Bitmap? = withContext(Dispatchers.IO) {
         runCatching {
@@ -241,7 +253,9 @@ object MediaEditor {
         val y = (crop.top * transformed.height).roundToInt().coerceIn(0, transformed.height - 1)
         val width = ((crop.right - crop.left) * transformed.width).roundToInt().coerceIn(1, transformed.width - x)
         val height = ((crop.bottom - crop.top) * transformed.height).roundToInt().coerceIn(1, transformed.height - y)
-        val result = if (crop.isFull) transformed else Bitmap.createBitmap(transformed, x, y, width, height)
+        val cropped = if (crop.isFull) transformed else Bitmap.createBitmap(transformed, x, y, width, height)
+        // Adjustments and the selected filter are baked in after cropping so the export matches the preview.
+        val result = spec.colorMatrix?.let { applyColorMatrix(cropped, it) } ?: cropped
 
         val (format, extension, mimeType) = outputFormat(item, overwrite)
         val file = File(context.cacheDir, "edit_${System.currentTimeMillis()}.$extension")
@@ -257,13 +271,25 @@ object MediaEditor {
             file.delete()
             throw e
         } finally {
-            if (result !== transformed) result.recycle()
+            if (result !== cropped) result.recycle()
+            if (cropped !== transformed) cropped.recycle()
             if (transformed !== decoded) transformed.recycle()
             decoded.recycle()
         }
     }
 
-    /** The encoded format used for a copy, or for an overwrite (which must keep the original format). */
+    /** Draws [source] through [values] into a new bitmap; returns the source when nothing changes. */
+    private fun applyColorMatrix(source: Bitmap, values: FloatArray): Bitmap {
+        if (values.contentEquals(IdentityColorMatrix)) return source
+        val output = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+            colorFilter = ColorMatrixColorFilter(android.graphics.ColorMatrix(values))
+        }
+        Canvas(output).drawBitmap(source, 0f, 0f, paint)
+        return output
+    }
+
+    /** Encoded format used for a copy, or for an overwrite (which must keep the original format). */
     private fun outputFormat(item: MediaItem, overwrite: Boolean): Triple<Bitmap.CompressFormat, String, String> {
         val mime = item.mimeType.lowercase()
         val extension = item.displayName.substringAfterLast('.', "").lowercase()

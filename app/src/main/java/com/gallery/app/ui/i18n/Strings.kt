@@ -60,6 +60,17 @@ interface AppStrings {
     val ratio3x4: String
     val ratio16x9: String
     val ratio9x16: String
+    val crop: String
+    val adjust: String
+    val filters: String
+    val brightness: String
+    val contrast: String
+    val saturation: String
+    val warmth: String
+    val tint: String
+    val blackPoint: String
+    val whitePoint: String
+    val highlights: String
     val saveCopy: String
     val saveOptions: String
     val overwriteOriginal: String
@@ -279,6 +290,8 @@ interface AppStrings {
     val permissionWarning: String
     val permissionMissingMedia: String
     val permissionOpenSettings: String
+    val permissionMediaTitle: String
+    val permissionMediaNeeded: String
     val allFilesAccess: String
     val allFilesDescription: String
     val allFilesGrant: String
@@ -370,6 +383,17 @@ object EnglishStrings : AppStrings {
     override val ratio3x4 = "3:4"
     override val ratio16x9 = "16:9"
     override val ratio9x16 = "9:16"
+    override val crop = "Crop"
+    override val adjust = "Adjust"
+    override val filters = "Filters"
+    override val brightness = "Brightness"
+    override val contrast = "Contrast"
+    override val saturation = "Saturation"
+    override val warmth = "Warmth"
+    override val tint = "Tint"
+    override val blackPoint = "Black point"
+    override val whitePoint = "White point"
+    override val highlights = "Highlights"
     override val saveCopy = "Save copy"
     override val saveOptions = "Save options"
     override val overwriteOriginal = "Overwrite original"
@@ -599,6 +623,8 @@ object EnglishStrings : AppStrings {
     override val permissionWarning = "The app won't work properly while these permissions are missing:"
     override val permissionMissingMedia = "Access to photos and videos — without it the gallery can't show anything"
     override val permissionOpenSettings = "Open in settings"
+    override val permissionMediaTitle = "Photos and videos"
+    override val permissionMediaNeeded = "Needed to show your photos and videos."
     override val allFilesAccess = "All files access"
     override val allFilesDescription = "Manage files in every folder, so editing and saving doesn't ask for access each time."
     override val allFilesGrant = "Allow access"

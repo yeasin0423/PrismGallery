@@ -68,6 +68,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -156,6 +158,10 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
     var flipVertical by remember { mutableStateOf(false) }
     var crop by remember { mutableStateOf(NormalizedRect.Full) }
     var ratio by remember { mutableStateOf<CropRatio>(CropRatio.Free) }
+    var tab by remember { mutableStateOf(EditorTab.Crop) }
+    var selectedAdjustment by remember { mutableStateOf(EditorAdjustment.Brightness) }
+    var adjustments by remember { mutableStateOf(EditorAdjustments()) }
+    var filter by remember { mutableStateOf(EditorFilterNone) }
     var saving by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
 
@@ -176,7 +182,12 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
     }
     val frameAspect = preview?.let { it.width.toFloat() / it.height.toFloat() } ?: 1f
     val cropAspect = ratio.normalizedAspect(frameAspect)
-    val changed = rotation != 0 || flipHorizontal || flipVertical || !crop.isFull
+    val colorMatrix = remember(adjustments, filter) { editorColorMatrix(adjustments, filter) }
+    val previewColorFilter = remember(colorMatrix) {
+        ColorFilter.colorMatrix(ColorMatrix(values = colorMatrix))
+    }
+    val changed = rotation != 0 || flipHorizontal || flipVertical || !crop.isFull ||
+            !adjustments.isNeutral || filter.id != EditorFilterNone.id
     val canOverwrite = item.isImage && MediaEditor.canOverwrite(item)
 
     fun onSaved(saved: ImageSaveResult.Saved) {
@@ -264,6 +275,10 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
         flipVertical = false
         crop = NormalizedRect.Full
         ratio = CropRatio.Free
+        adjustments = EditorAdjustments()
+        selectedAdjustment = EditorAdjustment.Brightness
+        filter = EditorFilterNone
+        openPanel = EditorPanel.None
     }
 
     fun chooseRatio(newRatio: CropRatio) {
@@ -284,7 +299,7 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
         if (saving || !changed) return
         saving = true
         progress = 0f
-        val spec = EditSpec(rotation, flipHorizontal, flipVertical, crop)
+        val spec = EditSpec(rotation, flipHorizontal, flipVertical, crop, colorMatrix)
         scope.launch {
             if (item.isVideo) {
                 runCatching { MediaEditor.saveVideo(context, item, spec) { progress = it } }
@@ -315,7 +330,7 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
         if (saving || !changed || !canOverwrite) return
         saving = true
         progress = 0f
-        val spec = EditSpec(rotation, flipHorizontal, flipVertical, crop)
+        val spec = EditSpec(rotation, flipHorizontal, flipVertical, crop, colorMatrix)
         scope.launch {
             runCatching { MediaEditor.saveImage(context, item, spec, overwrite = true) }
                 .onSuccess { result ->
@@ -340,7 +355,11 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
 
     BackHandler {
         if (saving) return@BackHandler
-        if (openPanel != EditorPanel.None) openPanel = EditorPanel.None else onClose()
+        when {
+            openPanel != EditorPanel.None -> openPanel = EditorPanel.None
+            tab != EditorTab.Crop -> tab = EditorTab.Crop
+            else -> onClose()
+        }
     }
 
     Box(
@@ -427,7 +446,8 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
                     drawImage(
                         image = image,
                         dstOffset = IntOffset(imageRect.left.roundToInt(), imageRect.top.roundToInt()),
-                        dstSize = IntSize(imageRect.width.roundToInt(), imageRect.height.roundToInt())
+                        dstSize = IntSize(imageRect.width.roundToInt(), imageRect.height.roundToInt()),
+                        colorFilter = previewColorFilter
                     )
                     val cropRect = cropRectIn(imageRect, crop)
                     val shade = Color.Black.copy(alpha = 0.55f)
@@ -462,30 +482,74 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
                 }
             }
 
-            AnimatedVisibility(
-                visible = openPanel != EditorPanel.None,
-                enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
-                exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
-            ) {
-                EditorInlinePanel(
-                    panel = shownPanel,
-                    enabled = !saving && preview != null,
-                    ratio = ratio,
-                    onRotateLeft = { rotate(clockwise = false) },
-                    onRotateRight = { rotate(clockwise = true) },
-                    onSelectRatio = ::chooseRatio
-                )
-            }
-
-            EditorToolbar(
-                enabled = !saving && preview != null,
-                openPanel = openPanel,
-                onToggleRotate = { togglePanel(EditorPanel.Rotate) },
-                onMirrorHorizontally = ::mirrorHorizontally,
-                onMirrorVertically = ::mirrorVertically,
-                onToggleRatio = { togglePanel(EditorPanel.Ratio) },
-                onReset = ::reset
+            EditorTabs(
+                selected = tab,
+                enabled = !saving,
+                onSelect = { selected ->
+                    tab = selected
+                    openPanel = EditorPanel.None
+                }
             )
+
+            when (tab) {
+                EditorTab.Crop -> {
+                    AnimatedVisibility(
+                        visible = openPanel != EditorPanel.None,
+                        enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
+                        exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
+                    ) {
+                        EditorInlinePanel(
+                            panel = shownPanel,
+                            enabled = !saving && preview != null,
+                            ratio = ratio,
+                            onRotateLeft = { rotate(clockwise = false) },
+                            onRotateRight = { rotate(clockwise = true) },
+                            onSelectRatio = ::chooseRatio
+                        )
+                    }
+
+                    EditorToolbar(
+                        enabled = !saving && preview != null,
+                        openPanel = openPanel,
+                        onToggleRotate = { togglePanel(EditorPanel.Rotate) },
+                        // Any one-shot tool closes whatever inline panel was open first.
+                        onMirrorHorizontally = {
+                            openPanel = EditorPanel.None
+                            mirrorHorizontally()
+                        },
+                        onMirrorVertically = {
+                            openPanel = EditorPanel.None
+                            mirrorVertically()
+                        },
+                        onToggleRatio = { togglePanel(EditorPanel.Ratio) },
+                        onReset = ::reset
+                    )
+                }
+
+                EditorTab.Adjust -> AdjustPanel(
+                    adjustments = adjustments,
+                    selected = selectedAdjustment,
+                    enabled = !saving && preview != null,
+                    onSelect = { selectedAdjustment = it },
+                    onChange = { adjustment, value ->
+                        adjustments = adjustments.with(adjustment, value)
+                    }
+                )
+
+                EditorTab.Filters -> {
+                    val image = preview
+                    if (image != null) {
+                        FilterPanel(
+                            preview = image,
+                            filters = EditorFilters,
+                            selected = filter,
+                            enabled = !saving,
+                            matrixFor = { candidate -> editorColorMatrix(adjustments, candidate) },
+                            onSelect = { filter = it }
+                        )
+                    }
+                }
+            }
         }
 
         if (saving) {

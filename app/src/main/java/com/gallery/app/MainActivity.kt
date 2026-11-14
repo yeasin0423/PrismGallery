@@ -283,12 +283,17 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
     var showCreateAlbumFromMove by remember { mutableStateOf(false) }
     // Android 11+ all-files access: optional, only requested from the explicit buttons.
     var allFilesAccess by remember { mutableStateOf(hasAllFilesAccess()) }
+    // Mirrors the media permission so the prompt can enable Close even before the UI state updates.
+    var mediaGranted by remember { mutableStateOf(hasMediaPermission(context)) }
+    // Once the prompt has been shown it stays until the user closes it, even after granting access.
+    var permissionScreenVisible by remember { mutableStateOf(false) }
 
     // Permission Launcher for media storage access
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        viewModel.updatePermissionState(hasMediaPermission(context))
+        mediaGranted = hasMediaPermission(context)
+        viewModel.updatePermissionState(mediaGranted)
     }
 
     // IntentSender Launcher for MediaStore Trash, Delete & Write requests
@@ -328,6 +333,7 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 val hasPerm = hasMediaPermission(context)
+                mediaGranted = hasPerm
                 viewModel.updatePermissionState(hasPerm)
                 // Coming back from the all-files page in Settings updates the optional access state.
                 allFilesAccess = hasAllFilesAccess()
@@ -342,12 +348,19 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
         }
     }
 
-    if (uiState is GalleryUiState.PermissionRequired) {
+    val permissionRequired = uiState is GalleryUiState.PermissionRequired
+    // Pin the prompt open while it is needed, and keep it open after granting so all-files access can
+    // still be set. It only disappears through the Close button, which needs the media permission.
+    LaunchedEffect(permissionRequired) {
+        if (permissionRequired) permissionScreenVisible = true
+    }
+
+    if (permissionRequired || permissionScreenVisible) {
         PermissionScreen(
             onRequestPermission = {
                 permissionLauncher.launch(getRequiredPermissions())
             },
-            missingMedia = true,
+            missingMedia = !mediaGranted,
             onOpenSettings = {
                 context.startActivity(
                     Intent(
@@ -358,7 +371,9 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
             },
             canManageAllFiles = canManageAllFiles(),
             hasAllFilesAccess = allFilesAccess,
-            onRequestAllFilesAccess = { openAllFilesAccessSettings(context) }
+            mediaGranted = mediaGranted,
+            onRequestAllFilesAccess = { openAllFilesAccessSettings(context) },
+            onClose = { if (mediaGranted) permissionScreenVisible = false }
         )
     } else {
         // Intercept back gesture if inside an album hierarchy
