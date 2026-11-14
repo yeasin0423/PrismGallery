@@ -44,6 +44,8 @@ interface AppStrings {
     val saving: String
     val reset: String
     val rotate: String
+    val rotateLeft: String
+    val rotateRight: String
     val flipHorizontal: String
     val flipVertical: String
     val editSaved: String
@@ -270,12 +272,18 @@ interface AppStrings {
     val suggestions: String
 
     // Permissions
+    val permissions: String
     val permissionTitle: String
     val permissionDescription: String
     val permissionGrant: String
     val permissionWarning: String
     val permissionMissingMedia: String
     val permissionOpenSettings: String
+    val allFilesAccess: String
+    val allFilesDescription: String
+    val allFilesGrant: String
+    val allFilesGranted: String
+    val allFilesNotGranted: String
 
     // Messages (toasts)
     val favoriteAdded: String
@@ -346,6 +354,8 @@ object EnglishStrings : AppStrings {
     override val saving = "Saving …"
     override val reset = "Reset"
     override val rotate = "Rotate"
+    override val rotateLeft = "Rotate left"
+    override val rotateRight = "Rotate right"
     override val flipHorizontal = "Mirror"
     override val flipVertical = "Flip"
     override val editSaved = "Saved as a copy"
@@ -582,12 +592,18 @@ object EnglishStrings : AppStrings {
         else -> palette.label
     }
 
+    override val permissions = "Permissions"
     override val permissionTitle = "Access to photos and videos"
     override val permissionDescription = "Allow access to your media library to show your photos and videos."
     override val permissionGrant = "Grant permissions"
     override val permissionWarning = "The app won't work properly while these permissions are missing:"
     override val permissionMissingMedia = "Access to photos and videos — without it the gallery can't show anything"
     override val permissionOpenSettings = "Open in settings"
+    override val allFilesAccess = "All files access"
+    override val allFilesDescription = "Manage files in every folder, so editing and saving doesn't ask for access each time."
+    override val allFilesGrant = "Allow access"
+    override val allFilesGranted = "Access granted"
+    override val allFilesNotGranted = "Not granted — tap to allow"
 
     override val favoriteAdded = "Added to favorites"
     override val favoriteRemoved = "Removed from favorites"

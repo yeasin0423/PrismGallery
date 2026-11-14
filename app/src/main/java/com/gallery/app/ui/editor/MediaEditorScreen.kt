@@ -8,12 +8,18 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +35,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,6 +44,7 @@ import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Flip
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.Rotate90DegreesCcw
 import androidx.compose.material.icons.rounded.Rotate90DegreesCw
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -64,6 +72,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -80,7 +89,6 @@ import com.gallery.app.ui.design.MenuEntry
 import com.gallery.app.ui.design.ThemedDialog
 import com.gallery.app.ui.design.ThemedPopupMenu
 import com.gallery.app.ui.design.ThemedProgressBar
-import com.gallery.app.ui.design.ThemedSheet
 import com.gallery.app.ui.design.ThemedToolItem
 import com.gallery.app.ui.design.blockTouchesBelow
 import com.gallery.app.ui.design.pressScale
@@ -98,6 +106,9 @@ import kotlin.math.roundToInt
 val LocalOnMediaEdited = staticCompositionLocalOf<() -> Unit> { {} }
 
 private enum class CropHandle { NONE, MOVE, LEFT, TOP, RIGHT, BOTTOM, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT }
+
+/** The inline panel under the preview. Only one is open at a time. */
+private enum class EditorPanel { None, Rotate, Ratio }
 
 private const val MIN_CROP = 0.1f
 
@@ -148,7 +159,9 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
     var saving by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
 
-    var showRatioSheet by remember { mutableStateOf(false) }
+    var openPanel by remember { mutableStateOf(EditorPanel.None) }
+    // Kept after closing so the collapse animation still has content to draw.
+    var shownPanel by remember { mutableStateOf(EditorPanel.Rotate) }
     var showSaveMenu by remember { mutableStateOf(false) }
     var saveMenuAnchor by remember { mutableStateOf<Rect?>(null) }
     var showOverwriteDialog by remember { mutableStateOf(false) }
@@ -164,7 +177,7 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
     val frameAspect = preview?.let { it.width.toFloat() / it.height.toFloat() } ?: 1f
     val cropAspect = ratio.normalizedAspect(frameAspect)
     val changed = rotation != 0 || flipHorizontal || flipVertical || !crop.isFull
-    val canOverwrite = !item.isVideo && MediaEditor.canOverwrite(item)
+    val canOverwrite = item.isImage && MediaEditor.canOverwrite(item)
 
     fun onSaved(saved: ImageSaveResult.Saved) {
         saving = false
@@ -209,13 +222,19 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
         }
     }
 
-    fun rotate() {
-        rotation = (rotation + 90) % 360
+    /** Rotates the frame a quarter turn; the inline panel's two buttons pick the direction. */
+    fun rotate(clockwise: Boolean) {
+        rotation = (rotation + if (clockwise) 90 else 270) % 360
         // The frame's width and height swap, so the same pixel ratio gets a different normalized one.
         val locked = ratio.normalizedAspect(1f / frameAspect)
-        crop = if (locked == null) crop.rotateClockwise() else fitCrop(crop, locked)
+        crop = if (locked == null) {
+            if (clockwise) crop.rotateClockwise() else crop.rotateCounterClockwise()
+        } else {
+            fitCrop(crop, locked)
+        }
         scope.launch {
-            rotateAnimation.snapTo(-90f)
+            // A positive angle runs clockwise, so the preview spins in from the opposite side.
+            rotateAnimation.snapTo(if (clockwise) -90f else 90f)
             rotateAnimation.animateTo(0f, spring(dampingRatio = 0.75f, stiffness = 380f))
         }
     }
@@ -250,7 +269,15 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
     fun chooseRatio(newRatio: CropRatio) {
         ratio = newRatio
         newRatio.normalizedAspect(frameAspect)?.let { crop = fitCrop(crop, it) }
-        showRatioSheet = false
+    }
+
+    fun togglePanel(panel: EditorPanel) {
+        if (openPanel == panel) {
+            openPanel = EditorPanel.None
+        } else {
+            shownPanel = panel
+            openPanel = panel
+        }
     }
 
     fun saveCopy() {
@@ -311,7 +338,10 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
         onDispose { pendingOverwrite?.let { MediaEditor.discardOverwrite(it.second) } }
     }
 
-    BackHandler { if (!saving) onClose() }
+    BackHandler {
+        if (saving) return@BackHandler
+        if (openPanel != EditorPanel.None) openPanel = EditorPanel.None else onClose()
+    }
 
     Box(
         modifier = Modifier
@@ -323,6 +353,7 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
             EditorTopBar(
                 closeEnabled = !saving,
                 saveEnabled = changed && !saving && preview != null,
+                canOverwrite = canOverwrite,
                 onClose = onClose,
                 onSaveCopy = ::saveCopy,
                 onSaveOptions = { showSaveMenu = true },
@@ -431,13 +462,28 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
                 }
             }
 
+            AnimatedVisibility(
+                visible = openPanel != EditorPanel.None,
+                enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
+                exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
+            ) {
+                EditorInlinePanel(
+                    panel = shownPanel,
+                    enabled = !saving && preview != null,
+                    ratio = ratio,
+                    onRotateLeft = { rotate(clockwise = false) },
+                    onRotateRight = { rotate(clockwise = true) },
+                    onSelectRatio = ::chooseRatio
+                )
+            }
+
             EditorToolbar(
                 enabled = !saving && preview != null,
-                ratioSelected = ratio != CropRatio.Free,
-                onRotate = ::rotate,
+                openPanel = openPanel,
+                onToggleRotate = { togglePanel(EditorPanel.Rotate) },
                 onMirrorHorizontally = ::mirrorHorizontally,
                 onMirrorVertically = ::mirrorVertically,
-                onAspectRatio = { showRatioSheet = true },
+                onToggleRatio = { togglePanel(EditorPanel.Ratio) },
                 onReset = ::reset
             )
         }
@@ -463,18 +509,12 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
         }
     }
 
-    if (showRatioSheet) {
-        ThemedSheet(onDismissRequest = { showRatioSheet = false }, title = strings.aspectRatio) {
-            RatioPicker(selected = ratio, onSelect = ::chooseRatio)
-        }
-    }
-
     ThemedPopupMenu(
         expanded = showSaveMenu,
         onDismissRequest = { showSaveMenu = false },
         anchorBounds = saveMenuAnchor,
         entries = buildList {
-            add(MenuEntry(strings.saveCopy) { saveCopy() })
+            // Saving a copy is the main button; this menu only offers the destructive alternative.
             if (canOverwrite) {
                 add(MenuEntry(strings.overwriteOriginal, destructive = true) { showOverwriteDialog = true })
             }
@@ -503,6 +543,7 @@ fun MediaEditorScreen(item: MediaItem, onClose: () -> Unit) {
 private fun EditorTopBar(
     closeEnabled: Boolean,
     saveEnabled: Boolean,
+    canOverwrite: Boolean,
     onClose: () -> Unit,
     onSaveCopy: () -> Unit,
     onSaveOptions: () -> Unit,
@@ -549,6 +590,7 @@ private fun EditorTopBar(
         Spacer(modifier = Modifier.weight(1f))
         SavePill(
             enabled = saveEnabled,
+            canOverwrite = canOverwrite,
             onSaveCopy = onSaveCopy,
             onSaveOptions = onSaveOptions,
             onOptionsBounds = onOptionsBounds
@@ -556,10 +598,14 @@ private fun EditorTopBar(
     }
 }
 
-/** The split save button: the main half saves a copy, the chevron opens the save options. */
+/**
+ * The save button. With an overwritable original it is split: the main half saves a copy, the chevron
+ * opens the destructive "Overwrite original" option. Other formats show a single-pill save-copy button.
+ */
 @Composable
 private fun SavePill(
     enabled: Boolean,
+    canOverwrite: Boolean,
     onSaveCopy: () -> Unit,
     onSaveOptions: () -> Unit,
     onOptionsBounds: (Rect) -> Unit
@@ -586,7 +632,7 @@ private fun SavePill(
                     enabled = enabled,
                     onClick = onSaveCopy
                 )
-                .padding(start = 18.dp, end = 12.dp, top = 10.dp, bottom = 10.dp)
+                .padding(start = 18.dp, end = if (canOverwrite) 12.dp else 18.dp, top = 10.dp, bottom = 10.dp)
         ) {
             Text(
                 text = strings.saveCopy,
@@ -595,31 +641,33 @@ private fun SavePill(
                 fontWeight = FontWeight.SemiBold
             )
         }
-        Box(
-            modifier = Modifier
-                .width(1.dp)
-                .height(20.dp)
-                .background(content.copy(alpha = 0.3f))
-        )
-        Box(
-            modifier = Modifier
-                .pressScale(optionsInteraction, 0.9f)
-                .clip(CircleShape)
-                .clickable(
-                    interactionSource = optionsInteraction,
-                    indication = ripple(color = content),
-                    enabled = enabled,
-                    onClick = onSaveOptions
-                )
-                .onGloballyPositioned { onOptionsBounds(it.boundsInRoot()) }
-                .padding(horizontal = 9.dp, vertical = 10.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.KeyboardArrowDown,
-                contentDescription = strings.saveOptions,
-                tint = content,
-                modifier = Modifier.size(20.dp)
+        if (canOverwrite) {
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(20.dp)
+                    .background(content.copy(alpha = 0.3f))
             )
+            Box(
+                modifier = Modifier
+                    .pressScale(optionsInteraction, 0.9f)
+                    .clip(CircleShape)
+                    .clickable(
+                        interactionSource = optionsInteraction,
+                        indication = ripple(color = content),
+                        enabled = enabled,
+                        onClick = onSaveOptions
+                    )
+                    .onGloballyPositioned { onOptionsBounds(it.boundsInRoot()) }
+                    .padding(horizontal = 9.dp, vertical = 10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = strings.saveOptions,
+                    tint = content,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }
@@ -628,11 +676,11 @@ private fun SavePill(
 @Composable
 private fun EditorToolbar(
     enabled: Boolean,
-    ratioSelected: Boolean,
-    onRotate: () -> Unit,
+    openPanel: EditorPanel,
+    onToggleRotate: () -> Unit,
     onMirrorHorizontally: () -> Unit,
     onMirrorVertically: () -> Unit,
-    onAspectRatio: () -> Unit,
+    onToggleRatio: () -> Unit,
     onReset: () -> Unit
 ) {
     Row(
@@ -646,8 +694,9 @@ private fun EditorToolbar(
         ThemedToolItem(
             icon = Icons.Rounded.Rotate90DegreesCw,
             label = strings.rotate,
-            onClick = onRotate,
-            enabled = enabled
+            onClick = onToggleRotate,
+            enabled = enabled,
+            selected = openPanel == EditorPanel.Rotate
         )
         ThemedToolItem(
             icon = Icons.Rounded.Flip,
@@ -665,9 +714,9 @@ private fun EditorToolbar(
         ThemedToolItem(
             icon = Icons.Rounded.Crop,
             label = strings.ratio,
-            onClick = onAspectRatio,
+            onClick = onToggleRatio,
             enabled = enabled,
-            selected = ratioSelected
+            selected = openPanel == EditorPanel.Ratio
         )
         ThemedToolItem(
             icon = Icons.Rounded.Restore,
@@ -678,7 +727,89 @@ private fun EditorToolbar(
     }
 }
 
-/** The crop ratios as a compact 3-column grid of One UI chips. */
+/** The panel that slides in between the preview and the tool row; only one is open at a time. */
+@Composable
+private fun EditorInlinePanel(
+    panel: EditorPanel,
+    enabled: Boolean,
+    ratio: CropRatio,
+    onRotateLeft: () -> Unit,
+    onRotateRight: () -> Unit,
+    onSelectRatio: (CropRatio) -> Unit
+) {
+    val palette = LocalAppTheme.current.palette
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(palette.surface)
+    ) {
+        when (panel) {
+            EditorPanel.Rotate -> RotatePanel(enabled, onRotateLeft, onRotateRight)
+            EditorPanel.Ratio -> RatioPicker(ratio, onSelectRatio)
+            EditorPanel.None -> Unit
+        }
+    }
+}
+
+/** Rotate left / rotate right, picked explicitly instead of rotating on every toolbar tap. */
+@Composable
+private fun RotatePanel(enabled: Boolean, onRotateLeft: () -> Unit, onRotateRight: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        PanelAction(
+            icon = Icons.Rounded.Rotate90DegreesCcw,
+            label = strings.rotateLeft,
+            onClick = onRotateLeft,
+            enabled = enabled,
+            modifier = Modifier.weight(1f)
+        )
+        PanelAction(
+            icon = Icons.Rounded.Rotate90DegreesCw,
+            label = strings.rotateRight,
+            onClick = onRotateRight,
+            enabled = enabled,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun PanelAction(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val palette = LocalAppTheme.current.palette
+    val content = if (enabled) palette.onBackground else palette.textMuted
+    Row(
+        modifier = modifier
+            .height(46.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(palette.surfaceVariant)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(color = palette.accent),
+                enabled = enabled,
+                onClick = onClick
+            ),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = content, modifier = Modifier.size(20.dp))
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(label, color = content, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+    }
+}
+
+/** The crop ratios as a horizontally scrollable row of One UI chips below the photo. */
 @Composable
 private fun RatioPicker(selected: CropRatio, onSelect: (CropRatio) -> Unit) {
     val palette = LocalAppTheme.current.palette
@@ -693,36 +824,32 @@ private fun RatioPicker(selected: CropRatio, onSelect: (CropRatio) -> Unit) {
         CropRatio.Fixed(16f, 9f) to strings.ratio16x9,
         CropRatio.Fixed(9f, 16f) to strings.ratio9x16
     )
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .horizontalScroll(rememberScrollState())
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        entries.chunked(3).forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+        entries.forEach { (ratio, label) ->
+            val isSelected = ratio == selected
+            Box(
+                modifier = Modifier
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(if (isSelected) palette.accent else palette.surfaceVariant)
+                    .clickable(onClick = { onSelect(ratio) })
+                    .padding(horizontal = 18.dp),
+                contentAlignment = Alignment.Center
             ) {
-                row.forEach { (ratio, label) ->
-                    val isSelected = ratio == selected
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (isSelected) palette.accent else palette.surfaceVariant)
-                            .clickable(onClick = { onSelect(ratio) }),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = label,
-                            color = if (isSelected) palette.onAccent else palette.onBackground,
-                            fontSize = 15.sp,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-                        )
-                    }
-                }
+                Text(
+                    text = label,
+                    color = if (isSelected) palette.onAccent else palette.onBackground,
+                    fontSize = 14.sp,
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                    maxLines = 1
+                )
             }
         }
     }

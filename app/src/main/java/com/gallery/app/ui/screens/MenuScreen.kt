@@ -92,6 +92,9 @@ fun MenuScreen(
     onSetGraphicsQuality: (PerformanceProfile) -> Unit = {},
     videoSeekSeconds: Int = 10,
     onSetVideoSeekSeconds: (Int) -> Unit = {},
+    canManageAllFiles: Boolean = false,
+    hasAllFilesAccess: Boolean = false,
+    onRequestAllFilesAccess: () -> Unit = {},
     onOpenFavorites: () -> Unit,
     onOpenTrash: () -> Unit,
     modifier: Modifier = Modifier,
@@ -202,7 +205,10 @@ fun MenuScreen(
                 loadStorageStats = loadStorageStats,
                 onEmptyTrash = onEmptyTrash,
                 onOpenLibrary = onOpenLibrary,
-                onOpenTrash = onOpenTrash
+                onOpenTrash = onOpenTrash,
+                canManageAllFiles = canManageAllFiles,
+                hasAllFilesAccess = hasAllFilesAccess,
+                onRequestAllFilesAccess = onRequestAllFilesAccess
             )
         }
     }

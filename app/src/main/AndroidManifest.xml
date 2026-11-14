@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Permissions required for reading media files -->
     <!-- Setting a photo as wallpaper from the viewer (a normal permission, granted at install). -->
@@ -17,6 +18,11 @@
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
+    <!-- Android 11+ broad file access, granted by the user from the system all-files page. It is
+         optional and only requested from an explicit button, so saving and editing stop prompting. -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
     <!-- Explicitly NO internet permission requested -->
 

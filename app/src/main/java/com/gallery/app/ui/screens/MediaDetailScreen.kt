@@ -543,10 +543,10 @@ fun MediaDetailScreen(
                     // The strip of neighbouring photos above the toolbar.
                     Column(modifier = Modifier.fillMaxWidth()) {
                         OneUiFilmstrip(mediaList, pagerState)
-                        DetailBottomBar(actions, editEnabled = !currentItem.isVideo)
+                        DetailBottomBar(actions, editEnabled = currentItem.isImage)
                     }
                 } else {
-                    DetailBottomBar(actions, editEnabled = !currentItem.isVideo)
+                    DetailBottomBar(actions, editEnabled = currentItem.isImage)
                 }
             }
         }
@@ -556,7 +556,7 @@ fun MediaDetailScreen(
             InfoPanel(
                 item = currentItem,
                 onEdit = if (viewOnly) null else actions.onEdit,
-                editEnabled = !currentItem.isVideo,
+                editEnabled = currentItem.isImage,
                 heightDp = with(density) { panelHeightPx.toDp() },
                 progress = { infoProgress },
                 expand = { infoExpand },

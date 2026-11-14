@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -280,6 +281,8 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
     // The settings hub, pushed from the ⋮ menu over the tabs.
     var isSettingsOpen by remember { mutableStateOf(false) }
     var showCreateAlbumFromMove by remember { mutableStateOf(false) }
+    // Android 11+ all-files access: optional, only requested from the explicit buttons.
+    var allFilesAccess by remember { mutableStateOf(hasAllFilesAccess()) }
 
     // Permission Launcher for media storage access
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -326,6 +329,8 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
             if (event == Lifecycle.Event.ON_RESUME) {
                 val hasPerm = hasMediaPermission(context)
                 viewModel.updatePermissionState(hasPerm)
+                // Coming back from the all-files page in Settings updates the optional access state.
+                allFilesAccess = hasAllFilesAccess()
                 // Files other apps wrote past MediaStore (downloads, file managers) are indexed now
                 // instead of whenever the system next gets round to it.
                 if (hasPerm) viewModel.rescanMediaFolders()
@@ -350,7 +355,10 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                         android.net.Uri.fromParts("package", context.packageName, null)
                     )
                 )
-            }
+            },
+            canManageAllFiles = canManageAllFiles(),
+            hasAllFilesAccess = allFilesAccess,
+            onRequestAllFilesAccess = { openAllFilesAccessSettings(context) }
         )
     } else {
         // Intercept back gesture if inside an album hierarchy
@@ -713,7 +721,10 @@ private fun GalleryAppContent(viewModel: GalleryViewModel, contentHaze: HazeStat
                                 isSettingsOpen = false
                                 viewModel.selectTab(GalleryTab.BILDER)
                             },
-                            onBack = { isSettingsOpen = false }
+                            onBack = { isSettingsOpen = false },
+                            canManageAllFiles = canManageAllFiles(),
+                            hasAllFilesAccess = allFilesAccess,
+                            onRequestAllFilesAccess = { openAllFilesAccessSettings(context) }
                         )
                     }
                 }
@@ -784,4 +795,28 @@ private fun hasMediaPermission(context: Context): Boolean {
                 (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ||
                     ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED)
     }
+}
+
+/** All-files access only exists from Android 11; Android 10 keeps the legacy write permission. */
+private fun canManageAllFiles(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+
+private fun hasAllFilesAccess(): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()
+
+/**
+ * Opens Android's all-files access page for this app. Only called from an explicit on-screen button,
+ * and falling back to the full list (then app details) if a vendor ROM doesn't offer the package page.
+ */
+private fun openAllFilesAccessSettings(context: Context) {
+    if (!canManageAllFiles()) return
+    val packageUri = android.net.Uri.fromParts("package", context.packageName, null)
+    val appPage = Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION, packageUri)
+    val listPage = Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+    runCatching { context.startActivity(appPage) }
+        .recoverCatching { context.startActivity(listPage) }
+        .onFailure {
+            context.startActivity(
+                Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri)
+            )
+        }
 }

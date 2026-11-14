@@ -154,7 +154,10 @@ internal fun OneUiSettingsPage(
     loadStorageStats: suspend () -> MediaRepository.MediaStorageStats?,
     onEmptyTrash: () -> Unit,
     onOpenLibrary: () -> Unit,
-    onOpenTrash: () -> Unit
+    onOpenTrash: () -> Unit,
+    canManageAllFiles: Boolean = false,
+    hasAllFilesAccess: Boolean = false,
+    onRequestAllFilesAccess: () -> Unit = {}
 ) {
     val palette = LocalAppTheme.current.palette
     val scroll = rememberScrollState()
@@ -194,7 +197,10 @@ internal fun OneUiSettingsPage(
                     graphicsQuality = graphicsQuality,
                     onSetGraphicsQuality = onSetGraphicsQuality,
                     videoSeekSeconds = videoSeekSeconds,
-                    onSetVideoSeekSeconds = onSetVideoSeekSeconds
+                    onSetVideoSeekSeconds = onSetVideoSeekSeconds,
+                    canManageAllFiles = canManageAllFiles,
+                    hasAllFilesAccess = hasAllFilesAccess,
+                    onRequestAllFilesAccess = onRequestAllFilesAccess
                 )
                 SettingsSection.STORAGE -> StorageContent(
                     internalFreeBytes, internalTotalBytes, sdCardFreeBytes, sdCardTotalBytes,
@@ -261,7 +267,10 @@ private fun GeneralContent(
     graphicsQuality: PerformanceProfile,
     onSetGraphicsQuality: (PerformanceProfile) -> Unit,
     videoSeekSeconds: Int,
-    onSetVideoSeekSeconds: (Int) -> Unit
+    onSetVideoSeekSeconds: (Int) -> Unit,
+    canManageAllFiles: Boolean,
+    hasAllFilesAccess: Boolean,
+    onRequestAllFilesAccess: () -> Unit
 ) {
     Header(strings.graphicsQuality)
     ChoiceCard(PerformanceProfile.entries, graphicsQuality, { graphicsQualityLabel(it) }) { onSetGraphicsQuality(it) }
@@ -275,6 +284,44 @@ private fun GeneralContent(
     Header(strings.seekDuration)
     ChoiceCard(listOf(5, 10, 15, 30), videoSeekSeconds, { strings.secondsLabel(it) }) { onSetVideoSeekSeconds(it) }
     Footer(strings.seekDurationDescription)
+
+    if (canManageAllFiles) {
+        Header(strings.permissions)
+        Card {
+            PermissionRow(granted = hasAllFilesAccess, onOpen = onRequestAllFilesAccess)
+        }
+        Footer(strings.allFilesDescription)
+    }
+}
+
+/** One UI settings row: title, status under it, chevron on the right; opens the system all-files page. */
+@Composable
+private fun PermissionRow(granted: Boolean, onOpen: () -> Unit) {
+    val palette = LocalAppTheme.current.palette
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 22.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(strings.allFilesAccess, color = palette.onBackground, fontSize = 19.sp)
+            Text(
+                text = if (granted) strings.allFilesGranted else strings.allFilesNotGranted,
+                color = if (granted) palette.accent else palette.textMuted,
+                fontSize = 14.sp,
+                lineHeight = 18.sp
+            )
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Icon(
+            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            null,
+            tint = palette.textMuted,
+            modifier = Modifier.size(22.dp)
+        )
+    }
 }
 
 @Composable

@@ -50,6 +50,9 @@ data class NormalizedRect(val left: Float, val top: Float, val right: Float, val
     /** The same region after the frame is rotated 90° clockwise. */
     fun rotateClockwise() = NormalizedRect(1f - bottom, left, 1f - top, right)
 
+    /** The same region after the frame is rotated 90° counter-clockwise. */
+    fun rotateCounterClockwise() = NormalizedRect(top, 1f - right, bottom, 1f - left)
+
     /** The same region after the frame is mirrored left-right. */
     fun flipHorizontal() = NormalizedRect(1f - right, top, 1f - left, bottom)
 

@@ -11,10 +11,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material3.Icon
@@ -29,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gallery.app.R
+import com.gallery.app.ui.design.DialogButtonStyle
 import com.gallery.app.ui.design.ThemedButton
 import com.gallery.app.ui.design.ThemedCard
 import com.gallery.app.ui.theme.LocalAppTheme
@@ -43,21 +48,29 @@ fun PermissionScreen(
     onRequestPermission: () -> Unit,
     modifier: Modifier = Modifier,
     missingMedia: Boolean = true,
-    onOpenSettings: () -> Unit = {}
+    onOpenSettings: () -> Unit = {},
+    /** Android 11+ only: all-files access is optional and only asked for from an explicit tap. */
+    canManageAllFiles: Boolean = false,
+    hasAllFilesAccess: Boolean = false,
+    onRequestAllFilesAccess: () -> Unit = {}
 ) {
     val theme = LocalAppTheme.current
     val palette = theme.palette
+    val scroll = rememberScrollState()
 
     Box(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 28.dp),
+        modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 28.dp, vertical = 24.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -127,6 +140,41 @@ fun PermissionScreen(
                     .clickable { onOpenSettings() }
                     .padding(horizontal = 20.dp, vertical = 12.dp)
             )
+
+            if (canManageAllFiles) {
+                Spacer(modifier = Modifier.height(20.dp))
+                ThemedCard {
+                    Text(
+                        text = strings.allFilesAccess,
+                        color = palette.onBackground,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = strings.allFilesDescription,
+                        color = palette.textMuted,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (hasAllFilesAccess) {
+                        Text(
+                            text = strings.allFilesGranted,
+                            color = palette.accent,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    } else {
+                        ThemedButton(
+                            text = strings.allFilesGrant,
+                            onClick = onRequestAllFilesAccess,
+                            modifier = Modifier.fillMaxWidth(),
+                            style = DialogButtonStyle.Default
+                        )
+                    }
+                }
+            }
         }
     }
 }
